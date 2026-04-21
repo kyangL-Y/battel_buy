@@ -1,0 +1,15 @@
+{
+  "name": "battel-design-mcp",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Local MCP helpers for Figma/Stitch/Pencil integration in Codex.",
+  "type": "module",
+  "scripts": {
+    "start:stitch": "node stitch-proxy.mjs",
+    "check": "powershell -ExecutionPolicy Bypass -File .\\check-design-mcp.ps1"
+  },
+  "dependencies": {
+    "@google/stitch-sdk": "*",
+    "@modelcontextprotocol/sdk": "*"
+  }
+}

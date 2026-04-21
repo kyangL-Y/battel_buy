@@ -1,0 +1,50 @@
+[
+  {
+    "product_key": "wbncp-market-all",
+    "group_name": "公开价格源",
+    "product_name": "万邦国际行情",
+    "category": null,
+    "brand": null,
+    "product_series": null,
+    "spec_text": null,
+    "url": "https://www.wbncp.com/?m=home&c=Lists&a=index&tid=69",
+    "is_favorite": true,
+    "source_type": "batch"
+  },
+  {
+    "product_key": "chinaprice-summary-all",
+    "group_name": "公开价格源",
+    "product_name": "Chinaprice 汇总行情",
+    "category": null,
+    "brand": null,
+    "product_series": null,
+    "spec_text": null,
+    "url": "https://www.chinaprice.cn/viewPage/toSummarySearchMore?lanmu=pl&MENUNAME=pfscsphzjg",
+    "is_favorite": true,
+    "source_type": "batch"
+  },
+  {
+    "product_key": "pfsc-price-market-all",
+    "group_name": "公开价格源",
+    "product_name": "PFSC 市场行情",
+    "category": null,
+    "brand": null,
+    "product_series": null,
+    "spec_text": null,
+    "url": "https://pfsc.agri.cn/#/priceMarket",
+    "is_favorite": true,
+    "source_type": "batch"
+  },
+  {
+    "product_key": "moa-wholesale-market-all",
+    "group_name": "公开价格源",
+    "product_name": "重点农产品平台行情",
+    "category": null,
+    "brand": null,
+    "product_series": null,
+    "spec_text": null,
+    "url": "https://ncpscxx.moa.gov.cn/",
+    "is_favorite": true,
+    "source_type": "batch"
+  }
+]

@@ -1,0 +1,39 @@
+{
+  "schedule": {
+    "enabled": true,
+    "interval_seconds": 86400,
+    "fetch_mode": "requests",
+    "target_scope": "all_saved"
+  },
+  "crawler": {
+    "default_timeout": 15,
+    "default_retries": 2,
+    "default_delay": 1.0,
+    "fallback_to_playwright": false,
+    "blocked_status_codes": [
+      403,
+      429
+    ],
+    "auto_learn_site_rules": true,
+    "enable_api_discovery": false,
+    "api_timeout": 15,
+    "api_retries": 1,
+    "public_source_max_workers": 2,
+    "playwright_block_resource_types": [
+      "image",
+      "media",
+      "font"
+    ]
+  },
+  "ai": {
+    "enabled": true,
+    "provider": "qwen",
+    "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    "model": "qwen-plus",
+    "api_key_env": "DASHSCOPE_API_KEY",
+    "timeout_seconds": 20,
+    "menu_enable_search": true,
+    "max_rows_per_run": 20,
+    "batch_size": 5
+  }
+}

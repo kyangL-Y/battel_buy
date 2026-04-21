@@ -1,0 +1,15 @@
+{
+  "name": "battel",
+  "version": "1.0.0",
+  "description": "一个基于 Python + FastAPI + Vue 的商品价格分析工作台，支持多市场报价抓取、趋势分析与菜单采购建议。",
+  "main": "index.js",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}

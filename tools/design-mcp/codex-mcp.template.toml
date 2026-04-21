@@ -1,0 +1,21 @@
+[features]
+rmcp_client = true
+
+# Add the Figma block only after FIGMA_OAUTH_TOKEN is available.
+#[mcp_servers.figma]
+#url = "https://mcp.figma.com/mcp"
+#bearer_token_env_var = "FIGMA_OAUTH_TOKEN"
+#http_headers = { "X-Figma-Region" = "us-east-1" }
+#startup_timeout_sec = 20
+#tool_timeout_sec = 120
+
+# Add the Stitch block only after STITCH_API_KEY is available, or
+# after STITCH_ACCESS_TOKEN and GOOGLE_CLOUD_PROJECT are both available.
+#[mcp_servers.stitch]
+#type = "stdio"
+#command = "node"
+#args = ["E:\\battel\\tools\\design-mcp\\stitch-proxy.mjs"]
+#startup_timeout_sec = 20
+#tool_timeout_sec = 120
+
+# Pencil 无需手工注册。根据官方文档，启动 Pencil 后其本地 MCP 会自动出现。

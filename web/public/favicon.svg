@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="battelGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#163a70" />
+      <stop offset="100%" stop-color="#2b6ef2" />
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="16" fill="url(#battelGradient)" />
+  <path d="M18 16h17.5c8.6 0 13.5 3.7 13.5 10.2 0 4.2-2.2 7.2-6.2 8.5 4.9 1.1 7.7 4.4 7.7 9.1 0 7.2-5.5 11.2-15.2 11.2H18V16zm10 15h7.2c2.5 0 4-1.1 4-3.1s-1.5-3-4-3H28v6.1zm0 15.1h8.5c3 0 4.7-1.2 4.7-3.5 0-2.2-1.7-3.4-4.7-3.4H28v6.9z" fill="#f8fbff" />
+  <circle cx="49" cy="18" r="4" fill="#f7b547" />
+</svg>

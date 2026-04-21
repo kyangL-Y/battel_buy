@@ -1,0 +1,1813 @@
+{
+  "version": "2.10",
+  "children": [
+    {
+      "type": "frame",
+      "id": "bi8Au",
+      "x": 0,
+      "y": 0,
+      "name": "Frame",
+      "clip": true,
+      "width": 1440,
+      "fill": {
+        "type": "gradient",
+        "gradientType": "linear",
+        "enabled": true,
+        "rotation": 180,
+        "size": {
+          "height": 1
+        },
+        "colors": [
+          {
+            "color": "#F7F4EE",
+            "position": 0
+          },
+          {
+            "color": "#EEF1F3",
+            "position": 1
+          }
+        ]
+      },
+      "layout": "vertical",
+      "gap": 18,
+      "padding": 28,
+      "children": [
+        {
+          "type": "frame",
+          "id": "2ZlYe",
+          "name": "header",
+          "width": "fill_container",
+          "fill": "#FCFBF8",
+          "cornerRadius": 20,
+          "stroke": {
+            "thickness": 1,
+            "fill": "#D7DDD8"
+          },
+          "effect": {
+            "type": "shadow",
+            "shadowType": "outer",
+            "color": "#1F29370F",
+            "offset": {
+              "x": 0,
+              "y": 10
+            },
+            "blur": 24
+          },
+          "padding": [
+            18,
+            20
+          ],
+          "justifyContent": "space_between",
+          "alignItems": "center",
+          "children": [
+            {
+              "type": "frame",
+              "id": "zQPPJ",
+              "name": "headerCopy",
+              "layout": "vertical",
+              "gap": 6,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "aMLXU",
+                  "fill": "#6B7280",
+                  "content": "MENU PROCUREMENT",
+                  "fontFamily": "IBM Plex Mono",
+                  "fontSize": 11,
+                  "fontWeight": "600",
+                  "letterSpacing": 1.2
+                },
+                {
+                  "type": "text",
+                  "id": "8Xw0C",
+                  "fill": "#18202A",
+                  "content": "菜单采购工作台",
+                  "fontFamily": "Funnel Sans",
+                  "fontSize": 28,
+                  "fontWeight": "700"
+                },
+                {
+                  "type": "text",
+                  "id": "8rcBt",
+                  "fill": "#667085",
+                  "content": "录菜单、补食材、直接看采购建议。首屏只保留关键决策信息。",
+                  "fontFamily": "Funnel Sans",
+                  "fontSize": 13,
+                  "fontWeight": "normal"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "GOB5o",
+          "name": "content",
+          "width": "fill_container",
+          "fill": {
+            "type": "color",
+            "color": "#d9d9d9ff",
+            "enabled": false
+          },
+          "layout": "vertical",
+          "gap": 16,
+          "children": [
+            {
+              "type": "frame",
+              "id": "tX7CP",
+              "name": "topRow",
+              "width": "fill_container",
+              "gap": 16,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "F5HwN",
+                  "name": "inputCard",
+                  "width": "fill_container",
+                  "fill": "#FCFBF8",
+                  "cornerRadius": 22,
+                  "stroke": {
+                    "thickness": 1,
+                    "fill": "#D7DDD8"
+                  },
+                  "effect": {
+                    "type": "shadow",
+                    "shadowType": "outer",
+                    "color": "#1F29370D",
+                    "offset": {
+                      "x": 0,
+                      "y": 8
+                    },
+                    "blur": 22
+                  },
+                  "layout": "vertical",
+                  "gap": 14,
+                  "padding": 18,
+                  "justifyContent": "space_around",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "greMU",
+                      "name": "inputHead",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": 4,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "u5D3J",
+                          "fill": "#18202A",
+                          "content": "菜单输入",
+                          "fontFamily": "Funnel Sans",
+                          "fontSize": 22,
+                          "fontWeight": "700"
+                        },
+                        {
+                          "type": "text",
+                          "id": "mOrc7",
+                          "fill": "#667085",
+                          "textGrowth": "fixed-width",
+                          "width": "fit_content(145)",
+                          "content": "支持手工录入和文件导入",
+                          "fontFamily": "Funnel Sans",
+                          "fontSize": 12,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "Tqcpc",
+                      "name": "textArea",
+                      "width": "fill_container",
+                      "height": 180,
+                      "fill": "#FFFFFF",
+                      "cornerRadius": 18,
+                      "stroke": {
+                        "thickness": 1,
+                        "fill": "#D7DDD8"
+                      },
+                      "layout": "vertical",
+                      "padding": 14,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "U99vI",
+                          "fill": "#334155",
+                          "content": "蒜蓉西兰花\n清蒸鲈鱼\n红烧排骨\n白灼虾\n莲藕排骨汤",
+                          "lineHeight": 1.5,
+                          "fontFamily": "Funnel Sans",
+                          "fontSize": 15,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "FV3DN",
+                      "name": "importRow",
+                      "width": "fill_container",
+                      "gap": 10,
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "Jd0JB",
+                          "name": "importBtn",
+                          "fill": "#1E40AF",
+                          "cornerRadius": 16,
+                          "padding": [
+                            12,
+                            16
+                          ],
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "VitXf",
+                              "fill": "#F8FAFC",
+                              "content": "导入菜单文件",
+                              "fontFamily": "Funnel Sans",
+                              "fontSize": 13,
+                              "fontWeight": "700"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "text",
+                          "id": "QpBgQ",
+                          "fill": "#667085",
+                          "content": "支持 TXT / CSV / Excel / Word / PDF，默认读取首列或首段文本。",
+                          "fontFamily": "Funnel Sans",
+                          "fontSize": 12,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "RYGfu",
+                      "name": "actionBar",
+                      "width": "fill_container",
+                      "fill": "#F7F8FA",
+                      "cornerRadius": 16,
+                      "stroke": {
+                        "thickness": 1,
+                        "fill": "#D7DDD8"
+                      },
+                      "gap": 10,
+                      "padding": 12,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "pePrR",
+                          "name": "tablesCard",
+                          "width": 110,
+                          "fill": "#FFFFFF",
+                          "cornerRadius": 12,
+                          "stroke": {
+                            "thickness": 1,
+                            "fill": "#D7DDD8"
+                          },
+                          "layout": "vertical",
+                          "gap": 3,
+                          "padding": [
+                            8,
+                            10
+                          ],
+                          "justifyContent": "center",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "M9ig3",
+                              "fill": "#7A828C",
+                              "content": "桌数",
+                              "fontFamily": "IBM Plex Mono",
+                              "fontSize": 10,
+                              "fontWeight": "600"
+                            },
+                            {
+                              "type": "text",
+                              "id": "6T8zg",
+                              "fill": "#18202A",
+                              "content": "10",
+                              "fontFamily": "Funnel Sans",
+                              "fontSize": 16,
+                              "fontWeight": "700"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "JUuu0",
+                          "name": "dinersCard",
+                          "width": 110,
+                          "fill": "#FFFFFF",
+                          "cornerRadius": 12,
+                          "stroke": {
+                            "thickness": 1,
+                            "fill": "#D7DDD8"
+                          },
+                          "layout": "vertical",
+                          "gap": 3,
+                          "padding": [
+                            8,
+                            10
+                          ],
+                          "justifyContent": "center",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "hOyCt",
+                              "fill": "#7A828C",
+                              "content": "人数",
+                              "fontFamily": "IBM Plex Mono",
+                              "fontSize": 10,
+                              "fontWeight": "600"
+                            },
+                            {
+                              "type": "text",
+                              "id": "guob2",
+                              "fill": "#18202A",
+                              "content": "100",
+                              "fontFamily": "Funnel Sans",
+                              "fontSize": 16,
+                              "fontWeight": "700"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "28WXl",
+                          "name": "locationCard",
+                          "width": 170,
+                          "fill": "#FFFFFF",
+                          "cornerRadius": 12,
+                          "stroke": {
+                            "thickness": 1,
+                            "fill": "#D7DDD8"
+                          },
+                          "layout": "vertical",
+                          "gap": 3,
+                          "padding": [
+                            8,
+                            10
+                          ],
+                          "justifyContent": "center",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "M05pB",
+                              "fill": "#7A828C",
+                              "content": "优先地区",
+                              "fontFamily": "IBM Plex Mono",
+                              "fontSize": 10,
+                              "fontWeight": "600"
+                            },
+                            {
+                              "type": "text",
+                              "id": "Y0OvT",
+                              "fill": "#475467",
+                              "content": "当前位置 / 城市 / 省份",
+                              "fontFamily": "Funnel Sans",
+                              "fontSize": 13,
+                              "fontWeight": "600"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "FGsJ8",
+                          "name": "submitCard",
+                          "height": 52,
+                          "fill": "#1E40AF",
+                          "cornerRadius": 14,
+                          "padding": [
+                            0,
+                            16
+                          ],
+                          "justifyContent": "center",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "MvPeR",
+                              "fill": "#F8FAFC",
+                              "content": "生成采购方案",
+                              "fontFamily": "Funnel Sans",
+                              "fontSize": 13,
+                              "fontWeight": "700"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "2zoOV",
+                          "name": "Frame 1",
+                          "clip": true,
+                          "width": 5,
+                          "height": 4,
+                          "fill": "#FFFFFF",
+                          "layout": "none"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "rzvo6",
+                  "name": "guidanceCard",
+                  "width": 280,
+                  "fill": "#F5F1E8",
+                  "cornerRadius": 22,
+                  "stroke": {
+                    "thickness": 1,
+                    "fill": "#D6CFC0"
+                  },
+                  "layout": "vertical",
+                  "gap": 12,
+                  "padding": 18,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "kRnso",
+                      "name": "guidanceHead",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": 6,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "J2n2f",
+                          "fill": "#8C6A2F",
+                          "content": "采购流程",
+                          "fontFamily": "IBM Plex Mono",
+                          "fontSize": 11,
+                          "fontWeight": "600",
+                          "letterSpacing": 1.1
+                        },
+                        {
+                          "type": "text",
+                          "id": "i1hsq",
+                          "fill": "#3F3322",
+                          "content": "三步完成采购判断",
+                          "fontFamily": "Funnel Sans",
+                          "fontSize": 18,
+                          "fontWeight": "700"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "3LnXs",
+                      "name": "step1",
+                      "fill": "#FFFDF8",
+                      "cornerRadius": 16,
+                      "stroke": {
+                        "thickness": 1,
+                        "fill": "#D6CFC0"
+                      },
+                      "layout": "vertical",
+                      "gap": 4,
+                      "padding": 12,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "OD5Y4",
+                          "fill": "#3F3322",
+                          "content": "1. 录菜单",
+                          "fontFamily": "Funnel Sans",
+                          "fontSize": 13,
+                          "fontWeight": "700"
+                        },
+                        {
+                          "type": "text",
+                          "id": "sMdnB",
+                          "fill": "#6F5C44",
+                          "content": "先录菜品，再由 AI 或规则补足主要食材。",
+                          "fontFamily": "Funnel Sans",
+                          "fontSize": 12,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "qabDa",
+                      "name": "step2",
+                      "fill": "#FFFDF8",
+                      "cornerRadius": 16,
+                      "stroke": {
+                        "thickness": 1,
+                        "fill": "#D6CFC0"
+                      },
+                      "layout": "vertical",
+                      "gap": 4,
+                      "padding": 12,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "01cqU",
+                          "fill": "#3F3322",
+                          "content": "2. 比报价",
+                          "fontFamily": "Funnel Sans",
+                          "fontSize": 13,
+                          "fontWeight": "700"
+                        },
+                        {
+                          "type": "text",
+                          "id": "9xiN6",
+                          "fill": "#6F5C44",
+                          "content": "优先地区只影响推荐顺序，不改原始报价。",
+                          "fontFamily": "Funnel Sans",
+                          "fontSize": 12,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "2H3cf",
+                      "name": "step3",
+                      "fill": "#FFFDF8",
+                      "cornerRadius": 16,
+                      "stroke": {
+                        "thickness": 1,
+                        "fill": "#D6CFC0"
+                      },
+                      "layout": "vertical",
+                      "gap": 4,
+                      "padding": 12,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "BzlUO",
+                          "fill": "#3F3322",
+                          "content": "3. 出建议",
+                          "fontFamily": "Funnel Sans",
+                          "fontSize": 13,
+                          "fontWeight": "700"
+                        },
+                        {
+                          "type": "text",
+                          "id": "Ti20S",
+                          "fill": "#6F5C44",
+                          "content": "缺报价只保留轻提示，完整字段放表格里看。",
+                          "fontFamily": "Funnel Sans",
+                          "fontSize": 12,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "t7DMO",
+              "name": "summaryRow",
+              "width": "fill_container",
+              "gap": 12,
+              "justifyContent": "space_around",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "HS6UD",
+                  "name": "metric1",
+                  "width": 220,
+                  "fill": "#FFFFFF",
+                  "cornerRadius": 16,
+                  "stroke": {
+                    "thickness": 1,
+                    "fill": "#D7DDD8"
+                  },
+                  "layout": "vertical",
+                  "gap": 3,
+                  "padding": [
+                    12,
+                    14
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "DegpV",
+                      "fill": "#7A828C",
+                      "content": "菜品行数",
+                      "fontFamily": "IBM Plex Mono",
+                      "fontSize": 10,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "text",
+                      "id": "FGXxB",
+                      "fill": "#18202A",
+                      "content": "12",
+                      "fontFamily": "Funnel Sans",
+                      "fontSize": 20,
+                      "fontWeight": "700"
+                    },
+                    {
+                      "type": "text",
+                      "id": "nLS6z",
+                      "fill": "#667085",
+                      "content": "当前输入",
+                      "fontFamily": "Funnel Sans",
+                      "fontSize": 11,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "hTzld",
+                  "name": "metric2",
+                  "width": 220,
+                  "fill": "#FFFFFF",
+                  "cornerRadius": 16,
+                  "stroke": {
+                    "thickness": 1,
+                    "fill": "#D7DDD8"
+                  },
+                  "layout": "vertical",
+                  "gap": 3,
+                  "padding": [
+                    12,
+                    14
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "uPXlx",
+                      "fill": "#7A828C",
+                      "content": "已匹配报价",
+                      "fontFamily": "IBM Plex Mono",
+                      "fontSize": 10,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "text",
+                      "id": "bWhDo",
+                      "fill": "#18202A",
+                      "content": "9",
+                      "fontFamily": "Funnel Sans",
+                      "fontSize": 20,
+                      "fontWeight": "700"
+                    },
+                    {
+                      "type": "text",
+                      "id": "twjZB",
+                      "fill": "#667085",
+                      "content": "可直接采购",
+                      "fontFamily": "Funnel Sans",
+                      "fontSize": 11,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "XKooe",
+                  "name": "metric3",
+                  "width": 220,
+                  "fill": "#F8F4EB",
+                  "cornerRadius": 16,
+                  "stroke": {
+                    "thickness": 1,
+                    "fill": "#D8CDAE"
+                  },
+                  "layout": "vertical",
+                  "gap": 3,
+                  "padding": [
+                    12,
+                    14
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "6GcqK",
+                      "fill": "#8C6A2F",
+                      "content": "待确认",
+                      "fontFamily": "IBM Plex Mono",
+                      "fontSize": 10,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "text",
+                      "id": "QL2LW",
+                      "fill": "#6F4E1F",
+                      "content": "3",
+                      "fontFamily": "Funnel Sans",
+                      "fontSize": 20,
+                      "fontWeight": "700"
+                    },
+                    {
+                      "type": "text",
+                      "id": "3xhWF",
+                      "fill": "#8A6B39",
+                      "content": "需要人工确认",
+                      "fontFamily": "Funnel Sans",
+                      "fontSize": 11,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "eHUv3",
+                  "name": "metric4",
+                  "width": 220,
+                  "fill": "#EFF6FF",
+                  "cornerRadius": 16,
+                  "stroke": {
+                    "thickness": 1,
+                    "fill": "#BCD0F7"
+                  },
+                  "layout": "vertical",
+                  "gap": 3,
+                  "padding": [
+                    12,
+                    14
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "2gAUq",
+                      "fill": "#4769B2",
+                      "content": "总成本",
+                      "fontFamily": "IBM Plex Mono",
+                      "fontSize": 10,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "text",
+                      "id": "NZxtm",
+                      "fill": "#1E40AF",
+                      "content": "¥ 1,286",
+                      "fontFamily": "Funnel Sans",
+                      "fontSize": 20,
+                      "fontWeight": "700"
+                    },
+                    {
+                      "type": "text",
+                      "id": "QU2vz",
+                      "fill": "#5D7FC4",
+                      "content": "已匹配估算",
+                      "fontFamily": "Funnel Sans",
+                      "fontSize": 11,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "XsYFh",
+                  "name": "pendingCard",
+                  "width": "fill_container",
+                  "fill": "#F8F4EB",
+                  "cornerRadius": 16,
+                  "stroke": {
+                    "thickness": 1,
+                    "fill": "#D8CDAE"
+                  },
+                  "layout": "vertical",
+                  "gap": 8,
+                  "padding": [
+                    12,
+                    14
+                  ],
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "RTRK5",
+                      "name": "pendingHead",
+                      "width": "fill_container",
+                      "justifyContent": "space_between",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "JQxNt",
+                          "fill": "#6F4E1F",
+                          "content": "待确认食材",
+                          "fontFamily": "Funnel Sans",
+                          "fontSize": 12,
+                          "fontWeight": "700"
+                        },
+                        {
+                          "type": "text",
+                          "id": "yydOU",
+                          "fill": "#8C6A2F",
+                          "content": "3 项",
+                          "fontFamily": "IBM Plex Mono",
+                          "fontSize": 11,
+                          "fontWeight": "600"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "vN8Ya",
+                      "name": "pendingTags",
+                      "width": "fill_container",
+                      "gap": 6,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "NOtgN",
+                          "name": "tag1",
+                          "fill": "#FFFDF8",
+                          "cornerRadius": 999,
+                          "stroke": {
+                            "thickness": 1,
+                            "fill": "#E0D6BE"
+                          },
+                          "padding": [
+                            6,
+                            8
+                          ],
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "NUbYm",
+                              "fill": "#7A5B2C",
+                              "content": "鲈鱼",
+                              "fontFamily": "Funnel Sans",
+                              "fontSize": 11,
+                              "fontWeight": "600"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "quyQd",
+                          "name": "tag2",
+                          "fill": "#FFFDF8",
+                          "cornerRadius": 999,
+                          "stroke": {
+                            "thickness": 1,
+                            "fill": "#E0D6BE"
+                          },
+                          "padding": [
+                            6,
+                            8
+                          ],
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "lmylK",
+                              "fill": "#7A5B2C",
+                              "content": "白灼虾",
+                              "fontFamily": "Funnel Sans",
+                              "fontSize": 11,
+                              "fontWeight": "600"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "JTFFL",
+                          "name": "tag3",
+                          "fill": "#FFFDF8",
+                          "cornerRadius": 999,
+                          "stroke": {
+                            "thickness": 1,
+                            "fill": "#E0D6BE"
+                          },
+                          "padding": [
+                            6,
+                            8
+                          ],
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "X6zeQ",
+                              "fill": "#7A5B2C",
+                              "content": "莲藕",
+                              "fontFamily": "Funnel Sans",
+                              "fontSize": 11,
+                              "fontWeight": "600"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "86bGM",
+              "name": "analysisRow",
+              "width": "fill_container",
+              "gap": 16,
+              "justifyContent": "space_around",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "lCI1O",
+                  "name": "leftTableCard",
+                  "width": 830,
+                  "fill": "#FCFBF8",
+                  "cornerRadius": 22,
+                  "stroke": {
+                    "thickness": 1,
+                    "fill": "#D7DDD8"
+                  },
+                  "effect": {
+                    "type": "shadow",
+                    "shadowType": "outer",
+                    "color": "#1F29370D",
+                    "offset": {
+                      "x": 0,
+                      "y": 8
+                    },
+                    "blur": 22
+                  },
+                  "layout": "vertical",
+                  "gap": 12,
+                  "padding": 18,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "UiHEA",
+                      "name": "leftHead",
+                      "width": "fill_container",
+                      "justifyContent": "space_between",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "keJPo",
+                          "name": "leftHeadCopy",
+                          "layout": "vertical",
+                          "gap": 4,
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "Lm2pq",
+                              "fill": "#7A828C",
+                              "content": "PROCUREMENT OUTPUT",
+                              "fontFamily": "IBM Plex Mono",
+                              "fontSize": 10,
+                              "fontWeight": "600",
+                              "letterSpacing": 1
+                            },
+                            {
+                              "type": "text",
+                              "id": "ca7Ma",
+                              "fill": "#18202A",
+                              "content": "采购建议",
+                              "fontFamily": "Funnel Sans",
+                              "fontSize": 20,
+                              "fontWeight": "700"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "text",
+                          "id": "6JHfa",
+                          "fill": "#7A828C",
+                          "content": "9 条",
+                          "fontFamily": "IBM Plex Mono",
+                          "fontSize": 11,
+                          "fontWeight": "600"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "3kNqK",
+                      "name": "leftTable",
+                      "clip": true,
+                      "width": "fill_container",
+                      "fill": "#FFFFFF",
+                      "cornerRadius": 18,
+                      "stroke": {
+                        "thickness": 1,
+                        "fill": "#D7DDD8"
+                      },
+                      "layout": "vertical",
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "B4MD6",
+                          "name": "leftHeaderRow",
+                          "width": "fill_container",
+                          "fill": "#F4F6F8",
+                          "padding": [
+                            12,
+                            14
+                          ],
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "AiclT",
+                              "name": "h1",
+                              "width": 190,
+                              "padding": [
+                                0,
+                                8,
+                                0,
+                                0
+                              ],
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "ECoOi",
+                                  "fill": "#667085",
+                                  "content": "食材 / 菜品",
+                                  "fontFamily": "IBM Plex Mono",
+                                  "fontSize": 10,
+                                  "fontWeight": "600"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "WHW5A",
+                              "name": "h2",
+                              "width": 190,
+                              "padding": [
+                                0,
+                                8,
+                                0,
+                                0
+                              ],
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "VzCnp",
+                                  "fill": "#667085",
+                                  "content": "推荐 / 备选",
+                                  "fontFamily": "IBM Plex Mono",
+                                  "fontSize": 10,
+                                  "fontWeight": "600"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "blPtN",
+                              "name": "h3",
+                              "width": 150,
+                              "padding": [
+                                0,
+                                8,
+                                0,
+                                0
+                              ],
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "yydc8",
+                                  "fill": "#667085",
+                                  "content": "报价 / 成本",
+                                  "fontFamily": "IBM Plex Mono",
+                                  "fontSize": 10,
+                                  "fontWeight": "600"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "MJkof",
+                              "name": "h4",
+                              "width": "fill_container",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "Msxr3",
+                                  "fill": "#667085",
+                                  "content": "状态 / 说明",
+                                  "fontFamily": "IBM Plex Mono",
+                                  "fontSize": 10,
+                                  "fontWeight": "600"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "FW9aT",
+                          "name": "row1",
+                          "width": "fill_container",
+                          "fill": "#FFFFFF",
+                          "padding": [
+                            12,
+                            14
+                          ],
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "85dCq",
+                              "name": "r1c1",
+                              "width": 190,
+                              "layout": "vertical",
+                              "gap": 3,
+                              "padding": [
+                                0,
+                                8,
+                                0,
+                                0
+                              ],
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "aIO2V",
+                                  "fill": "#18202A",
+                                  "content": "西兰花",
+                                  "fontFamily": "Funnel Sans",
+                                  "fontSize": 12,
+                                  "fontWeight": "700"
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "rSd6r",
+                                  "fill": "#667085",
+                                  "content": "蒜蓉西兰花 · 3.00 kg",
+                                  "fontFamily": "IBM Plex Mono",
+                                  "fontSize": 10,
+                                  "fontWeight": "500"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "7mDwd",
+                              "name": "r1c2",
+                              "width": 190,
+                              "layout": "vertical",
+                              "gap": 3,
+                              "padding": [
+                                0,
+                                8,
+                                0,
+                                0
+                              ],
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "N1J79",
+                                  "fill": "#18202A",
+                                  "content": "本地蔬菜市场",
+                                  "fontFamily": "Funnel Sans",
+                                  "fontSize": 12,
+                                  "fontWeight": "700"
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "HmK5F",
+                                  "fill": "#667085",
+                                  "content": "备选：海吉星",
+                                  "fontFamily": "Funnel Sans",
+                                  "fontSize": 10,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "NRtNA",
+                              "name": "r1c3",
+                              "width": 150,
+                              "layout": "vertical",
+                              "gap": 3,
+                              "padding": [
+                                0,
+                                8,
+                                0,
+                                0
+                              ],
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "48Cxr",
+                                  "fill": "#18202A",
+                                  "content": "4.80 / kg",
+                                  "fontFamily": "IBM Plex Mono",
+                                  "fontSize": 12,
+                                  "fontWeight": "700"
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "9lmNx",
+                                  "fill": "#667085",
+                                  "content": "成本 ¥14.40",
+                                  "fontFamily": "IBM Plex Mono",
+                                  "fontSize": 10,
+                                  "fontWeight": "500"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "xOcTo",
+                              "name": "r1c4",
+                              "width": "fill_container",
+                              "layout": "vertical",
+                              "gap": 4,
+                              "children": [
+                                {
+                                  "type": "frame",
+                                  "id": "gAWi7",
+                                  "name": "status1",
+                                  "fill": "#E9F8F0",
+                                  "cornerRadius": 999,
+                                  "stroke": {
+                                    "thickness": 1,
+                                    "fill": "#B8E3C8"
+                                  },
+                                  "padding": [
+                                    5,
+                                    8
+                                  ],
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "dX44n",
+                                      "fill": "#067647",
+                                      "content": "已匹配报价",
+                                      "fontFamily": "Funnel Sans",
+                                      "fontSize": 10,
+                                      "fontWeight": "700"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "HPWCB",
+                                  "fill": "#667085",
+                                  "content": "按价格和地区综合排序。",
+                                  "fontFamily": "Funnel Sans",
+                                  "fontSize": 10,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "yc17h",
+                          "name": "row2",
+                          "width": "fill_container",
+                          "fill": "#FCFCFD",
+                          "padding": [
+                            12,
+                            14
+                          ],
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "nfZQp",
+                              "name": "r2c1",
+                              "width": 190,
+                              "layout": "vertical",
+                              "gap": 3,
+                              "padding": [
+                                0,
+                                8,
+                                0,
+                                0
+                              ],
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "CUKUM",
+                                  "fill": "#18202A",
+                                  "content": "鲈鱼",
+                                  "fontFamily": "Funnel Sans",
+                                  "fontSize": 12,
+                                  "fontWeight": "700"
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "mt3fE",
+                                  "fill": "#667085",
+                                  "content": "清蒸鲈鱼 · 2.00 kg",
+                                  "fontFamily": "IBM Plex Mono",
+                                  "fontSize": 10,
+                                  "fontWeight": "500"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "uDXDU",
+                              "name": "r2c2",
+                              "width": 190,
+                              "layout": "vertical",
+                              "gap": 3,
+                              "padding": [
+                                0,
+                                8,
+                                0,
+                                0
+                              ],
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "j5eNR",
+                                  "fill": "#18202A",
+                                  "content": "江海水产市场",
+                                  "fontFamily": "Funnel Sans",
+                                  "fontSize": 12,
+                                  "fontWeight": "700"
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "x8UPg",
+                                  "fill": "#667085",
+                                  "content": "备选：鲜活专区",
+                                  "fontFamily": "Funnel Sans",
+                                  "fontSize": 10,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "vLeCX",
+                              "name": "r2c3",
+                              "width": 150,
+                              "layout": "vertical",
+                              "gap": 3,
+                              "padding": [
+                                0,
+                                8,
+                                0,
+                                0
+                              ],
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "He6oe",
+                                  "fill": "#18202A",
+                                  "content": "-",
+                                  "fontFamily": "IBM Plex Mono",
+                                  "fontSize": 12,
+                                  "fontWeight": "700"
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "VvtEV",
+                                  "fill": "#667085",
+                                  "content": "成本待确认",
+                                  "fontFamily": "IBM Plex Mono",
+                                  "fontSize": 10,
+                                  "fontWeight": "500"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "Iq6fa",
+                              "name": "r2c4",
+                              "width": "fill_container",
+                              "layout": "vertical",
+                              "gap": 4,
+                              "children": [
+                                {
+                                  "type": "frame",
+                                  "id": "07Acq",
+                                  "name": "status2",
+                                  "fill": "#F8F4EB",
+                                  "cornerRadius": 999,
+                                  "stroke": {
+                                    "thickness": 1,
+                                    "fill": "#D8CDAE"
+                                  },
+                                  "padding": [
+                                    5,
+                                    8
+                                  ],
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "MNNEy",
+                                      "fill": "#8C6A2F",
+                                      "content": "缺报价 / 待确认",
+                                      "fontFamily": "Funnel Sans",
+                                      "fontSize": 10,
+                                      "fontWeight": "700"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "uevtl",
+                                  "fill": "#667085",
+                                  "content": "建议人工确认本地水产报价。",
+                                  "fontFamily": "Funnel Sans",
+                                  "fontSize": 10,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "DHC13",
+                  "name": "rightTableCard",
+                  "width": "fill_container",
+                  "fill": "#FCFBF8",
+                  "cornerRadius": 22,
+                  "stroke": {
+                    "thickness": 1,
+                    "fill": "#D7DDD8"
+                  },
+                  "effect": {
+                    "type": "shadow",
+                    "shadowType": "outer",
+                    "color": "#1F29370D",
+                    "offset": {
+                      "x": 0,
+                      "y": 8
+                    },
+                    "blur": 22
+                  },
+                  "layout": "vertical",
+                  "gap": 12,
+                  "padding": 18,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "0KZAw",
+                      "name": "rightHead",
+                      "width": "fill_container",
+                      "justifyContent": "space_between",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "VZdxD",
+                          "name": "rightHeadCopy",
+                          "layout": "vertical",
+                          "gap": 4,
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "naHX3",
+                              "fill": "#7A828C",
+                              "content": "INGREDIENT BREAKDOWN",
+                              "fontFamily": "IBM Plex Mono",
+                              "fontSize": 10,
+                              "fontWeight": "600",
+                              "letterSpacing": 1
+                            },
+                            {
+                              "type": "text",
+                              "id": "bn01H",
+                              "fill": "#18202A",
+                              "content": "食材拆分",
+                              "fontFamily": "Funnel Sans",
+                              "fontSize": 20,
+                              "fontWeight": "700"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "text",
+                          "id": "NqIho",
+                          "fill": "#7A828C",
+                          "content": "12 条",
+                          "fontFamily": "IBM Plex Mono",
+                          "fontSize": 11,
+                          "fontWeight": "600"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "a0N5J",
+                      "name": "rightTable",
+                      "clip": true,
+                      "width": "fill_container",
+                      "fill": "#FFFFFF",
+                      "cornerRadius": 18,
+                      "stroke": {
+                        "thickness": 1,
+                        "fill": "#D7DDD8"
+                      },
+                      "layout": "vertical",
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "E7603",
+                          "name": "rightHeaderRow",
+                          "width": "fill_container",
+                          "fill": "#F4F6F8",
+                          "padding": [
+                            12,
+                            14
+                          ],
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "9evvt",
+                              "name": "rc1",
+                              "width": 130,
+                              "padding": [
+                                0,
+                                8,
+                                0,
+                                0
+                              ],
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "lfMpd",
+                                  "fill": "#667085",
+                                  "content": "菜品",
+                                  "fontFamily": "IBM Plex Mono",
+                                  "fontSize": 10,
+                                  "fontWeight": "600"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "bhkHz",
+                              "name": "rc2",
+                              "width": 120,
+                              "padding": [
+                                0,
+                                8,
+                                0,
+                                0
+                              ],
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "UvRaS",
+                                  "fill": "#667085",
+                                  "content": "食材",
+                                  "fontFamily": "IBM Plex Mono",
+                                  "fontSize": 10,
+                                  "fontWeight": "600"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "4xNm1",
+                              "name": "rc3",
+                              "width": 88,
+                              "padding": [
+                                0,
+                                8,
+                                0,
+                                0
+                              ],
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "NbWsK",
+                                  "fill": "#667085",
+                                  "content": "数量",
+                                  "fontFamily": "IBM Plex Mono",
+                                  "fontSize": 10,
+                                  "fontWeight": "600"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "OsPsB",
+                              "name": "rc4",
+                              "width": "fill_container",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "kDw1V",
+                                  "fill": "#667085",
+                                  "content": "备注",
+                                  "fontFamily": "IBM Plex Mono",
+                                  "fontSize": 10,
+                                  "fontWeight": "600"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "TeuHO",
+                          "name": "rr1",
+                          "width": "fill_container",
+                          "fill": "#FFFFFF",
+                          "padding": [
+                            12,
+                            14
+                          ],
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "yX70D",
+                              "name": "a1",
+                              "width": 130,
+                              "padding": [
+                                0,
+                                8,
+                                0,
+                                0
+                              ],
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "dCbvQ",
+                                  "fill": "#18202A",
+                                  "content": "蒜蓉西兰花",
+                                  "fontFamily": "Funnel Sans",
+                                  "fontSize": 11,
+                                  "fontWeight": "700"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "m3YaY",
+                              "name": "a2",
+                              "width": 120,
+                              "padding": [
+                                0,
+                                8,
+                                0,
+                                0
+                              ],
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "l9nr4",
+                                  "fill": "#18202A",
+                                  "content": "西兰花",
+                                  "fontFamily": "Funnel Sans",
+                                  "fontSize": 11,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "L41WD",
+                              "name": "a3",
+                              "width": 88,
+                              "padding": [
+                                0,
+                                8,
+                                0,
+                                0
+                              ],
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "n5Fnb",
+                                  "fill": "#334155",
+                                  "content": "3.00 kg",
+                                  "fontFamily": "IBM Plex Mono",
+                                  "fontSize": 11,
+                                  "fontWeight": "600"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "u2rHy",
+                              "name": "a4",
+                              "width": "fill_container",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "Mqb3E",
+                                  "fill": "#667085",
+                                  "content": "主菜蔬菜项",
+                                  "fontFamily": "Funnel Sans",
+                                  "fontSize": 11,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "Z2EGi",
+                          "name": "rr2",
+                          "width": "fill_container",
+                          "fill": "#FCFCFD",
+                          "padding": [
+                            12,
+                            14
+                          ],
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "aibB1",
+                              "name": "b1",
+                              "width": 130,
+                              "padding": [
+                                0,
+                                8,
+                                0,
+                                0
+                              ],
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "Er0DU",
+                                  "fill": "#18202A",
+                                  "content": "清蒸鲈鱼",
+                                  "fontFamily": "Funnel Sans",
+                                  "fontSize": 11,
+                                  "fontWeight": "700"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "b0WRX",
+                              "name": "b2",
+                              "width": 120,
+                              "padding": [
+                                0,
+                                8,
+                                0,
+                                0
+                              ],
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "UaOWZ",
+                                  "fill": "#18202A",
+                                  "content": "鲈鱼",
+                                  "fontFamily": "Funnel Sans",
+                                  "fontSize": 11,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "Z8y9s",
+                              "name": "b3",
+                              "width": 88,
+                              "padding": [
+                                0,
+                                8,
+                                0,
+                                0
+                              ],
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "tg4xX",
+                                  "fill": "#334155",
+                                  "content": "2.00 kg",
+                                  "fontFamily": "IBM Plex Mono",
+                                  "fontSize": 11,
+                                  "fontWeight": "600"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "Z2n3Y",
+                              "name": "b4",
+                              "width": "fill_container",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "7DSYu",
+                                  "fill": "#667085",
+                                  "content": "需确认水产报价",
+                                  "fontFamily": "Funnel Sans",
+                                  "fontSize": 11,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
