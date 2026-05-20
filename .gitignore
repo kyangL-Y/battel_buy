@@ -27,10 +27,15 @@ web/*.png
 # Local tooling / scratch
 .claude/
 .helloagents/
+.trae/
 .streamlit/
 .tmp/
 .tmp_research/
+experiments/
+tmp/
 web/.tmp/
+web/tmp/
+web/tmp*
 web/test-results/
 
 # Release packages
