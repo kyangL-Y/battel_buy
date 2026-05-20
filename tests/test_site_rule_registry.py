@@ -96,3 +96,74 @@ def test_upsert_site_rule_preserves_strategy_fields(tmp_path: Path):
     assert created is True
     assert rule["strategy"] == "api_batch"
     assert rule["fallback_strategy"] == "single"
+
+
+def test_upsert_site_rule_preserves_verify_ssl_flag(tmp_path: Path):
+    target = tmp_path / "sites.json"
+
+    rule, created = upsert_site_rule(
+        target,
+        {
+            "site_name": "证书例外站点",
+            "domains": ["ssl.example.com"],
+            "strategy": "hnnhgsc_batch",
+            "verify_ssl": False,
+        },
+    )
+
+    assert created is True
+    assert rule["verify_ssl"] is False
+
+
+def test_upsert_site_rule_preserves_liancai_h5_fields(tmp_path: Path):
+    target = tmp_path / "sites.json"
+
+    rule, created = upsert_site_rule(
+        target,
+        {
+            "site_name": "莲菜网H5",
+            "domains": ["m.liancaiwang.cn"],
+            "strategy": "liancai_h5_batch",
+            "base_url": "http://m.liancaiwang.cn",
+            "login_phone_env": "LIANCAI_PHONE",
+            "login_password_env": "LIANCAI_PASSWORD",
+            "max_pages": 20,
+        },
+    )
+
+    loaded = load_site_rules(target)
+
+    assert created is True
+    assert rule["strategy"] == "liancai_h5_batch"
+    assert rule["base_url"] == "http://m.liancaiwang.cn"
+    assert rule["login_phone_env"] == "LIANCAI_PHONE"
+    assert rule["login_password_env"] == "LIANCAI_PASSWORD"
+    assert rule["max_pages"] == 20
+    assert loaded[0]["base_url"] == "http://m.liancaiwang.cn"
+
+
+def test_upsert_site_rule_preserves_chinaprice_fast_snapshot_fields(tmp_path: Path):
+    target = tmp_path / "sites.json"
+
+    rule, created = upsert_site_rule(
+        target,
+        {
+            "site_name": "Chinaprice",
+            "domains": ["www.chinaprice.cn"],
+            "strategy": "chinaprice_batch",
+            "chinaprice_query_mode": "fast_snapshot",
+            "chinaprice_menu_codes": ["pfscsphzjg"],
+            "chinaprice_history_days": 1,
+            "chinaprice_city_tree_history_days": 1,
+            "chinaprice_max_queries": 300,
+            "chinaprice_max_pages_per_query": 1,
+            "chinaprice_max_rows": 5000,
+        },
+    )
+
+    loaded = load_site_rules(target)
+
+    assert created is True
+    assert rule["chinaprice_query_mode"] == "fast_snapshot"
+    assert rule["chinaprice_menu_codes"] == ["pfscsphzjg"]
+    assert loaded[0]["chinaprice_max_rows"] == 5000

@@ -11,6 +11,7 @@ const TopHeadlineCards = defineAsyncComponent(() => import('./components/TopHead
 const { isMobileViewport } = useViewport();
 const searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : new URLSearchParams();
 const initialTab = searchParams.get('tab');
+const MARKET_SUMMARY_INITIAL_LIMIT = 500;
 const tabs = [
     { key: 'summary', label: '汇总行情', code: 'SUM' },
     { key: 'trend', label: '单品趋势', code: 'TRD' },
@@ -366,12 +367,12 @@ async function reloadSummary() {
         if (cachedRows?.length) {
             marketRows.value = cachedRows;
         }
-        const summary = await fetchMarketSummary(params);
+        const summary = await fetchMarketSummary({ ...params, limit: MARKET_SUMMARY_INITIAL_LIMIT });
         marketRows.value = summary.items ?? [];
         writeSummaryCache(params, marketRows.value);
     }
     catch (error) {
-        pageError.value = dataSourceState.lastError || '报价接口暂不可用';
+        pageError.value = dataSourceState.lastError || '报价接口读取失败，请检查 API 服务';
     }
     finally {
         summaryLoading.value = false;
@@ -390,7 +391,7 @@ async function reloadLocations(force = false) {
         provinceCityMap.value = normalizeProvinceCityMap(locationData.province_city_map);
     }
     catch (error) {
-        pageError.value = dataSourceState.lastError || '地区选项暂不可用';
+        pageError.value = dataSourceState.lastError || '地区选项读取失败，请检查 API 服务';
     }
     finally {
         locationLoading.value = false;
@@ -421,7 +422,7 @@ async function reloadSourceCoverage() {
     }
     catch (error) {
         if (!sourceCoverageRows.value.length) {
-            pageError.value = dataSourceState.lastError || '来源覆盖接口暂不可用';
+            pageError.value = dataSourceState.lastError || '来源覆盖接口读取失败，请检查 API 服务';
         }
     }
     finally {
@@ -551,7 +552,7 @@ async function ensureProductOptionsLoaded(force = false) {
                 productOptions.value = [];
                 productOptionsContextKey.value = '';
             }
-            pageError.value = dataSourceState.lastError || '商品列表接口暂不可用';
+            pageError.value = dataSourceState.lastError || '商品列表接口读取失败，请检查 API 服务';
         }
         finally {
             productOptionsLoading.value = false;
@@ -657,7 +658,7 @@ async function reloadTrend(identityKeyOverride) {
         if (requestId !== trendRequestSequence || identityKey !== selectedIdentityKey.value) {
             return;
         }
-        pageError.value = dataSourceState.lastError || '趋势接口暂不可用';
+        pageError.value = dataSourceState.lastError || '趋势接口读取失败，请检查 API 服务';
         if (!usedCachedTrend) {
             trendRows.value = [];
         }
@@ -1341,7 +1342,7 @@ if (__VLS_ctx.showBlockingError) {
         ...{ class: "source-warning-text" },
     });
     /** @type {__VLS_StyleScopedClasses['source-warning-text']} */ ;
-    (__VLS_ctx.pageError || __VLS_ctx.dataSourceState.lastError || '接口暂不可用');
+    (__VLS_ctx.pageError || __VLS_ctx.dataSourceState.lastError || '接口连接失败');
 }
 if (!__VLS_ctx.isMobileViewport) {
     let __VLS_57;

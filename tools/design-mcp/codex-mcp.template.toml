@@ -18,4 +18,12 @@ rmcp_client = true
 #startup_timeout_sec = 20
 #tool_timeout_sec = 120
 
+# Add the Image2 block only after IMAGE2_API_KEY is available.
+#[mcp_servers.image2]
+#type = "stdio"
+#command = "node"
+#args = ["E:\\battel\\tools\\design-mcp\\image2-mcp.mjs"]
+#startup_timeout_sec = 20
+#tool_timeout_sec = 300
+
 # Pencil 无需手工注册。根据官方文档，启动 Pencil 后其本地 MCP 会自动出现。

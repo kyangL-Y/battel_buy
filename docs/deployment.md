@@ -42,7 +42,7 @@ npm run build
 
 ## 3. 后端部署
 
-如需将数据库从 SQLite 切换到 MySQL，请先参考 `docs/mysql-migration.md` 配置环境变量并执行迁移脚本。若你习惯在 Linux / Bash 中加载环境文件，先从 `.env.mysql.example` 复制出真实 `.env.mysql`，再执行 `. ./.env.mysql`，不要直接 `source` 一个不存在的 `.env.mysql`。
+当前运行时只支持 MySQL 云库启动；SQLite 仅保留给测试、数据迁移和显式 `Database(db_path=...)` 的离线工具，不再作为后端服务的回退方案。若你习惯在 Linux / Bash 中加载环境文件，先从 `.env.mysql.example` 复制出真实 `.env.mysql`，再执行 `. ./.env.mysql`，不要直接 `source` 一个不存在的 `.env.mysql`。
 
 ### 3.1 安装依赖
 

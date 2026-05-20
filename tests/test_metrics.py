@@ -1,5 +1,6 @@
 import pandas as pd
 
+import analysis.metrics as metrics_module
 from analysis.metrics import (
     append_change_rate,
     apply_ai_structured_enrichment,
@@ -29,6 +30,89 @@ from analysis.metrics import (
     summarize_ai_enrichment,
     summarize_local_compare_result,
 )
+
+
+def test_product_selector_filters_statistical_indicators_from_dish_options():
+    df = pd.DataFrame(
+        [
+            {
+                "group_name": "生猪存栏量月度环比变化率",
+                "product_name": "生猪存栏量月度环比变化率",
+                "product_key": "hog-stock-mom-rate",
+                "site_name": "农业指标源",
+                "spec_text": "%",
+                "current_price": 1.2,
+                "captured_at": "2026-04-10T08:00:00",
+            },
+            {
+                "group_name": "猪肉",
+                "product_name": "猪肉",
+                "product_key": "pork",
+                "site_name": "PFSC | 北京新发地",
+                "spec_text": "公斤",
+                "current_price": 22.5,
+                "captured_at": "2026-04-10T08:00:00",
+            },
+        ]
+    )
+
+    selector_df = build_single_product_selector_options(df)
+
+    assert selector_df["price_identity_label"].tolist() == ["猪肉 | 公斤"]
+
+
+def test_product_selector_keeps_liancai_image_url_from_site_name():
+    df = pd.DataFrame(
+        [
+            {
+                "group_name": "白扣",
+                "product_name": "白扣",
+                "product_key": "liancai-white-cardamom",
+                "site_name": "莲菜网App | 干调类",
+                "source_url": "https://lcwgetway.liancaiwang.cn/posts/getGoodsDetail",
+                "spec_text": "斤",
+                "current_price": 35.0,
+                "captured_at": "2026-04-10T08:00:00",
+                "image_url": "https://cdnlcw.liancaiwang.cn/white-cardamom.jpg",
+                "liancai_top_category": "干调类",
+                "liancai_subcategory": "南北干货",
+            }
+        ]
+    )
+
+    selector_df = build_single_product_selector_options(df)
+
+    assert selector_df.iloc[0]["source_name"] == "莲菜网"
+    assert selector_df.iloc[0]["image_url"] == "https://cdnlcw.liancaiwang.cn/white-cardamom.jpg"
+
+
+def test_market_summary_filters_statistical_indicators_from_product_rows():
+    df = pd.DataFrame(
+        [
+            {
+                "group_name": "生猪存栏量月度环比变化率",
+                "product_name": "生猪存栏量月度环比变化率",
+                "product_key": "hog-stock-mom-rate",
+                "site_name": "农业指标源",
+                "spec_text": "%",
+                "current_price": 1.2,
+                "captured_at": "2026-04-10T08:00:00",
+            },
+            {
+                "group_name": "猪肉",
+                "product_name": "猪肉",
+                "product_key": "pork",
+                "site_name": "PFSC | 北京新发地",
+                "spec_text": "公斤",
+                "current_price": 22.5,
+                "captured_at": "2026-04-10T08:00:00",
+            },
+        ]
+    )
+
+    result = compute_cross_site_price_summary(df)
+
+    assert result["product_name"].tolist() == ["猪肉 | 公斤"]
 
 
 def build_sample_df() -> pd.DataFrame:
@@ -354,6 +438,43 @@ def test_compute_cross_site_price_summary_merges_duplicate_products_across_sites
     assert qianhe["lowest_price"] == 30.0
     assert qianhe["highest_price"] == 30.0
     assert qianhe["site_count"] == 1
+
+
+def test_compute_cross_site_price_summary_collapses_liancai_app_and_h5_into_single_source():
+    df = pd.DataFrame(
+        [
+            {
+                "group_name": "干调类",
+                "product_name": "白扣",
+                "product_key": "lc-app",
+                "site_name": "莲菜网App | 干调类",
+                "source_url": "https://lcwgetway.liancaiwang.cn",
+                "current_price": 12.0,
+                "captured_at": "2026-04-06T10:00:00",
+            },
+            {
+                "group_name": "干调类",
+                "product_name": "白扣",
+                "product_key": "lc-h5",
+                "site_name": "莲菜网H5 | 干调类",
+                "source_url": "https://lcwgetway.liancaiwang.cn",
+                "current_price": 13.0,
+                "captured_at": "2026-04-06T10:00:00",
+            },
+        ]
+    )
+
+    result = compute_cross_site_price_summary(df)
+
+    assert len(result) == 1
+    row = result.iloc[0]
+    assert row["site_count"] == 1
+    assert row["market_count"] == 1
+    assert row["price_observation_count"] == 2
+    assert row["source_names"] == "莲菜网"
+    assert row["lowest_price"] == 12.5
+    assert row["highest_price"] == 12.5
+    assert row["average_price"] == 12.5
 
 
 def test_compute_cross_site_price_summary_keeps_single_source_products_and_merges_market_rows():
@@ -943,6 +1064,61 @@ def test_single_product_trend_helpers_return_summary_and_trend_rows():
     assert len(single_market_df) == 2
 
 
+def test_single_product_trend_helpers_include_source_tier_metadata(monkeypatch):
+    def fake_resolve_source_tier(item, fallback=""):
+        source_name = str((item or {}).get("source_name") or "").strip()
+        if source_name == "PFSC":
+            return "主价格源"
+        if source_name == "万邦国际":
+            return "第三方参考源"
+        return fallback
+
+    monkeypatch.setattr(metrics_module, "resolve_source_tier", fake_resolve_source_tier)
+
+    df = pd.DataFrame(
+        [
+            {
+                "group_name": "白菜",
+                "product_name": "白菜",
+                "product_key": "pfsc-a",
+                "site_name": "PFSC | 北京新发地",
+                "source_url": "https://pfsc.agri.cn/#/priceMarket",
+                "market_name": "北京新发地",
+                "province": "北京市",
+                "city": "北京市",
+                "spec_text": "公斤",
+                "current_price": 2.6,
+                "captured_at": "2026-04-10T08:00:00",
+            },
+            {
+                "group_name": "白菜",
+                "product_name": "白菜",
+                "product_key": "wb-a",
+                "site_name": "万邦国际",
+                "source_url": "https://www.wbncp.com/?m=home&c=Lists&a=index&tid=69",
+                "market_name": "河南万邦",
+                "province": "河南省",
+                "city": "郑州市",
+                "spec_text": "公斤",
+                "current_price": 2.1,
+                "captured_at": "2026-04-10T09:00:00",
+            },
+        ]
+    )
+
+    selector_df = build_single_product_selector_options(df)
+    identity_key = selector_df.iloc[0]["price_identity_key"]
+    summary = compute_single_product_summary(df, identity_key)
+    trend_df = build_cross_market_product_trend(df, identity_key)
+
+    assert set(trend_df["source_name"].tolist()) == {"PFSC", "万邦国际"}
+    assert set(trend_df["source_tier"].tolist()) == {"主价格源", "第三方参考源"}
+    assert summary["current_lowest_source_name"] == "万邦国际"
+    assert summary["current_lowest_source_tier"] == "第三方参考源"
+    assert summary["current_highest_source_name"] == "PFSC"
+    assert summary["current_highest_source_tier"] == "主价格源"
+
+
 def test_cross_site_summary_normalizes_gram_spec_to_kg_basis():
     df = pd.DataFrame(
         [
@@ -1319,3 +1495,284 @@ def test_cross_site_summary_uses_priority_location_fields_for_display():
     assert row["city"] == "亳州"
     assert row["region_label"] == "亳州"
     assert row["lowest_price_site"] == "PFSC | 大葱 | 亳州农产品有限责任公司"
+
+
+def test_single_product_selector_options_excludes_non_product_action_labels():
+    df = pd.DataFrame(
+        [
+            {
+                "group_name": "土豆",
+                "product_name": "土豆",
+                "product_key": "potato",
+                "site_name": "PFSC | 北京新发地",
+                "market_name": "北京新发地",
+                "province": "北京市",
+                "city": "北京市",
+                "spec_text": "公斤",
+                "current_price": 2.6,
+                "captured_at": "2026-04-10T10:00:00",
+            },
+            {
+                "group_name": "/copy",
+                "product_name": "/copy",
+                "product_key": "copy-action",
+                "site_name": "操作项",
+                "market_name": "操作项",
+                "spec_text": "次",
+                "current_price": 1.0,
+                "captured_at": "2026-04-10T10:00:00",
+            },
+            {
+                "group_name": "产区调整影响",
+                "product_name": "产区调整影响",
+                "product_key": "signal-copy",
+                "site_name": "经营信号",
+                "market_name": "经营信号",
+                "spec_text": "条",
+                "current_price": 1.0,
+                "captured_at": "2026-04-10T10:00:00",
+            },
+        ]
+    )
+
+    selector_df = build_single_product_selector_options(df)
+
+    assert selector_df["price_identity_label"].tolist() == ["土豆 | 公斤"]
+    assert selector_df.iloc[0]["price_observation_count"] == 1
+
+
+def test_product_surfaces_exclude_statistical_and_monitoring_labels():
+    df = pd.DataFrame(
+        [
+            {
+                "group_name": "土豆",
+                "product_name": "土豆",
+                "product_key": "potato",
+                "site_name": "PFSC | 北京新发地",
+                "market_name": "北京新发地",
+                "province": "北京市",
+                "city": "北京市",
+                "spec_text": "公斤",
+                "current_price": 2.6,
+                "captured_at": "2026-04-10T10:00:00",
+            },
+            {
+                "group_name": "郑州菜篮子监测",
+                "product_name": "万邦市场价格监测情况",
+                "product_key": "market-monitor",
+                "site_name": "郑州市农业农村局菜篮子监测 | 郑州监测",
+                "market_name": "郑州监测",
+                "category": "郑州菜篮子监测",
+                "spec_text": "元/公斤",
+                "current_price": 3.2,
+                "captured_at": "2026-05-08T11:45:00",
+            },
+            {
+                "group_name": "畜牧统计",
+                "product_name": "全省猪存栏量",
+                "product_key": "pig-stock",
+                "site_name": "统计监测",
+                "market_name": "统计监测",
+                "category": "畜牧统计",
+                "spec_text": "万头",
+                "current_price": 120.0,
+                "captured_at": "2026-05-08T11:45:00",
+            },
+            {
+                "group_name": "郑州菜篮子监测",
+                "product_name": "11种蔬菜均价",
+                "product_key": "vegetable-average",
+                "site_name": "郑州市农业农村局菜篮子监测 | 郑州监测",
+                "market_name": "郑州监测",
+                "category": "郑州菜篮子监测",
+                "spec_text": "元/公斤",
+                "current_price": 2.34,
+                "captured_at": "2026-05-08T11:45:00",
+            },
+        ]
+    )
+
+    summary_df = compute_cross_site_price_summary(df)
+    selector_df = build_single_product_selector_options(df)
+
+    assert summary_df["product_name"].tolist() == ["土豆 | 公斤"]
+    assert selector_df["price_identity_label"].tolist() == ["土豆 | 公斤"]
+
+
+def test_product_surfaces_exclude_industrial_and_energy_products():
+    df = pd.DataFrame(
+        [
+            {
+                "group_name": "白菜",
+                "product_name": "白菜",
+                "product_key": "cabbage",
+                "site_name": "河南省发改委价格监测 | 全省均价",
+                "market_name": "全省均价",
+                "spec_text": "元/500克",
+                "current_price": 0.94,
+                "captured_at": "2026-05-08T11:45:00",
+            },
+            {
+                "group_name": "河南价格监测",
+                "product_name": "现货动力煤",
+                "product_key": "coal",
+                "site_name": "河南省发改委价格监测 | 全省均价",
+                "market_name": "全省均价",
+                "spec_text": "元/吨",
+                "current_price": 600,
+                "captured_at": "2026-05-08T11:45:00",
+            },
+            {
+                "group_name": "河南价格监测",
+                "product_name": "螺纹钢",
+                "product_key": "steel",
+                "site_name": "河南省发改委价格监测 | 全省均价",
+                "market_name": "全省均价",
+                "spec_text": "元/吨",
+                "current_price": 3300,
+                "captured_at": "2026-05-08T11:45:00",
+            },
+            {
+                "group_name": "河南价格监测",
+                "product_name": "原油",
+                "product_key": "oil",
+                "site_name": "河南省发改委价格监测 | 全省均价",
+                "market_name": "全省均价",
+                "spec_text": "美元/桶",
+                "current_price": 70,
+                "captured_at": "2026-05-08T11:45:00",
+            },
+        ]
+    )
+
+    summary_df = compute_cross_site_price_summary(df)
+    selector_df = build_single_product_selector_options(df)
+
+    assert summary_df["product_name"].tolist() == ["白菜 | 公斤"]
+    assert selector_df["price_identity_label"].tolist() == ["白菜 | 公斤"]
+
+
+def test_product_surfaces_exclude_agricultural_inputs_and_consumables():
+    df = pd.DataFrame(
+        [
+            {
+                "group_name": "白菜",
+                "product_name": "白菜",
+                "product_key": "cabbage",
+                "site_name": "PFSC | 北京新发地",
+                "market_name": "北京新发地",
+                "category": "蔬菜",
+                "spec_text": "公斤",
+                "current_price": 2.6,
+                "captured_at": "2026-05-08T11:45:00",
+            },
+            {
+                "group_name": "叶面肥",
+                "product_name": "叶面肥",
+                "product_key": "fertilizer",
+                "site_name": "惠农网行情 | 农资店",
+                "market_name": "农资店",
+                "category": "农资",
+                "spec_text": "袋",
+                "current_price": 8.0,
+                "captured_at": "2026-05-08T11:45:00",
+            },
+            {
+                "group_name": "杀菌剂",
+                "product_name": "杀菌剂",
+                "product_key": "fungicide",
+                "site_name": "惠农网行情 | 农资店",
+                "market_name": "农资店",
+                "category": "农资",
+                "spec_text": "袋",
+                "current_price": 12.0,
+                "captured_at": "2026-05-08T11:45:00",
+            },
+            {
+                "group_name": "本地市场源",
+                "product_name": "后厨圆形垃圾桶90L",
+                "product_key": "trash-bin",
+                "site_name": "莲菜网H5 | 易耗类",
+                "market_name": "郑州莲菜网",
+                "category": "餐厨用品",
+                "liancai_top_category": "易耗类",
+                "liancai_subcategory": "餐厨用品",
+                "spec_text": "90L/个",
+                "current_price": 60.0,
+                "captured_at": "2026-05-08T11:45:00",
+            },
+            {
+                "group_name": "本地市场源",
+                "product_name": "康师傅饮用矿物质水550ml*12瓶",
+                "product_key": "water",
+                "site_name": "莲菜网H5 | 酒水饮料",
+                "market_name": "郑州莲菜网",
+                "category": "酒水饮料",
+                "liancai_top_category": "酒水饮料",
+                "liancai_subcategory": "水饮",
+                "spec_text": "550ml*12瓶",
+                "current_price": 18.0,
+                "captured_at": "2026-05-08T11:45:00",
+            },
+            {
+                "group_name": "水果动态",
+                "product_name": "部分果种市场表现",
+                "product_key": "fruit-market-story",
+                "site_name": "行情资讯",
+                "market_name": "行情资讯",
+                "category": "行情资讯",
+                "spec_text": "元/kg又下降41.48%",
+                "current_price": 1.0,
+                "captured_at": "2026-05-08T11:45:00",
+            },
+        ]
+    )
+
+    summary_df = compute_cross_site_price_summary(df)
+    selector_df = build_single_product_selector_options(df)
+
+    assert summary_df["product_name"].tolist() == ["白菜 | 公斤"]
+    assert selector_df["price_identity_label"].tolist() == ["白菜 | 公斤"]
+
+
+def test_compute_cross_site_price_summary_includes_supplier_quotes_as_source_rows():
+    df = pd.DataFrame(
+        [
+            {
+                "group_name": "本地市场源",
+                "product_name": "百利番茄沙司10g*300袋",
+                "product_key": "ketchup-300",
+                "site_name": "莲菜网H5 | 西餐",
+                "source_url": "https://lcwgetway.liancaiwang.cn/app/product",
+                "market_name": "郑州莲菜网",
+                "category": "西餐 / 调味品酱料类",
+                "liancai_top_category": "西餐",
+                "liancai_subcategory": "调味品酱料类",
+                "spec_text": "10g*300袋",
+                "current_price": 0.15,
+                "captured_at": "2026-05-16T08:00:00",
+            },
+            {
+                "group_name": "供应平台",
+                "product_name": "百利番茄沙司10g*300袋",
+                "product_key": "ketchup-300",
+                "site_name": "鲜蔬直采A",
+                "source_url": "supplier://1/price-record/999",
+                "market_name": "供应商报价",
+                "category": "西餐 / 调味品酱料类",
+                "liancai_top_category": "西餐",
+                "liancai_subcategory": "调味品酱料类",
+                "spec_text": "10g*300袋",
+                "current_price": 12.34,
+                "captured_at": "2026-05-16T08:30:00",
+            },
+        ]
+    )
+
+    summary_df = compute_cross_site_price_summary(df)
+
+    assert len(summary_df) == 1
+    row = summary_df.iloc[0]
+    assert row["site_count"] == 2
+    assert row["market_count"] == 2
+    assert row["source_names"] == "供应平台、莲菜网"

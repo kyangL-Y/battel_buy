@@ -3,6 +3,25 @@ from pathlib import Path
 from utils.config_loader import load_database_config, load_runtime_config, merge_dict, save_runtime_config
 
 
+DB_ENV_KEYS = (
+    "BATTEL_DB_BACKEND",
+    "BATTEL_SQLITE_PATH",
+    "BATTEL_DB_HOST",
+    "BATTEL_DB_PORT",
+    "BATTEL_DB_USER",
+    "BATTEL_DB_NAME",
+    "BATTEL_DB_CHARSET",
+    "BATTEL_DB_PASSWORD_ENV",
+    "BATTEL_DB_PASSWORD",
+)
+
+
+def _clear_database_env(monkeypatch):
+    for key in DB_ENV_KEYS:
+        monkeypatch.delenv(key, raising=False)
+
+
+
 def test_load_runtime_config_returns_defaults_for_missing_file(tmp_path: Path):
     config = load_runtime_config(tmp_path / "missing-runtime.json")
     assert config["schedule"]["interval_seconds"] == 3600
@@ -52,7 +71,9 @@ def test_merge_dict_keeps_nested_defaults():
     assert result == {"schedule": {"enabled": True, "interval_seconds": 3600}}
 
 
-def test_load_database_config_defaults_to_sqlite(tmp_path: Path):
+def test_load_database_config_defaults_to_sqlite(monkeypatch, tmp_path: Path):
+    _clear_database_env(monkeypatch)
+
     config = load_database_config(tmp_path / "missing-runtime.json")
 
     assert config["backend"] == "sqlite"
@@ -62,6 +83,7 @@ def test_load_database_config_defaults_to_sqlite(tmp_path: Path):
 
 
 def test_load_database_config_prefers_env(monkeypatch, tmp_path: Path):
+    _clear_database_env(monkeypatch)
     target = tmp_path / "runtime.json"
     save_runtime_config(
         {

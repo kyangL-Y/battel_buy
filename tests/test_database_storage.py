@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from storage.database import Database
+from utils.auth import hash_password, verify_password
 
 
 def test_database_connections_enable_wal_and_busy_timeout(tmp_path: Path):
@@ -46,6 +47,190 @@ def test_database_nested_connect_reuses_active_transaction(tmp_path: Path):
     result = db.get_price_history()
     assert len(result) == 1
     assert result.iloc[0]["product_key"] == "nested-1"
+
+
+def test_get_latest_records_exposes_only_liancai_image_url(tmp_path: Path):
+    db = Database(tmp_path / "test_price_tracker.db")
+    db.init_db()
+    liancai_product_id = db.upsert_product(
+        product_key="liancai-image-1",
+        group_name="白扣",
+        product_name="白扣",
+        source_url="https://lcwgetway.liancaiwang.cn/app/product",
+        site_name="莲菜网App | 干调类",
+        category="干调类",
+        image_url="https://cdnlcw.liancaiwang.cn/uploads/baiko.jpg",
+    )
+    other_product_id = db.upsert_product(
+        product_key="other-image-1",
+        group_name="白菜",
+        product_name="白菜",
+        source_url="https://www.wbncp.com/product",
+        site_name="万邦国际",
+        category="蔬菜类",
+        image_url="https://example.com/not-liancai.jpg",
+    )
+    db.insert_price_record(
+        product_id=liancai_product_id,
+        captured_at="2026-04-15T10:00:00",
+        current_price=12.0,
+        original_price=None,
+        promotion_text=None,
+        currency="CNY",
+        availability=None,
+        raw_payload={"source": "liancai"},
+    )
+    db.insert_price_record(
+        product_id=other_product_id,
+        captured_at="2026-04-15T10:00:00",
+        current_price=2.0,
+        original_price=None,
+        promotion_text=None,
+        currency="CNY",
+        availability=None,
+        raw_payload={"source": "other"},
+    )
+
+    latest = db.get_latest_records().set_index("product_key")
+
+    assert latest.loc["liancai-image-1", "image_url"] == "https://cdnlcw.liancaiwang.cn/uploads/baiko.jpg"
+    assert latest.loc["other-image-1", "image_url"] is None
+
+
+def test_bulk_upsert_products_and_insert_price_records(tmp_path: Path):
+    db = Database(tmp_path / "test_price_tracker.db")
+    db.init_db()
+
+    product_ids = db.bulk_upsert_products(
+        [
+            {
+                "product_key": "bulk-1",
+                "group_name": "蔬菜",
+                "product_name": "白菜",
+                "source_url": "https://example.com/a",
+                "site_name": "批量站点",
+                "category": "叶菜",
+            },
+            {
+                "product_key": "bulk-2",
+                "group_name": "蔬菜",
+                "product_name": "菠菜",
+                "source_url": "https://example.com/b",
+                "site_name": "批量站点",
+                "category": "叶菜",
+            },
+        ],
+        batch_size=1,
+    )
+
+    assert set(product_ids) == {"bulk-1", "bulk-2"}
+
+    updated_product_ids = db.bulk_upsert_products(
+        [
+            {
+                "product_key": "bulk-1",
+                "group_name": "蔬菜",
+                "product_name": "大白菜",
+                "source_url": "https://example.com/a",
+                "site_name": "批量站点",
+                "category": "叶菜",
+            }
+        ]
+    )
+    assert updated_product_ids["bulk-1"] == product_ids["bulk-1"]
+
+    inserted_count = db.bulk_insert_price_records(
+        [
+            {
+                "product_id": product_ids["bulk-1"],
+                "captured_at": "2026-05-14T10:00:00",
+                "current_price": 1.2,
+                "original_price": None,
+                "promotion_text": None,
+                "currency": "CNY",
+                "availability": None,
+                "raw_payload": {"source": "bulk"},
+            },
+            {
+                "product_id": product_ids["bulk-2"],
+                "captured_at": "2026-05-14T10:00:00",
+                "current_price": 2.3,
+                "original_price": None,
+                "promotion_text": None,
+                "currency": "CNY",
+                "availability": None,
+                "raw_payload": {"source": "bulk"},
+            },
+        ],
+        batch_size=1,
+    )
+
+    assert inserted_count == 2
+    result = db.get_price_history()
+    assert len(result) == 2
+    assert set(result["product_name"].tolist()) == {"大白菜", "菠菜"}
+
+
+def test_default_admin_account_is_seeded_and_password_is_hashed(tmp_path: Path):
+    db = Database(tmp_path / "test_price_tracker.db")
+    db.init_db()
+
+    auth_rows = db.get_auth_user_by_username("admin")
+
+    assert len(auth_rows) == 1
+    row = auth_rows.iloc[0]
+    assert row["role"] == "admin"
+    assert verify_password("admin123", row["password_hash"]) is True
+
+
+def test_default_admin_account_is_refreshed_on_existing_database(tmp_path: Path):
+    db = Database(tmp_path / "test_price_tracker.db")
+    db.init_db()
+    db.upsert_auth_user(
+        username="admin",
+        password_hash=hash_password("admin123456"),
+        role="admin",
+        display_name="旧管理员",
+        is_active=False,
+    )
+
+    db.init_db()
+    auth_rows = db.get_auth_user_by_username("admin")
+
+    assert len(auth_rows) == 1
+    row = auth_rows.iloc[0]
+    assert row["role"] == "admin"
+    assert row["display_name"] == "系统管理员"
+    assert bool(row["is_active"]) is True
+    assert verify_password("admin123", row["password_hash"]) is True
+
+
+def test_supplier_auth_user_can_be_created_and_loaded_by_supplier_id(tmp_path: Path):
+    db = Database(tmp_path / "test_price_tracker.db")
+    db.init_db()
+
+    supplier_id = db.upsert_supplier(
+        supplier_name="莲菜档口A",
+        contact_name="老王",
+        market_scope="本地市场",
+        market_category="干调类",
+        channel="微信小程序",
+        is_active=True,
+    )
+    user_id = db.upsert_auth_user(
+        username="lencai-a",
+        password_hash="pbkdf2_sha256$390000$salt$hash",
+        role="supplier",
+        supplier_id=supplier_id,
+        display_name="莲菜档口A",
+        is_active=True,
+    )
+    supplier_auth_rows = db.get_auth_user_by_supplier_id(supplier_id)
+
+    assert len(supplier_auth_rows) == 1
+    assert supplier_auth_rows.iloc[0]["id"] == user_id
+    assert supplier_auth_rows.iloc[0]["username"] == "lencai-a"
+    assert supplier_auth_rows.iloc[0]["supplier_name"] == "莲菜档口A"
 
 
 def test_local_compare_records_are_persisted_and_queryable(tmp_path: Path):
@@ -119,6 +304,50 @@ def test_local_compare_records_are_persisted_and_queryable(tmp_path: Path):
     assert "market_category" in result.columns
     assert "box_price" in result.columns
     assert len(result) == 2
+
+
+def test_liancai_category_summary_matches_collapsed_source_name(tmp_path: Path):
+    db = Database(tmp_path / "test_price_tracker.db")
+    db.init_db()
+
+    db.upsert_product(
+        product_key="lc-app-1",
+        group_name="干调类",
+        product_name="白扣",
+        source_url="https://lcwgetway.liancaiwang.cn",
+        site_name="莲菜网App | 干调类",
+        category="干调类",
+        liancai_top_category="干调类",
+        liancai_subcategory="南北干货",
+    )
+    db.upsert_product(
+        product_key="lc-h5-1",
+        group_name="干调类",
+        product_name="白芝麻",
+        source_url="https://lcwgetway.liancaiwang.cn",
+        site_name="莲菜网H5 | 干调类",
+        category="干调类",
+        liancai_top_category="干调类",
+        liancai_subcategory="南北干货",
+    )
+    db.upsert_product(
+        product_key="wb-1",
+        group_name="白菜",
+        product_name="白菜",
+        source_url="https://www.wbncp.com/?m=home&c=Lists&a=index&tid=69",
+        site_name="万邦国际",
+        category="蔬菜类",
+        liancai_top_category="蔬菜类",
+        liancai_subcategory="叶菜类",
+    )
+
+    result = db.get_liancai_category_summary(source_name="莲菜网")
+
+    assert len(result) == 1
+    row = result.iloc[0]
+    assert row["liancai_top_category"] == "干调类"
+    assert row["liancai_subcategory"] == "南北干货"
+    assert row["product_count"] == 2
 
 
 def test_local_compare_batch_can_be_deleted(tmp_path: Path):
@@ -415,3 +644,744 @@ def test_supplier_overview_queries_return_category_and_recent_rows(tmp_path: Pat
     assert len(recent_rows) == 2
     assert recent_rows.iloc[0]["supplier_name"] == "莲菜档口A"
     assert recent_rows.iloc[1]["supplier_name"] == "蔬菜档口B"
+
+
+def test_invalidate_supplier_quote_excludes_it_from_active_aggregations(tmp_path: Path):
+    db = Database(tmp_path / "test_price_tracker.db")
+    db.init_db()
+
+    supplier_id = db.upsert_supplier(
+        supplier_name="莲菜档口A",
+        contact_name="老王",
+        market_scope="本地市场",
+        market_category="干调类",
+        channel="微信小程序",
+    )
+    first_record_id = db.insert_supplier_price_record(
+        supplier_id=supplier_id,
+        price_identity_key="香菇|干调类|500g",
+        price_identity_label="香菇 | 干调类 | 500g",
+        product_name="香菇",
+        category="干调类",
+        spec_text="500g",
+        market_category="干调类",
+        channel="微信小程序",
+        quote_price=18.6,
+        quoted_at="2026-04-20T09:00:00",
+        remarks="早市报价",
+    )
+    db.insert_supplier_price_record(
+        supplier_id=supplier_id,
+        price_identity_key="香菇|干调类|500g",
+        price_identity_label="香菇 | 干调类 | 500g",
+        product_name="香菇",
+        category="干调类",
+        spec_text="500g",
+        market_category="干调类",
+        channel="微信小程序",
+        quote_price=17.9,
+        quoted_at="2026-04-20T10:00:00",
+        remarks="上午更新",
+    )
+
+    invalidated_id = db.invalidate_supplier_price_record(first_record_id, reason="录错价格")
+    active_quotes = db.get_latest_supplier_quotes("香菇|干调类|500g")
+    history_quotes = db.get_supplier_quote_records(supplier_id, limit=10)
+
+    assert invalidated_id == first_record_id
+    assert len(active_quotes) == 1
+    assert active_quotes.iloc[0]["quote_price"] == 17.9
+    invalidated_row = history_quotes.loc[history_quotes["id"] == first_record_id].iloc[0]
+    assert invalidated_row["status"] == "invalidated"
+    assert invalidated_row["invalidated_reason"] == "录错价格"
+
+
+def test_invalidate_supplier_quote_can_update_reason_after_already_invalidated(tmp_path: Path):
+    db = Database(tmp_path / "test_price_tracker.db")
+    db.init_db()
+
+    supplier_id = db.upsert_supplier(
+        supplier_name="莲菜档口A",
+        contact_name="老王",
+        market_scope="本地市场",
+        market_category="干调类",
+        channel="微信小程序",
+    )
+    record_id = db.insert_supplier_price_record(
+        supplier_id=supplier_id,
+        price_identity_key="香菇|干调类|500g",
+        price_identity_label="香菇 | 干调类 | 500g",
+        product_name="香菇",
+        category="干调类",
+        spec_text="500g",
+        market_category="干调类",
+        channel="微信小程序",
+        quote_price=18.6,
+        quoted_at="2026-04-20T09:00:00",
+        remarks="早市报价",
+    )
+
+    db.invalidate_supplier_price_record(record_id, reason="录错价格")
+    first_invalidated_record = db.get_supplier_price_record(record_id).iloc[0]
+    db.invalidate_supplier_price_record(record_id, reason="规格填错")
+
+    updated_record = db.get_supplier_price_record(record_id).iloc[0]
+
+    assert updated_record["status"] == "invalidated"
+    assert updated_record["invalidated_reason"] == "规格填错"
+    assert updated_record["invalidated_at"] == first_invalidated_record["invalidated_at"]
+
+
+def test_invalidate_supplier_quote_keeps_existing_reason_when_no_new_reason_is_provided(tmp_path: Path):
+    db = Database(tmp_path / "test_price_tracker.db")
+    db.init_db()
+
+    supplier_id = db.upsert_supplier(
+        supplier_name="莲菜档口A",
+        contact_name="老王",
+        market_scope="本地市场",
+        market_category="干调类",
+        channel="微信小程序",
+    )
+    record_id = db.insert_supplier_price_record(
+        supplier_id=supplier_id,
+        price_identity_key="香菇|干调类|500g",
+        price_identity_label="香菇 | 干调类 | 500g",
+        product_name="香菇",
+        category="干调类",
+        spec_text="500g",
+        market_category="干调类",
+        channel="微信小程序",
+        quote_price=18.6,
+        quoted_at="2026-04-20T09:00:00",
+        remarks="早市报价",
+    )
+
+    db.invalidate_supplier_price_record(record_id, reason="录错价格")
+    db.invalidate_supplier_price_record(record_id, reason=None)
+
+    updated_record = db.get_supplier_price_record(record_id).iloc[0]
+
+    assert updated_record["status"] == "invalidated"
+    assert updated_record["invalidated_reason"] == "录错价格"
+
+
+def test_get_latest_supplier_quote_for_supplier_returns_latest_active_record(tmp_path: Path):
+    db = Database(tmp_path / "test_price_tracker.db")
+    db.init_db()
+
+    supplier_id = db.upsert_supplier(
+        supplier_name="莲菜档口A",
+        contact_name="老王",
+        market_scope="本地市场",
+        market_category="干调类",
+        channel="微信小程序",
+    )
+    first_record_id = db.insert_supplier_price_record(
+        supplier_id=supplier_id,
+        price_identity_key="香菇|干调类|500g",
+        price_identity_label="香菇 | 干调类 | 500g",
+        product_name="香菇",
+        category="干调类",
+        spec_text="500g",
+        market_category="干调类",
+        channel="微信小程序",
+        quote_price=18.6,
+        quoted_at="2026-04-20T09:00:00",
+    )
+    latest_record_id = db.insert_supplier_price_record(
+        supplier_id=supplier_id,
+        price_identity_key="香菇|干调类|500g",
+        price_identity_label="香菇 | 干调类 | 500g",
+        product_name="香菇",
+        category="干调类",
+        spec_text="500g",
+        market_category="干调类",
+        channel="微信小程序",
+        quote_price=17.9,
+        quoted_at="2026-04-20T10:00:00",
+    )
+
+    db.invalidate_supplier_price_record(latest_record_id, reason="重复录入")
+    latest_quote = db.get_latest_supplier_quote_for_supplier(supplier_id, "香菇|干调类|500g")
+
+    assert len(latest_quote) == 1
+    assert latest_quote.iloc[0]["id"] == first_record_id
+    assert latest_quote.iloc[0]["quote_price"] == 18.6
+    assert latest_quote.iloc[0]["status"] == "active"
+
+
+def test_get_latest_supplier_quote_for_supplier_supports_identity_aliases(tmp_path: Path):
+    db = Database(tmp_path / "test_price_tracker.db")
+    db.init_db()
+
+    supplier_id = db.upsert_supplier(
+        supplier_name="粮油档口A",
+        contact_name="老周",
+        market_scope="本地市场",
+        market_category="粮油米面类",
+        channel="微信小程序",
+    )
+    record_id = db.insert_supplier_price_record(
+        supplier_id=supplier_id,
+        price_identity_key="一级豆油",
+        price_identity_label="一级豆油",
+        product_name="一级豆油",
+        category="粮油米面类",
+        spec_text="公斤",
+        market_category="粮油米面类",
+        channel="微信小程序",
+        quote_price=11.8,
+        quoted_at="2026-04-22T09:10:00",
+    )
+
+    latest_quote = db.get_latest_supplier_quote_for_supplier(
+        supplier_id,
+        price_identity_keys=["一级豆油|公斤", "一级豆油|食用植物油|公斤", "一级豆油"],
+    )
+
+    assert len(latest_quote) == 1
+    assert latest_quote.iloc[0]["id"] == record_id
+    assert latest_quote.iloc[0]["price_identity_key"] == "一级豆油"
+
+
+def test_invalidate_supplier_quotes_by_identity_marks_all_active_quotes(tmp_path: Path):
+    db = Database(tmp_path / "test_price_tracker.db")
+    db.init_db()
+
+    supplier_id = db.upsert_supplier(
+        supplier_name="莲菜档口A",
+        contact_name="老王",
+        market_scope="本地市场",
+        market_category="干调类",
+        channel="微信小程序",
+    )
+    first_record_id = db.insert_supplier_price_record(
+        supplier_id=supplier_id,
+        price_identity_key="香菇|干调类|500g",
+        price_identity_label="香菇 | 干调类 | 500g",
+        product_name="香菇",
+        category="干调类",
+        spec_text="500g",
+        market_category="干调类",
+        channel="微信小程序",
+        quote_price=18.6,
+        quoted_at="2026-04-20T09:00:00",
+    )
+    second_record_id = db.insert_supplier_price_record(
+        supplier_id=supplier_id,
+        price_identity_key="香菇|干调类|500g",
+        price_identity_label="香菇 | 干调类 | 500g",
+        product_name="香菇",
+        category="干调类",
+        spec_text="500g",
+        market_category="干调类",
+        channel="微信小程序",
+        quote_price=17.9,
+        quoted_at="2026-04-20T10:00:00",
+    )
+    other_record_id = db.insert_supplier_price_record(
+        supplier_id=supplier_id,
+        price_identity_key="木耳|干调类|250g",
+        price_identity_label="木耳 | 干调类 | 250g",
+        product_name="木耳",
+        category="干调类",
+        spec_text="250g",
+        market_category="干调类",
+        channel="微信小程序",
+        quote_price=22.5,
+        quoted_at="2026-04-20T11:00:00",
+    )
+
+    invalidated_ids = db.invalidate_supplier_quotes_by_identity(
+        supplier_id,
+        "香菇|干调类|500g",
+        reason="导入覆盖：导入专员",
+    )
+    history_rows = db.get_supplier_quote_records(supplier_id, limit=10)
+    remaining_quote = db.get_latest_supplier_quote_for_supplier(supplier_id, "香菇|干调类|500g")
+    other_quote = db.get_latest_supplier_quote_for_supplier(supplier_id, "木耳|干调类|250g")
+
+    assert invalidated_ids == [second_record_id, first_record_id]
+    invalidated_rows = history_rows.loc[history_rows["price_identity_key"] == "香菇|干调类|500g"]
+    assert set(invalidated_rows["status"].tolist()) == {"invalidated"}
+    assert set(invalidated_rows["invalidated_reason"].tolist()) == {"导入覆盖：导入专员"}
+    assert remaining_quote.empty
+    assert len(other_quote) == 1
+    assert other_quote.iloc[0]["id"] == other_record_id
+    other_row = history_rows.loc[history_rows["id"] == other_record_id].iloc[0]
+    assert other_row["status"] == "active"
+
+
+def test_invalidate_supplier_quotes_by_identity_supports_identity_aliases(tmp_path: Path):
+    db = Database(tmp_path / "test_price_tracker.db")
+    db.init_db()
+
+    supplier_id = db.upsert_supplier(
+        supplier_name="粮油档口A",
+        contact_name="老周",
+        market_scope="本地市场",
+        market_category="粮油米面类",
+        channel="微信小程序",
+    )
+    old_record_id = db.insert_supplier_price_record(
+        supplier_id=supplier_id,
+        price_identity_key="一级豆油",
+        price_identity_label="一级豆油",
+        product_name="一级豆油",
+        category="粮油米面类",
+        spec_text="公斤",
+        market_category="粮油米面类",
+        channel="微信小程序",
+        quote_price=11.8,
+        quoted_at="2026-04-22T09:10:00",
+    )
+    unified_record_id = db.insert_supplier_price_record(
+        supplier_id=supplier_id,
+        price_identity_key="一级豆油|公斤",
+        price_identity_label="一级豆油 | 公斤",
+        product_name="一级豆油",
+        category="粮油米面类",
+        spec_text="公斤",
+        market_category="粮油米面类",
+        channel="微信小程序",
+        quote_price=11.6,
+        quoted_at="2026-04-22T10:10:00",
+    )
+
+    invalidated_ids = db.invalidate_supplier_quotes_by_identity(
+        supplier_id,
+        price_identity_keys=["一级豆油|公斤", "一级豆油|食用植物油|公斤", "一级豆油"],
+        reason="统一键覆盖",
+    )
+    history_rows = db.get_supplier_quote_records(supplier_id, limit=10)
+
+    assert invalidated_ids == [unified_record_id, old_record_id]
+    invalidated_rows = history_rows.loc[history_rows["id"].isin([old_record_id, unified_record_id])]
+    assert set(invalidated_rows["status"].tolist()) == {"invalidated"}
+    assert set(invalidated_rows["invalidated_reason"].tolist()) == {"统一键覆盖"}
+
+
+def test_supplier_quote_actions_can_be_persisted_and_queried(tmp_path: Path):
+    db = Database(tmp_path / "test_price_tracker.db")
+    db.init_db()
+
+    supplier_id = db.upsert_supplier(
+        supplier_name="莲菜档口A",
+        contact_name="老王",
+        market_scope="本地市场",
+        market_category="干调类",
+        channel="微信小程序",
+    )
+    record_id = db.insert_supplier_price_record(
+        supplier_id=supplier_id,
+        price_identity_key="香菇|干调类|500g",
+        price_identity_label="香菇 | 干调类 | 500g",
+        product_name="香菇",
+        category="干调类",
+        spec_text="500g",
+        market_category="干调类",
+        channel="微信小程序",
+        quote_price=18.6,
+        quoted_at="2026-04-20T09:00:00",
+        remarks="早市报价",
+    )
+    copied_record_id = db.insert_supplier_price_record(
+        supplier_id=supplier_id,
+        price_identity_key="香菇|干调类|500g",
+        price_identity_label="香菇 | 干调类 | 500g",
+        product_name="香菇",
+        category="干调类",
+        spec_text="500g",
+        market_category="干调类",
+        channel="微信小程序",
+        quote_price=18.8,
+        quoted_at="2026-04-21T09:00:00",
+        remarks="复制报价",
+    )
+
+    action_id = db.insert_supplier_quote_action(
+        supplier_id=supplier_id,
+        action_type="copy_as_new",
+        record_id=record_id,
+        target_record_id=copied_record_id,
+        action_reason="历史报价复制为新报价",
+        operator_name="供应商管理台",
+        action_payload={"format": "manual"},
+    )
+
+    action_rows = db.get_supplier_quote_actions(supplier_id, limit=10)
+
+    assert len(action_rows) == 1
+    assert action_rows.iloc[0]["id"] == action_id
+    assert action_rows.iloc[0]["action_type"] == "copy_as_new"
+    assert action_rows.iloc[0]["product_name"] == "香菇"
+    assert action_rows.iloc[0]["target_product_name"] == "香菇"
+
+
+def test_supplier_registration_requests_can_be_created_and_reviewed(tmp_path: Path):
+    db = Database(tmp_path / "test_price_tracker.db")
+    db.init_db()
+
+    request_id = db.create_supplier_registration_request(
+        company_name="新鲜蔬菜供应社",
+        contact_name="小张",
+        contact_phone="13800138000",
+        username="fresh-supplier",
+    )
+
+    pending_rows = db.get_supplier_registration_requests(status="pending")
+
+    assert len(pending_rows) == 1
+    assert pending_rows.iloc[0]["id"] == request_id
+    assert pending_rows.iloc[0]["company_name"] == "新鲜蔬菜供应社"
+    assert pending_rows.iloc[0]["status"] == "pending"
+
+    supplier_id = db.upsert_supplier(
+        supplier_name="新鲜蔬菜供应社",
+        contact_name="小张",
+        contact_phone="13800138000",
+        market_scope="本地市场",
+        market_category="蔬菜类",
+        channel="门店直报",
+    )
+    updated_request_id = db.update_supplier_registration_request(
+        request_id,
+        status="approved",
+        review_notes="资料齐全，允许开通",
+        reviewed_by="系统管理员",
+        supplier_id=supplier_id,
+    )
+
+    approved_rows = db.get_supplier_registration_requests(status="approved", keyword="fresh")
+
+    assert updated_request_id == request_id
+    assert len(approved_rows) == 1
+    assert approved_rows.iloc[0]["supplier_id"] == supplier_id
+    assert approved_rows.iloc[0]["reviewed_by"] == "系统管理员"
+    assert approved_rows.iloc[0]["supplier_name"] == "新鲜蔬菜供应社"
+
+
+def test_supplier_import_quote_action_persists_extended_payload(tmp_path: Path):
+    db = Database(tmp_path / "test_price_tracker.db")
+    db.init_db()
+
+    supplier_id = db.upsert_supplier(
+        supplier_name="莲菜档口A",
+        contact_name="老王",
+        market_scope="本地市场",
+        market_category="干调类",
+        channel="微信小程序",
+    )
+    record_id = db.insert_supplier_price_record(
+        supplier_id=supplier_id,
+        price_identity_key="香菇|干调类|500g",
+        price_identity_label="香菇 | 干调类 | 500g",
+        product_name="香菇",
+        category="干调类",
+        spec_text="500g",
+        market_category="干调类",
+        channel="微信小程序",
+        quote_price=18.6,
+        quoted_at="2026-04-20T09:00:00",
+    )
+
+    db.insert_supplier_quote_action(
+        supplier_id=supplier_id,
+        action_type="import_quotes",
+        record_id=record_id,
+        action_reason="批量导入报价，成功 1 条，失败 1 条",
+        operator_name="导入专员",
+        action_payload={
+            "file_name": "报价导入.xlsx",
+            "success_count": 1,
+            "failed_count": 1,
+            "failure_examples": [{"row_number": 3, "failure_reason": "缺少 price_identity_key"}],
+        },
+        created_at="2026-04-21T12:00:00",
+    )
+
+    action_rows = db.get_supplier_quote_actions(supplier_id, limit=10, action_type="import_quotes")
+
+    assert len(action_rows) == 1
+    assert action_rows.iloc[0]["action_type"] == "import_quotes"
+    assert action_rows.iloc[0]["record_id"] == record_id
+    assert action_rows.iloc[0]["operator_name"] == "导入专员"
+    assert '"file_name": "报价导入.xlsx"' in action_rows.iloc[0]["action_payload"]
+    assert '"failed_count": 1' in action_rows.iloc[0]["action_payload"]
+
+
+def test_supplier_quote_records_support_pagination_and_filters(tmp_path: Path):
+    db = Database(tmp_path / "test_price_tracker.db")
+    db.init_db()
+
+    supplier_id = db.upsert_supplier(
+        supplier_name="莲菜档口A",
+        contact_name="老王",
+        market_scope="本地市场",
+        market_category="干调类",
+        channel="微信小程序",
+    )
+    db.insert_supplier_price_record(
+        supplier_id=supplier_id,
+        price_identity_key="香菇|干调类|500g",
+        price_identity_label="香菇 | 干调类 | 500g",
+        product_name="香菇",
+        category="干调类",
+        spec_text="500g",
+        market_category="干调类",
+        channel="微信小程序",
+        quote_price=18.6,
+        quoted_at="2026-04-20T09:00:00",
+        remarks="早市报价",
+    )
+    invalidated_id = db.insert_supplier_price_record(
+        supplier_id=supplier_id,
+        price_identity_key="香菇|干调类|500g",
+        price_identity_label="香菇 | 干调类 | 500g",
+        product_name="香菇",
+        category="干调类",
+        spec_text="500g",
+        market_category="干调类",
+        channel="微信小程序",
+        quote_price=18.8,
+        quoted_at="2026-04-21T09:00:00",
+        remarks="复制报价",
+    )
+    db.invalidate_supplier_price_record(invalidated_id, reason="重复录入")
+
+    filtered_total = db.count_supplier_quote_records(
+        supplier_id,
+        status="invalidated",
+        keyword="复制",
+        start_quoted_at="2026-04-21",
+        end_quoted_at="2026-04-21T23:59:59",
+        price_identity_key="香菇|干调类|500g",
+    )
+    filtered_rows = db.get_supplier_quote_records(
+        supplier_id,
+        limit=1,
+        offset=0,
+        status="invalidated",
+        keyword="复制",
+        start_quoted_at="2026-04-21",
+        end_quoted_at="2026-04-21T23:59:59",
+        price_identity_key="香菇|干调类|500g",
+    )
+
+    assert filtered_total == 1
+    assert len(filtered_rows) == 1
+    assert filtered_rows.iloc[0]["status"] == "invalidated"
+    assert filtered_rows.iloc[0]["remarks"] == "复制报价"
+
+
+def test_supplier_quote_records_support_identity_alias_filter(tmp_path: Path):
+    db = Database(tmp_path / "test_price_tracker.db")
+    db.init_db()
+
+    supplier_id = db.upsert_supplier(
+        supplier_name="粮油档口A",
+        contact_name="老周",
+        market_scope="本地市场",
+        market_category="粮油米面类",
+        channel="微信小程序",
+    )
+    matched_record_id = db.insert_supplier_price_record(
+        supplier_id=supplier_id,
+        price_identity_key="一级豆油",
+        price_identity_label="一级豆油",
+        product_name="一级豆油",
+        category="粮油米面类",
+        spec_text="公斤",
+        market_category="粮油米面类",
+        channel="微信小程序",
+        quote_price=11.8,
+        quoted_at="2026-04-22T09:10:00",
+        remarks="旧键报价",
+    )
+    db.insert_supplier_price_record(
+        supplier_id=supplier_id,
+        price_identity_key="大米",
+        price_identity_label="大米",
+        product_name="大米",
+        category="粮油米面类",
+        spec_text="公斤",
+        market_category="粮油米面类",
+        channel="微信小程序",
+        quote_price=5.8,
+        quoted_at="2026-04-22T09:20:00",
+        remarks="其他商品",
+    )
+
+    filtered_total = db.count_supplier_quote_records(
+        supplier_id,
+        price_identity_keys=["一级豆油|公斤", "一级豆油|食用植物油|公斤", "一级豆油"],
+    )
+    filtered_rows = db.get_supplier_quote_records(
+        supplier_id,
+        limit=10,
+        price_identity_keys=["一级豆油|公斤", "一级豆油|食用植物油|公斤", "一级豆油"],
+    )
+
+    assert filtered_total == 1
+    assert len(filtered_rows) == 1
+    assert filtered_rows.iloc[0]["id"] == matched_record_id
+    assert filtered_rows.iloc[0]["price_identity_key"] == "一级豆油"
+
+
+def test_supplier_quote_actions_support_pagination_and_filters(tmp_path: Path):
+    db = Database(tmp_path / "test_price_tracker.db")
+    db.init_db()
+
+    supplier_id = db.upsert_supplier(
+        supplier_name="莲菜档口A",
+        contact_name="老王",
+        market_scope="本地市场",
+        market_category="干调类",
+        channel="微信小程序",
+    )
+    record_id = db.insert_supplier_price_record(
+        supplier_id=supplier_id,
+        price_identity_key="香菇|干调类|500g",
+        price_identity_label="香菇 | 干调类 | 500g",
+        product_name="香菇",
+        category="干调类",
+        spec_text="500g",
+        market_category="干调类",
+        channel="微信小程序",
+        quote_price=18.6,
+        quoted_at="2026-04-20T09:00:00",
+        remarks="早市报价",
+    )
+    copied_record_id = db.insert_supplier_price_record(
+        supplier_id=supplier_id,
+        price_identity_key="香菇|干调类|500g",
+        price_identity_label="香菇 | 干调类 | 500g",
+        product_name="香菇",
+        category="干调类",
+        spec_text="500g",
+        market_category="干调类",
+        channel="微信小程序",
+        quote_price=18.8,
+        quoted_at="2026-04-21T09:00:00",
+        remarks="复制报价",
+    )
+
+    db.insert_supplier_quote_action(
+        supplier_id=supplier_id,
+        action_type="copy_as_new",
+        record_id=record_id,
+        target_record_id=copied_record_id,
+        action_reason="历史报价复制为新报价",
+        operator_name="供应商管理台",
+        action_payload={"format": "manual"},
+        created_at="2026-04-21T10:00:00",
+    )
+    db.insert_supplier_quote_action(
+        supplier_id=supplier_id,
+        action_type="export_quotes",
+        record_id=record_id,
+        action_reason="导出当前筛选的1条历史报价",
+        operator_name="供应商管理台",
+        action_payload={"format": "xlsx"},
+        created_at="2026-04-21T11:00:00",
+    )
+
+    filtered_total = db.count_supplier_quote_actions(supplier_id, action_type="export_quotes")
+    filtered_rows = db.get_supplier_quote_actions(supplier_id, limit=1, offset=0, action_type="export_quotes")
+
+    assert filtered_total == 1
+    assert len(filtered_rows) == 1
+    assert filtered_rows.iloc[0]["action_type"] == "export_quotes"
+
+
+def test_supplier_settlement_records_can_be_built_from_quotes_and_updated(tmp_path: Path):
+    db = Database(tmp_path / "test_price_tracker.db")
+    db.init_db()
+
+    supplier_id = db.upsert_supplier(
+        supplier_name="莲菜档口A",
+        contact_name="老王",
+        market_scope="本地市场",
+        market_category="干调类",
+        channel="微信小程序",
+    )
+    first_record_id = db.insert_supplier_price_record(
+        supplier_id=supplier_id,
+        price_identity_key="香菇|干调类|500g",
+        price_identity_label="香菇 | 干调类 | 500g",
+        product_name="香菇",
+        category="干调类",
+        spec_text="500g",
+        market_category="干调类",
+        channel="微信小程序",
+        quote_price=18.6,
+        quoted_at="2026-04-20T09:00:00",
+    )
+    second_record_id = db.insert_supplier_price_record(
+        supplier_id=supplier_id,
+        price_identity_key="木耳|干调类|250g",
+        price_identity_label="木耳 | 干调类 | 250g",
+        product_name="木耳",
+        category="干调类",
+        spec_text="250g",
+        market_category="干调类",
+        channel="微信小程序",
+        quote_price=22.5,
+        quoted_at="2026-04-21T11:00:00",
+    )
+
+    settlement_id = db.build_supplier_settlement_from_quotes(
+        supplier_id=supplier_id,
+        settlement_title="4月干调月结单",
+        quote_record_ids=[first_record_id, second_record_id],
+        payment_due_date="2026-04-30",
+        remarks="按已选报价生成",
+        created_by="采购部小李",
+    )
+    settlement_rows = db.get_supplier_settlement_records(
+        supplier_id,
+        status="pending",
+        keyword="月结",
+        start_period_start="2026-04-20",
+        end_period_end="2026-04-21",
+    )
+
+    assert len(settlement_rows) == 1
+    assert settlement_rows.iloc[0]["id"] == settlement_id
+    assert settlement_rows.iloc[0]["record_count"] == 2
+    assert settlement_rows.iloc[0]["total_amount"] == 41.1
+    assert settlement_rows.iloc[0]["paid_amount"] == 0
+    assert settlement_rows.iloc[0]["pending_amount"] == 41.1
+    assert settlement_rows.iloc[0]["period_start"] == "2026-04-20T09:00:00"
+    assert settlement_rows.iloc[0]["period_end"] == "2026-04-21T11:00:00"
+    assert db.count_supplier_settlement_records(
+        supplier_id,
+        status="pending",
+        keyword="月结",
+        start_period_start="2026-04-20",
+        end_period_end="2026-04-21",
+    ) == 1
+    assert db.count_supplier_settlement_records(supplier_id, start_period_start="2026-04-22") == 0
+
+    updated_id = db.update_supplier_settlement_record(
+        settlement_id,
+        paid_amount=20.0,
+        payment_date="2026-04-22",
+        remarks="先付一部分",
+    )
+    updated_rows = db.get_supplier_settlement_record(updated_id or 0)
+
+    assert updated_id == settlement_id
+    assert len(updated_rows) == 1
+    assert updated_rows.iloc[0]["paid_amount"] == 20.0
+    assert updated_rows.iloc[0]["pending_amount"] == 21.1
+    assert updated_rows.iloc[0]["status"] == "partial"
+    assert updated_rows.iloc[0]["payment_date"] == "2026-04-22"
+
+    cancelled_id = db.update_supplier_settlement_record(settlement_id, status="cancelled")
+    cancelled_rows = db.get_supplier_settlement_record(cancelled_id or 0)
+
+    assert cancelled_id == settlement_id
+    assert len(cancelled_rows) == 1
+    assert cancelled_rows.iloc[0]["status"] == "cancelled"

@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "start:stitch": "node stitch-proxy.mjs",
+    "start:image2": "node image2-mcp.mjs",
     "check": "powershell -ExecutionPolicy Bypass -File .\\check-design-mcp.ps1"
   },
   "dependencies": {

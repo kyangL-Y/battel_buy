@@ -30,6 +30,10 @@ $stitchAccessToken = [Environment]::GetEnvironmentVariable('STITCH_ACCESS_TOKEN'
 if (-not $stitchAccessToken) { $stitchAccessToken = [Environment]::GetEnvironmentVariable('STITCH_ACCESS_TOKEN', 'User') }
 if (-not $stitchAccessToken) { $stitchAccessToken = [Environment]::GetEnvironmentVariable('STITCH_ACCESS_TOKEN', 'Machine') }
 
+$image2ApiKey = [Environment]::GetEnvironmentVariable('IMAGE2_API_KEY', 'Process')
+if (-not $image2ApiKey) { $image2ApiKey = [Environment]::GetEnvironmentVariable('IMAGE2_API_KEY', 'User') }
+if (-not $image2ApiKey) { $image2ApiKey = [Environment]::GetEnvironmentVariable('IMAGE2_API_KEY', 'Machine') }
+
 $gcpProject = [Environment]::GetEnvironmentVariable('GOOGLE_CLOUD_PROJECT', 'Process')
 if (-not $gcpProject) { $gcpProject = [Environment]::GetEnvironmentVariable('GOOGLE_CLOUD_PROJECT', 'User') }
 if (-not $gcpProject) { $gcpProject = [Environment]::GetEnvironmentVariable('GOOGLE_CLOUD_PROJECT', 'Machine') }
@@ -88,11 +92,39 @@ else {
     Add-Check -Name "Stitch config state" -Status "ok" -Details "Stitch MCP is disabled because credentials are missing"
 }
 
+if ($image2ApiKey) {
+    Add-Check -Name "Image2 auth" -Status "ok" -Details "IMAGE2_API_KEY is set"
+}
+else {
+    Add-Check -Name "Image2 auth" -Status "missing" -Details "IMAGE2_API_KEY is missing"
+}
+
+$image2Configured = $codexConfigContent -match "(?m)^\[mcp_servers\.image2\]$"
+if ($image2ApiKey -and $image2Configured) {
+    Add-Check -Name "Image2 config state" -Status "ok" -Details "Image2 MCP is enabled"
+}
+elseif ($image2ApiKey) {
+    Add-Check -Name "Image2 config state" -Status "manual" -Details "IMAGE2_API_KEY exists, but Image2 MCP is not enabled; run apply-codex-mcp.ps1"
+}
+elseif ($image2Configured) {
+    Add-Check -Name "Image2 config state" -Status "warning" -Details "Image2 MCP is enabled without credentials; run apply-codex-mcp.ps1 to remove it"
+}
+else {
+    Add-Check -Name "Image2 config state" -Status "ok" -Details "Image2 MCP is disabled because credentials are missing"
+}
+
 if (Test-Path 'E:/battel/tools/design-mcp/node_modules/@google/stitch-sdk') {
     Add-Check -Name "Stitch proxy deps" -Status "ok" -Details "@google/stitch-sdk is installed"
 }
 else {
     Add-Check -Name "Stitch proxy deps" -Status "missing" -Details "Run npm install in tools/design-mcp/"
+}
+
+if (Test-Path 'E:/battel/tools/design-mcp/node_modules/@modelcontextprotocol/sdk') {
+    Add-Check -Name "Image2 MCP deps" -Status "ok" -Details "@modelcontextprotocol/sdk is installed"
+}
+else {
+    Add-Check -Name "Image2 MCP deps" -Status "missing" -Details "Run npm install in tools/design-mcp/"
 }
 
 Add-Check -Name "Pencil runtime" -Status "manual" -Details "Pencil must be installed and running, then verify it manually in Codex /mcp."

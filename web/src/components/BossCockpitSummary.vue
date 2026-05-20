@@ -97,30 +97,28 @@ const props = withDefaults(defineProps<{
 }>(), {
   kicker: '老板驾驶舱',
   title: '今日经营摘要',
-  subtitle: '更像汇报页，不像分析页。默认先给结果，再决定是否深挖价格细节。',
-  riskLabel: '可控偏紧',
-  riskTone: 'watch',
-  riskNote: '波动集中在高频食材',
-  noteSummary: '今天的重点不是看更多数据，而是把高波动商品控制在采购可解释范围内，避免销售现场回答“为什么这周又贵了”。',
+  subtitle: '先读取真实经营信号，再决定是否深挖价格细节。',
+  riskLabel: '等待信号',
+  riskTone: 'stable',
+  riskNote: '经营信号接口暂无返回',
+  noteSummary: '当前暂无真实经营摘要，请先刷新行情或检查经营信号接口。',
 })
 
 const fallbackKpis: BossKpi[] = [
-  { label: '预计采购额', value: '12.8 万', detail: '较昨日 +6.4%', emphasis: true },
-  { label: '毛利安全垫', value: '8.7%', detail: '仍高于预警线 1.2pct' },
-  { label: '关键缺货风险', value: '2 项', detail: '需提前锁量' },
-  { label: '今日需拍板', value: '3 件', detail: '套餐报价与替代品' },
+  { label: '经营信号', value: '0 条', detail: '等待接口返回', emphasis: true },
+  { label: '风险商品', value: '0 项', detail: '暂无真实风险' },
+  { label: '机会商品', value: '0 项', detail: '暂无真实机会' },
+  { label: '建议动作', value: '0 件', detail: '暂无真实建议' },
 ]
 
 const fallbackFocusItems: FocusItem[] = [
-  { title: '高频叶菜波动偏快', summary: '若继续上涨，建议今晚前确认替代组合，不要等到明早配送前再改。', owner: '采购' },
-  { title: '套餐报价已具备解释力', summary: '已有足够素材支撑“为什么不是最低价”，适合销售直接带老板过一遍。', owner: '销售' },
-  { title: '冷链品类仍有让利空间', summary: '若今日促单，优先给出高频品和稳价品的组合包，而非全面降价。', owner: '运营' },
+  { title: '等待真实信号', summary: '经营信号接口返回后会显示需要优先关注的商品和动作。', owner: '系统' },
 ]
 
 const fallbackDecisionPoints: DecisionPoint[] = [
-  { title: '今日动作', value: '先锁高频品', detail: '先稳供应再谈结构优化' },
-  { title: '客户话术', value: '讲稳定性', detail: '不只讲单次低价' },
-  { title: '销售承接', value: '推老板版', detail: '先给摘要再给明细' },
+  { title: '今日动作', value: '暂无', detail: '等待真实建议' },
+  { title: '风险判断', value: '暂无', detail: '等待真实信号' },
+  { title: '采购承接', value: '暂无', detail: '等待菜单或报价数据' },
 ]
 
 const resolvedKpis = computed(() => props.kpis?.length ? props.kpis : fallbackKpis)

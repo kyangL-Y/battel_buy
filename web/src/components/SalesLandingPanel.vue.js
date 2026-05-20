@@ -2,39 +2,39 @@
 /// <reference types="D:/nodejs/node_cache/_npx/2db181330ea4b15b/node_modules/@vue/language-core/types/props-fallback.d.ts" />
 import { computed } from 'vue';
 const props = withDefaults(defineProps(), {
-    kicker: '销售首页',
-    title: '本周增长落点',
-    subtitle: '首屏只保留老板愿意停留 30 秒的信息，避免用大面积空卡片堆砌“气势”。',
-    focusLabel: '华东餐饮客户',
-    refreshLabel: '刚刚更新',
-    heroTitle: '报价、线索、老板摘要三件事放在同一屏完成承接',
-    heroSummary: '适合接在真实行情之后做销售化承接，先讲窗口，再给动作，不把用户丢进过深的分析页。',
+    kicker: '经营首页',
+    title: '真实行情承接',
+    subtitle: '首屏只展示真实行情、经营信号和采购承接信息。',
+    focusLabel: '真实数据',
+    refreshLabel: '等待同步',
+    heroTitle: '行情、信号、采购动作在同一屏承接',
+    heroSummary: '基于真实接口返回的信息先讲风险和机会，再进入采购或供应商报价。',
 });
 const fallbackHeroMetrics = [
-    { label: '本周可转化线索', value: '18 家', detail: '较上周 +4 家', tone: 'good' },
-    { label: '报价进入决策', value: '6 单', detail: '老板已看到方案', tone: 'default' },
-    { label: '需销售跟进', value: '3 单', detail: '集中在套餐比价', tone: 'warn' },
+    { label: '行情记录', value: '0 条', detail: '等待接口返回', tone: 'default' },
+    { label: '经营信号', value: '0 条', detail: '等待接口返回', tone: 'default' },
+    { label: '采购建议', value: '0 条', detail: '等待接口返回', tone: 'default' },
 ];
 const fallbackQuickWins = [
-    { title: '区域热度', tag: '机会窗口', summary: '团餐与酒楼客户对“每日价格波动”接受度更高，适合先推老板驾驶舱版。', detail: '先给看板，再补套餐。' },
-    { title: '成交抓手', tag: '销售话术', summary: '当客户只问“今天多少钱”，建议顺势给 7 日均价和低价来源，而不是整页表格。', detail: '突出省心，不强调算法。' },
+    { title: '等待真实机会', tag: '经营信号', summary: '接口返回机会信号后会展示可执行动作。', detail: '暂无真实机会。' },
+    { title: '等待真实风险', tag: '经营信号', summary: '接口返回风险信号后会展示采购或报价建议。', detail: '暂无真实风险。' },
 ];
 const fallbackActionCards = [
-    { title: '老板先看版', badge: '摘要型', caption: '先看利润、风险和今天建议，再决定是否进入明细。', emphasis: '适合 1 分钟汇报', footnote: '优先承接已有客户复访' },
-    { title: '套餐报价版', badge: '成交型', caption: '把行情解释转成可比较套餐，降低“看不懂数据”的阻力。', emphasis: '适合本周促单', footnote: '建议绑定 2 个清晰梯度' },
-    { title: '经营信号版', badge: '预警型', caption: '用成本、缺货、波动三类信号提醒老板今天要不要改采购。', emphasis: '适合每日晨会', footnote: '不要超过 6 张信号卡' },
+    { title: '老板摘要', badge: '真实信号', caption: '等待经营信号接口返回摘要。', emphasis: '暂无动作', footnote: '刷新后重试' },
+    { title: '采购承接', badge: '真实建议', caption: '等待菜单采购或供应商报价接口返回建议。', emphasis: '暂无动作', footnote: '刷新后重试' },
+    { title: '供应商承接', badge: '真实报价', caption: '等待供应商报价接口返回记录。', emphasis: '暂无动作', footnote: '刷新后重试' },
 ];
 const resolvedHeroMetrics = computed(() => props.heroMetrics?.length ? props.heroMetrics : fallbackHeroMetrics);
 const resolvedQuickWins = computed(() => props.quickWins?.length ? props.quickWins : fallbackQuickWins);
 const resolvedActionCards = computed(() => props.actionCards?.length ? props.actionCards : fallbackActionCards);
 const __VLS_defaults = {
-    kicker: '销售首页',
-    title: '本周增长落点',
-    subtitle: '首屏只保留老板愿意停留 30 秒的信息，避免用大面积空卡片堆砌“气势”。',
-    focusLabel: '华东餐饮客户',
-    refreshLabel: '刚刚更新',
-    heroTitle: '报价、线索、老板摘要三件事放在同一屏完成承接',
-    heroSummary: '适合接在真实行情之后做销售化承接，先讲窗口，再给动作，不把用户丢进过深的分析页。',
+    kicker: '经营首页',
+    title: '真实行情承接',
+    subtitle: '首屏只展示真实行情、经营信号和采购承接信息。',
+    focusLabel: '真实数据',
+    refreshLabel: '等待同步',
+    heroTitle: '行情、信号、采购动作在同一屏承接',
+    heroSummary: '基于真实接口返回的信息先讲风险和机会，再进入采购或供应商报价。',
 };
 const __VLS_ctx = {
     ...{},

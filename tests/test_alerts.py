@@ -1,6 +1,8 @@
 import pandas as pd
+import pytest
 
-from analysis.alerts import AlertRule, check_alerts
+import analysis.alerts as alerts_module
+from analysis.alerts import AlertRule, check_alerts, load_alert_rules
 
 
 def build_alert_df() -> pd.DataFrame:
@@ -36,25 +38,43 @@ def test_check_price_alerts():
             target_name="海天味极鲜生抽500ml",
             group_name="海天味极鲜生抽500ml",
             threshold=12.0,
-            alert_type="price",
         )
     ]
     result = check_alerts(build_alert_df(), rules)
     assert len(result) == 1
     assert result[0].current_price == 11.0
-    assert result[0].alert_type == "price"
+    assert result[0].group_name == "海天味极鲜生抽500ml"
 
 
-def test_check_unit_price_alerts():
+def test_check_alerts_only_matches_exact_product():
     rules = [
         AlertRule(
-            target_name="酱油",
-            category="酱油",
-            threshold=2.5,
-            alert_type="unit_price",
+            target_name="千禾零添加生抽200ml",
+            group_name="千禾零添加生抽200ml",
+            threshold=6.5,
         )
     ]
     result = check_alerts(build_alert_df(), rules)
     assert len(result) == 1
-    assert result[0].unit_price == 2.2
-    assert result[0].alert_type == "unit_price"
+    assert result[0].product_name == "千禾 零添加生抽 200ml"
+    assert result[0].current_price == 6.0
+
+
+def test_load_alert_rules_skips_legacy_category_rule(tmp_path, monkeypatch, caplog: pytest.LogCaptureFixture):
+    config_path = tmp_path / "alerts.json"
+    config_path.write_text(
+        """
+[
+  {"target_name": "海天味极鲜生抽500ml", "threshold": 12.0, "group_name": "海天味极鲜生抽500ml"},
+  {"target_name": "酱油", "threshold": 2.5, "alert_type": "unit_price", "category": "酱油"}
+]
+""".strip(),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(alerts_module, "ALERTS_CONFIG_PATH", config_path)
+
+    rules = load_alert_rules()
+
+    assert len(rules) == 1
+    assert rules[0].group_name == "海天味极鲜生抽500ml"
+    assert "跳过不再支持的预警规则类型" in caplog.text

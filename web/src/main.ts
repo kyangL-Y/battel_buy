@@ -1,5 +1,8 @@
-import { createApp } from 'vue'
+import { createApp, defineAsyncComponent } from 'vue'
 import { ElButton } from 'element-plus/es/components/button/index.mjs'
+import { ElCheckbox } from 'element-plus/es/components/checkbox/index.mjs'
+import { ElDatePicker } from 'element-plus/es/components/date-picker/index.mjs'
+import { ElDialog } from 'element-plus/es/components/dialog/index.mjs'
 import { ElInput } from 'element-plus/es/components/input/index.mjs'
 import { ElInputNumber } from 'element-plus/es/components/input-number/index.mjs'
 import { ElLoadingDirective } from 'element-plus/es/components/loading/index.mjs'
@@ -11,6 +14,9 @@ import { ElSkeleton } from 'element-plus/es/components/skeleton/index.mjs'
 import { ElSwitch } from 'element-plus/es/components/switch/index.mjs'
 import { ElTable, ElTableColumn } from 'element-plus/es/components/table/index.mjs'
 import 'element-plus/es/components/button/style/css'
+import 'element-plus/es/components/checkbox/style/css'
+import 'element-plus/es/components/date-picker/style/css'
+import 'element-plus/es/components/dialog/style/css'
 import 'element-plus/es/components/input/style/css'
 import 'element-plus/es/components/input-number/style/css'
 import 'element-plus/es/components/loading/style/css'
@@ -24,13 +30,31 @@ import 'element-plus/es/components/select/style/css'
 import 'element-plus/es/components/skeleton/style/css'
 import 'element-plus/es/components/switch/style/css'
 import 'element-plus/es/components/table/style/css'
-import App from './App.vue'
 import './styles.css'
 
-const app = createApp(App)
+const pathname = typeof window !== 'undefined'
+  ? window.location.pathname.replace(/\/$/, '') || '/'
+  : '/'
+const App = defineAsyncComponent(() => import('./App.vue'))
+const PlatformAdminApp = defineAsyncComponent(() => import('./PlatformAdminApp.vue'))
+const SupplierBackendApp = defineAsyncComponent(() => import('./SupplierBackendApp.vue'))
+const SupplierPortalApp = defineAsyncComponent(() => import('./SupplierPortalApp.vue'))
+
+const rootComponent = pathname === '/supplier-portal'
+  ? SupplierPortalApp
+  : pathname === '/supplier' || pathname === '/supplier-backend'
+    ? SupplierBackendApp
+    : pathname === '/admin'
+      ? PlatformAdminApp
+      : App
+
+const app = createApp(rootComponent)
 
 ;[
   ElButton,
+  ElCheckbox,
+  ElDatePicker,
+  ElDialog,
   ElInput,
   ElInputNumber,
   ElOption,

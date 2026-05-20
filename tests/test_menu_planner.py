@@ -535,6 +535,7 @@ def test_build_procurement_plan_prefers_pfsc_for_vegetable_over_lower_chinaprice
 
     assert plan_df.iloc[0]["recommended_market"] == "北京新发地"
     assert plan_df.iloc[0]["source_priority_label"] == "蔬菜明细市场优先"
+    assert plan_df.iloc[0]["source_tier"] == "主价格源"
     assert "来源策略" in str(plan_df.iloc[0]["remarks"])
 
 
@@ -575,6 +576,49 @@ def test_build_procurement_plan_prefers_pfsc_aquatic_market_over_lower_chinapric
 
     assert plan_df.iloc[0]["recommended_market"] == "北京八里桥水产市场"
     assert plan_df.iloc[0]["source_priority_label"] == "水产明细市场优先"
+
+
+def test_build_procurement_plan_uses_source_tier_as_tiebreaker_before_price():
+    latest_df = pd.DataFrame(
+        [
+            {
+                "product_name": "白糖",
+                "group_name": "白糖",
+                "category": "干调类",
+                "site_name": "示例官方监测",
+                "market_name": "北京官方监测点",
+                "province": "北京市",
+                "city": "北京市",
+                "current_price": 7.2,
+                "source_tier": "官方参考源",
+            },
+            {
+                "product_name": "白糖",
+                "group_name": "白糖",
+                "category": "干调类",
+                "site_name": "示例本地市场",
+                "market_name": "北京本地市场",
+                "province": "北京市",
+                "city": "北京市",
+                "current_price": 6.4,
+                "source_tier": "本地市场源",
+            },
+        ]
+    )
+
+    _, plan_df = build_procurement_plan(
+        [{"menu_name": "糖醋汁", "ingredient_name": "白糖"}],
+        latest_df,
+        diners=100,
+        tables=10,
+        preferred_province="北京市",
+        preferred_city="北京市",
+    )
+
+    assert plan_df.iloc[0]["recommended_market"] == "北京官方监测点"
+    assert plan_df.iloc[0]["source_priority_label"] == "综合报价优先"
+    assert plan_df.iloc[0]["source_tier"] == "官方参考源"
+    assert "来源层级：官方参考源" in str(plan_df.iloc[0]["remarks"])
 
 
 def test_build_procurement_plan_prefers_meat_reference_over_irrelevant_pfsc_market():

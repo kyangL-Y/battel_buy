@@ -12,11 +12,13 @@ from parsers.site_parser import SiteParser
 class DummyDatabase:
     def __init__(self):
         self.failed_records = []
+        self.price_records = []
 
     def upsert_product(self, **kwargs):
         return 1
 
     def insert_price_record(self, **kwargs):
+        self.price_records.append(kwargs)
         return 1
 
     def insert_failed_crawl_record(self, **kwargs):
@@ -260,7 +262,7 @@ def test_requests_fetcher_disables_environment_proxy(monkeypatch):
     assert captured["proxies"] == {"http": None, "https": None}
 
 
-def test_build_batch_product_key_includes_promotion_text_for_market_rows():
+def test_build_batch_product_key_uses_compact_market_identity():
     key = PriceCrawlerService._build_batch_product_key(
         {"product_key": "wbncp-market-all"},
         {
@@ -274,7 +276,7 @@ def test_build_batch_product_key_includes_promotion_text_for_market_rows():
         1,
     )
 
-    assert key == "wbncp-market-all::蔬菜-萝卜-公斤-河南"
+    assert key == "wbncp-market-all::蔬菜-萝卜-公斤"
 
 
 
@@ -403,7 +405,7 @@ def test_api_fetch_supports_product_template_variables(monkeypatch):
         def json(self):
             return {"data": {"name": "白菜", "price": "1.55"}}
 
-    def fake_request(fetcher, method, url, headers=None, json=None):
+    def fake_request(fetcher, method, url, headers=None, json=None, timeout=None):
         captured["method"] = method
         captured["url"] = url
         captured["json"] = json
@@ -459,7 +461,7 @@ def test_api_fetch_disables_environment_proxy(monkeypatch):
         def json(self):
             return {"data": {"name": "接口商品", "price": "66.80"}}
 
-    def fake_request(fetcher, method, url, headers=None, json=None):
+    def fake_request(fetcher, method, url, headers=None, json=None, timeout=None):
         captured["proxies"] = fetcher._build_proxy_bypass()
         return FakeApiResponse()
 
@@ -482,6 +484,64 @@ def test_api_fetch_disables_environment_proxy(monkeypatch):
 
     assert result["status"] == "success"
     assert captured["proxies"] == {"http": None, "https": None}
+
+
+def test_success_record_stores_slim_raw_payload(monkeypatch):
+    def fake_get(*args, **kwargs):
+        return FakeResponse(status_code=200, text="<html><body>ok</body></html>")
+
+    monkeypatch.setattr("crawler.requests_fetcher.RequestsFetcher._request_once", fake_get)
+    service = build_service({"site_name": "万邦国际", "domains": ["wbncp.com"]})
+
+    result = service.crawl_product(
+        {
+            "url": "https://www.wbncp.com/?m=home&c=Lists&a=index&tid=69",
+            "product_key": "sku-slim",
+            "product_name": "白菜",
+        }
+    )
+
+    assert result["status"] == "success"
+    assert len(service.database.price_records) == 1
+    raw_payload = service.database.price_records[0]["raw_payload"]
+    assert raw_payload == {}
+
+
+def test_liancai_success_record_stores_empty_raw_payload(monkeypatch):
+    def fake_get(*args, **kwargs):
+        return FakeResponse(status_code=200, text="<html><body>ok</body></html>")
+
+    monkeypatch.setattr("crawler.requests_fetcher.RequestsFetcher._request_once", fake_get)
+    service = build_service({"site_name": "莲菜网", "domains": ["liancaiwang.cn"]})
+
+    class LiancaiParserStub(ParserStub):
+        def parse(self, url: str, html: str) -> dict:
+            return {
+                "site_name": "莲菜网App | 干调类",
+                "product_name": "木耳",
+                "current_price": 29.9,
+                "original_price": 31.5,
+                "promotion_text": "测试",
+                "currency": "CNY",
+                "availability": "in_stock",
+                "raw_extract": {},
+                "extra_fields": {
+                    "cover": "https://example.com/cover.jpg",
+                },
+            }
+
+    service.parser = LiancaiParserStub({"site_name": "莲菜网", "domains": ["liancaiwang.cn"]})
+    result = service.crawl_product(
+        {
+            "url": "https://lcwgetway.liancaiwang.cn",
+            "product_key": "sku-liancai",
+            "product_name": "木耳",
+        }
+    )
+
+    assert result["status"] == "success"
+    raw_payload = service.database.price_records[0]["raw_payload"]
+    assert raw_payload == {}
 
 
 def test_batch_api_source_creates_multiple_records(monkeypatch):
@@ -581,7 +641,7 @@ def test_batch_api_source_fetches_all_pages(monkeypatch):
         def json(self):
             return self.payload
 
-    def fake_request(_fetcher, method, url, headers=None, json=None):
+    def fake_request(_fetcher, method, url, headers=None, json=None, timeout=None):
         requested_pages.append(json.get("page"))
         return FakeApiResponse(responses[len(requested_pages) - 1])
 
@@ -642,7 +702,7 @@ def test_batch_api_source_default_page_limit_exceeds_fifty(monkeypatch):
                 }
             }
 
-    def fake_request(_fetcher, method, url, headers=None, json=None):
+    def fake_request(_fetcher, method, url, headers=None, json=None, timeout=None):
         page = int(json.get("page"))
         requested_pages.append(page)
         return FakeApiResponse(page)
@@ -677,6 +737,44 @@ def test_batch_api_source_default_page_limit_exceeds_fifty(monkeypatch):
     assert requested_pages[0] == 1
     assert requested_pages[-1] == 55
     assert len(results) == 55
+
+
+def test_wbncp_batch_items_are_compacted_by_product_key():
+    service = build_service({"site_name": "万邦国际", "domains": ["wbncp.com"]})
+    product = {"product_key": "wbncp-market-all", "url": "https://www.wbncp.com/"}
+    parsed_items = [
+        {
+            "site_name": "万邦国际",
+            "product_name": "萝卜",
+            "current_price": 1.0,
+            "original_price": 1.5,
+            "promotion_text": "河南",
+            "extra_fields": {
+                "category": "蔬菜类",
+                "group_name": "蔬菜类",
+                "spec_text": "公斤",
+            },
+        },
+        {
+            "site_name": "万邦国际",
+            "product_name": "萝卜",
+            "current_price": 2.0,
+            "original_price": 2.5,
+            "promotion_text": "山东",
+            "extra_fields": {
+                "category": "蔬菜类",
+                "group_name": "蔬菜类",
+                "spec_text": "公斤",
+            },
+        },
+    ]
+
+    compacted = service._compact_batch_items(product, {"site_name": "万邦国际"}, parsed_items)
+
+    assert len(compacted) == 1
+    assert compacted[0]["current_price"] == 1.5
+    assert compacted[0]["original_price"] == 2.5
+    assert compacted[0]["promotion_text"] == "多产地报价"
 
 
 def test_crawl_many_flattens_batch_results(monkeypatch):

@@ -1,10 +1,14 @@
 <template>
-  <section class="panel trend-workspace-panel content-shell-panel">
-    <div class="panel-header content-panel-header">
+  <section class="panel trend-workspace-panel content-shell-panel" :data-ready="loading ? 'loading' : 'ready'">
+    <div v-if="productMismatch" class="trend-stale-data-banner" role="status">
+      <strong>正在切换商品数据</strong>
+      <span>已选择 {{ fallbackProductLabel }}，正在同步对应的走势与报价。</span>
+    </div>
+    <div v-if="!isMobileViewport" class="panel-header content-panel-header">
       <div>
         <p class="panel-kicker">价格走势</p>
         <h2>单品趋势</h2>
-        <p v-if="!isMobileViewport" class="panel-hint">同一商品只跟自己比，默认先看跨市场走势。</p>
+        <p class="panel-hint">同一商品只跟自己比，默认先看跨市场走势。</p>
       </div>
       <div class="inline-actions">
         <el-radio-group aria-label="趋势模式切换" :model-value="trendMode" @change="emit('update:trend-mode', $event)">
@@ -26,31 +30,44 @@
       </div>
       <div class="summary-card compact-summary-card">
         <span>走势记录</span>
-        <strong>{{ trendRows.length }}</strong>
-        <small>{{ availableSites.length || 0 }} 个市场</small>
+        <strong>{{ displayTrendRows.length }}</strong>
+        <small>{{ trendTierSummaryLabel }}</small>
       </div>
       <div v-if="productSummary" class="summary-card compact-summary-card">
         <span>最近更新</span>
         <strong>{{ productSummary.latest_captured_at ?? '-' }}</strong>
-        <small>{{ productSummary.current_lowest_site ?? '-' }}</small>
+        <small>{{ latestTrendSourceSummary }}</small>
       </div>
     </div>
     <div class="trend-toolbar content-toolbar">
       <div class="trend-picker-inline">
         <span>商品</span>
         <el-select
+          class="trend-product-select"
           :model-value="selectedIdentityKey"
           aria-label="选择商品"
           placeholder="选择单品"
+          popper-class="trend-product-select-popper"
+          :fit-input-width="false"
           filterable
+          :filter-method="handleProductFilter"
+          @visible-change="handleProductSelectVisibleChange"
           @change="emit('select-product', $event)"
         >
           <el-option
-            v-for="item in productOptions"
+            v-for="item in visibleProductOptions"
             :key="item.price_identity_key"
             :label="item.price_identity_label"
             :value="item.price_identity_key"
-          />
+          >
+            <span class="trend-product-option" :title="item.price_identity_label">
+              <img v-if="item.source_name === '莲菜网' && item.image_url" :src="item.image_url" alt="" loading="lazy" @click.stop="openImagePreview(item.image_url, item.price_identity_label)" />
+              <span>
+                <strong>{{ item.price_identity_label }}</strong>
+                <small>{{ item.source_name || '来源' }} · {{ item.source_category || '未分类' }}</small>
+              </span>
+            </span>
+          </el-option>
         </el-select>
       </div>
       <div v-if="trendMode === 'single_market'" class="trend-picker-inline site-inline">
@@ -65,27 +82,40 @@
           <el-option v-for="site in availableSites" :key="site" :label="site" :value="site" />
         </el-select>
       </div>
-      <div v-if="!isMobileViewport" class="trend-toolbar-count">{{ productOptions.length }} 个商品</div>
-    </div>
-    <div v-if="isMobileViewport && (currentProductLabel || currentSiteLabel || currentScopeLabel)" class="trend-selection-summary">
-      <div v-if="currentProductLabel" class="trend-selection-item">
-        <span>当前商品</span>
-        <strong>{{ currentProductLabel }}</strong>
-        <small>{{ currentProductCoverageLabel }}</small>
-      </div>
-      <div v-if="currentScopeLabel" class="trend-selection-item">
-        <span>{{ trendMode === 'cross_market' ? '比较范围' : '当前市场' }}</span>
-        <strong>{{ currentScopeLabel }}</strong>
+      <div v-if="!isMobileViewport" class="trend-toolbar-count">
+        {{ visibleProductOptions.length }} / {{ productOptions.length }} 个商品
       </div>
     </div>
-    <div v-if="selectedIdentityKey" class="trend-content-shell" :class="{ 'is-loading': loading }">
-      <div v-if="currentProductOption && currentProductOption.site_count <= 1" class="trend-single-source-tip">
+    <div
+      v-if="isMobileViewport"
+      class="trend-mobile-mode-switch"
+      role="group"
+      aria-label="趋势模式切换"
+      data-testid="trend-mode-switch"
+    >
+      <button
+        type="button"
+        :class="{ active: trendMode === 'cross_market' }"
+        @click="emit('update:trend-mode', 'cross_market')"
+      >
+        跨市场
+      </button>
+      <button
+        type="button"
+        :class="{ active: trendMode === 'single_market' }"
+        @click="emit('update:trend-mode', 'single_market')"
+      >
+        单市场
+      </button>
+    </div>
+    <div v-if="selectedIdentityKey || currentProductOption" class="trend-content-shell" :class="{ 'is-loading': loading }">
+      <div v-if="currentProductOption && currentProductOption.site_count <= 1 && !isMobileViewport" class="trend-single-source-tip">
         当前商品只匹配到 1 个市场，现有数据里通常只会看到 {{ availableSites[0] || '当前来源' }}。
       </div>
-      <div v-if="isComparisonMode" class="trend-compare-tip">
+      <div v-if="isComparisonMode && displayTrendRows.length && !isMobileViewport" class="trend-compare-tip">
         跨市场会补齐断档；每页只展示一组完全重合的价格线。
       </div>
-      <div v-if="isMobileViewport" class="trend-mobile-detail-hero">
+      <div v-if="isMobileViewport && displayTrendRows.length" class="trend-mobile-detail-hero">
         <div class="trend-mobile-detail-head">
           <div>
             <p class="panel-kicker">商品详情</p>
@@ -101,16 +131,60 @@
           <span>最低 {{ numericProductSummary.current_lowest_price_label }}</span>
           <span>最高 {{ numericProductSummary.current_highest_price_label }}</span>
           <span>价差 {{ priceSpanLabel }}</span>
+          <span>{{ trendTierSummaryLabel }}</span>
         </div>
       </div>
-      <div v-if="isMobileViewport && decisionCards.length" class="trend-mobile-decision-grid">
+      <div v-if="isMobileViewport && !displayTrendRows.length" class="trend-empty-workbench trend-empty-workbench-mobile">
+        <div class="trend-empty-workbench-copy">
+          <p class="panel-kicker">走势数据</p>
+          <strong>{{ emptyTrendTitle }}</strong>
+          <span v-if="emptyTrendModeHint">{{ emptyTrendModeHint }}</span>
+          <span>{{ emptyTrendDescription }}</span>
+        </div>
+        <div v-if="recommendedTrendOptions.length" class="trend-empty-product-list primary">
+          <span>优先改看有走势商品</span>
+          <button
+            v-for="item in recommendedTrendOptions"
+            :key="item.price_identity_key"
+            type="button"
+            class="trend-empty-product-button primary"
+            @click="selectRecommendedTrendProduct(item.price_identity_key)"
+          >
+            <img v-if="item.source_name === '莲菜网' && item.image_url" :src="item.image_url" alt="" loading="lazy" @click.stop="openImagePreview(item.image_url, item.price_identity_label)" />
+            <span>
+              <strong>{{ item.price_identity_label }}</strong>
+              <small>{{ item.source_name || '来源' }} · {{ item.source_category || '未分类' }}</small>
+            </span>
+          </button>
+        </div>
+        <div class="trend-empty-action-row">
+          <button
+            v-if="trendMode === 'cross_market' && availableSites.length"
+            type="button"
+            class="trend-empty-action primary"
+            @click="emit('update:trend-mode', 'single_market')"
+          >
+            查看单市场/行情快照
+          </button>
+          <button
+            v-else-if="recommendedTrendOptions.length"
+            type="button"
+            class="trend-empty-action primary"
+            @click="selectRecommendedTrendProduct(recommendedTrendOptions[0].price_identity_key)"
+          >
+            改看有走势商品
+          </button>
+          <button type="button" class="trend-empty-action" @click="emit('refresh-trend')">重新同步走势</button>
+        </div>
+      </div>
+      <div v-if="!isMobileViewport && displayTrendRows.length && decisionCards.length" class="trend-mobile-decision-grid">
         <article v-for="item in decisionCards" :key="item.title" class="trend-mobile-decision-card">
           <span>{{ item.label }}</span>
           <strong>{{ item.title }}</strong>
           <small>{{ item.detail }}</small>
         </article>
       </div>
-      <div v-if="productSummary && isMobileViewport" class="trend-mobile-overview">
+      <div v-if="productSummary && isMobileViewport && displayTrendRows.length" class="trend-mobile-overview">
         <div class="trend-mobile-pill">
           <span>最低价</span>
           <strong>{{ productSummary.current_lowest_price ?? '-' }}</strong>
@@ -122,9 +196,9 @@
           <small>{{ productSummary.latest_captured_at ?? '-' }}</small>
         </div>
         <div class="trend-mobile-pill">
-          <span>市场数</span>
-          <strong>{{ availableSites.length || 0 }}</strong>
-          <small>{{ currentOverviewRangeLabel }}</small>
+          <span>来源层级</span>
+          <strong>{{ visibleTierMetas.length || 0 }}</strong>
+          <small>{{ trendTierSummaryLabel }}</small>
         </div>
       </div>
       <div v-else-if="productSummary" class="trend-summary-strip">
@@ -144,9 +218,9 @@
           <small>{{ productSummary.latest_captured_at ?? '-' }}</small>
         </div>
         <div class="summary-card compact-summary-card">
-          <span>市场数</span>
-          <strong>{{ availableSites.length || 0 }}</strong>
-          <small>{{ currentOverviewRangeLabel }}</small>
+          <span>来源层级</span>
+          <strong>{{ visibleTierMetas.length || 0 }}</strong>
+          <small>{{ trendTierSummaryLabel }}</small>
         </div>
       </div>
       <div class="trend-main-grid">
@@ -155,8 +229,13 @@
             <span>最低价市场：{{ productSummary.current_lowest_site ?? '-' }}</span>
             <span>最高价市场：{{ productSummary.current_highest_site ?? '-' }}</span>
             <span>最近更新：{{ productSummary.latest_captured_at ?? '-' }}</span>
+            <span>来源层级：{{ trendTierSummaryLabel }}</span>
           </div>
-          <div class="trend-chart-shell">
+          <div v-if="displayTrendRows.length" class="trend-chart-shell">
+            <div v-if="isMobileViewport" class="trend-mobile-chart-title">
+              <strong>价格趋势（元/公斤）</strong>
+              <span>{{ trendMode === 'cross_market' ? '7 日趋势' : currentSiteLabel || '单市场' }}</span>
+            </div>
             <button
               v-if="!isMobileViewport && isComparisonMode && comparisonPageCount > 1"
               type="button"
@@ -166,7 +245,30 @@
             >
               ◀
             </button>
-            <div ref="trendChartRef" class="trend-chart" :style="{ height: chartHeight }"></div>
+            <svg
+              v-if="isMobileViewport"
+              class="trend-mobile-svg-chart"
+              viewBox="0 0 320 156"
+              role="img"
+              aria-label="单品价格趋势"
+            >
+              <line v-for="y in [24, 56, 88, 120]" :key="`trend-grid-${y}`" x1="14" :y1="y" x2="306" :y2="y" />
+              <polyline
+                v-for="line in mobileTrendSvgLines"
+                :key="line.name"
+                :points="line.points"
+                :class="line.tone"
+              />
+              <circle
+                v-for="point in mobileTrendSvgDots"
+                :key="`${point.name}-${point.x}-${point.y}`"
+                :class="point.tone"
+                :cx="point.x"
+                :cy="point.y"
+                r="3"
+              />
+            </svg>
+            <div v-else ref="trendChartRef" class="trend-chart" :style="{ height: chartHeight }"></div>
             <button
               v-if="!isMobileViewport && isComparisonMode && comparisonPageCount > 1"
               type="button"
@@ -178,6 +280,46 @@
             </button>
             <div v-if="!isMobileViewport && isComparisonMode && comparisonPageCount > 1" class="trend-chart-page-indicator">
               {{ comparisonPageIndex + 1 }} / {{ comparisonPageCount }}
+            </div>
+          </div>
+          <div v-else-if="!isMobileViewport" class="trend-empty-workbench">
+            <div class="trend-empty-workbench-copy">
+              <p class="panel-kicker">走势数据</p>
+              <strong>{{ emptyTrendTitle }}</strong>
+              <span v-if="emptyTrendModeHint">{{ emptyTrendModeHint }}</span>
+              <span>{{ emptyTrendDescription }}</span>
+            </div>
+            <div class="trend-empty-action-row">
+              <button
+                v-if="trendMode === 'cross_market' && availableSites.length"
+                type="button"
+                class="trend-empty-action primary"
+                @click="emit('update:trend-mode', 'single_market')"
+              >
+                查看单市场/行情快照
+              </button>
+              <button
+                v-else-if="recommendedTrendOptions.length"
+                type="button"
+                class="trend-empty-action primary"
+                @click="selectRecommendedTrendProduct(recommendedTrendOptions[0].price_identity_key)"
+              >
+                改看有走势商品
+              </button>
+              <button type="button" class="trend-empty-action" @click="emit('refresh-trend')">重新同步走势</button>
+            </div>
+            <div v-if="recommendedTrendOptions.length" class="trend-empty-product-list">
+              <span>改看有走势商品</span>
+              <button
+                v-for="item in recommendedTrendOptions"
+                :key="item.price_identity_key"
+                type="button"
+                class="trend-empty-product-button"
+                @click="selectRecommendedTrendProduct(item.price_identity_key)"
+              >
+                <strong>{{ item.price_identity_label }}</strong>
+                <small>{{ item.site_count || 0 }} 个市场</small>
+              </button>
             </div>
           </div>
           <div v-if="isMobileViewport && isComparisonMode && comparisonPageCount > 1" class="trend-chart-mobile-nav">
@@ -213,6 +355,10 @@
             <div class="trend-mobile-market-list">
               <article v-for="item in marketCompareCards" :key="item.name" class="trend-mobile-market-card">
                 <div>
+                  <div class="trend-row-source-bar">
+                    <span :class="sourceTierChipClass(item.tierMeta)">{{ item.tierMeta.shortLabel }}</span>
+                    <small>{{ item.sourceLabel }}</small>
+                  </div>
                   <strong>{{ item.name }}</strong>
                   <p>{{ item.meta }}</p>
                 </div>
@@ -224,7 +370,7 @@
             </div>
           </div>
         </div>
-        <div class="trend-list-shell" :class="{ compact: isMobileViewport }">
+        <div v-if="!(isMobileViewport && !recentTrendRows.length)" class="trend-list-shell" :class="{ compact: isMobileViewport }">
           <div class="trend-list-head">
             <strong>最近记录</strong>
             <span>{{ trendListCountLabel }}</span>
@@ -232,6 +378,12 @@
           <div v-if="recentTrendRows.length" class="trend-list">
             <div v-for="row in recentTrendRows" :key="`${row.trend_series_key || row.site_name}-${row.captured_at}-${row.current_price}`" class="trend-row">
               <div>
+                <div class="trend-row-source-bar">
+                  <span :class="sourceTierChipClass(resolveTrendSourceTierMeta(row.source_tier))">
+                    {{ resolveTrendSourceTierMeta(row.source_tier).shortLabel }}
+                  </span>
+                  <small>{{ buildTrendSourceSummary(row) }}</small>
+                </div>
                 <strong>{{ buildTrendSeriesName(row) }}</strong>
                 <p>{{ buildTrendMeta(row) }}</p>
               </div>
@@ -240,17 +392,27 @@
             </div>
           </div>
           <div v-else class="trend-side-empty">
-            <strong>暂无走势记录</strong>
-            <p>换一个商品或切换趋势模式再看。</p>
+            <strong>走势记录待补齐</strong>
+            <p>{{ sideEmptyTrendDescription }}</p>
           </div>
         </div>
       </div>
-      <SupplierQuotePanel
-        :selected-identity-key="selectedIdentityKey"
-        :product-label="currentProductLabel"
-        :mobile="isMobileViewport"
-      />
-      <div v-if="isMobileViewport && sourceExplainers.length" class="trend-mobile-source-note">
+      <section v-if="!loading" class="trend-supplier-collapsible">
+        <button type="button" class="trend-supplier-toggle" @click="showSupplierQuotePanel = !showSupplierQuotePanel">
+          <span>
+            <strong>查看/补录供应商报价</strong>
+            <small>补齐本地报价，辅助走势待补齐时决策</small>
+          </span>
+          <em>{{ showSupplierQuotePanel ? '收起' : '查看/补录' }}</em>
+        </button>
+        <SupplierQuotePanel
+          v-if="showSupplierQuotePanel"
+          :selected-identity-key="selectedIdentityKey"
+          :product-label="currentProductLabel"
+          :mobile="isMobileViewport"
+        />
+      </section>
+      <div v-if="isMobileViewport && sourceExplainers.length && displayTrendRows.length" class="trend-mobile-source-note">
         <strong>采购说明</strong>
         <p v-for="item in sourceExplainers" :key="item">{{ item }}</p>
       </div>
@@ -262,10 +424,57 @@
         </div>
       </div>
     </div>
-    <div v-else class="table-empty-state trend-empty-state">
-      <strong>先选择一个商品，再查看价格趋势</strong>
-      <p>上方商品选择器会把同名商品在不同市场的价格放到同一条走势里。</p>
+    <div v-else-if="loading" class="table-empty-state trend-empty-state trend-main-empty-state trend-pending-state">
+      <strong>正在准备单品趋势</strong>
+      <p>正在加载可查看的商品和价格走势，请稍候。</p>
     </div>
+    <div v-else class="table-empty-state trend-empty-state trend-main-empty-state">
+      <div class="trend-main-empty-copy">
+        <strong>先选择一个商品，再查看价格趋势</strong>
+        <p>上方商品选择器会把同名商品在不同市场的价格放到同一条走势里。</p>
+      </div>
+      <div v-if="isMobileViewport && productOptions.length" class="trend-empty-product-list trend-empty-product-list-mobile">
+        <span>可直接查看有走势的商品</span>
+        <button
+          v-for="item in productOptions.slice(0, 3)"
+          :key="item.price_identity_key"
+          type="button"
+          class="trend-empty-product-button"
+          @click="selectRecommendedTrendProduct(item.price_identity_key)"
+        >
+          <img v-if="item.source_name === '莲菜网' && item.image_url" :src="item.image_url" alt="" loading="lazy" @click.stop="openImagePreview(item.image_url, item.price_identity_label)" />
+          <span>
+            <strong>{{ item.price_identity_label }}</strong>
+            <small>{{ item.source_name || '来源' }} · {{ item.source_category || '未分类' }}</small>
+          </span>
+        </button>
+      </div>
+      <div v-else-if="isMobileViewport" class="trend-empty-action-row trend-empty-refresh-row">
+        <button type="button" class="trend-empty-action primary" @click="emit('refresh-products')">刷新商品列表</button>
+        <button type="button" class="trend-empty-action" @click="emit('refresh-trend')">重新同步走势</button>
+      </div>
+      <div v-else class="trend-empty-action-row">
+        <button type="button" class="trend-empty-action primary" @click="emit('refresh-products')">刷新商品列表</button>
+        <button type="button" class="trend-empty-action" @click="emit('open-tab', 'summary')">去汇总行情</button>
+        <button type="button" class="trend-empty-action" @click="emit('open-tab', 'menu')">去采购表单</button>
+      </div>
+      <div v-if="isMobileViewport" class="trend-empty-next-actions">
+        <span>下一步</span>
+        <button type="button" @click="emit('open-tab', 'summary')">
+          <strong>先看汇总行情</strong>
+          <small>从商品列表进入趋势</small>
+        </button>
+        <button type="button" @click="emit('open-tab', 'menu')">
+          <strong>去采购表单</strong>
+          <small>按菜单生成采购建议</small>
+        </button>
+      </div>
+    </div>
+    <el-dialog v-model="imagePreviewVisible" :title="imagePreviewTitle || '图片预览'" width="min(92vw, 960px)">
+      <div class="trend-image-preview-shell">
+        <img v-if="imagePreviewUrl" :src="imagePreviewUrl" :alt="imagePreviewTitle || ''" class="trend-image-preview" />
+      </div>
+    </el-dialog>
   </section>
 </template>
 
@@ -291,6 +500,8 @@ const emit = defineEmits<{
   (event: 'update:trend-mode', value: 'cross_market' | 'single_market'): void
   (event: 'update:selected-site-name', value: string): void
   (event: 'refresh-trend'): void
+  (event: 'refresh-products'): void
+  (event: 'open-tab', value: 'summary' | 'menu'): void
 }>()
 
 const trendChartRef = ref<HTMLDivElement | null>(null)
@@ -300,12 +511,64 @@ let echartsModule: EChartsCoreModule | null = null
 let trendChart: import('echarts/core').ECharts | null = null
 let resizeObserver: ResizeObserver | null = null
 const comparisonPageIndex = ref(0)
+const showSupplierQuotePanel = ref(false)
+const productSearchQuery = ref('')
+const imagePreviewVisible = ref(false)
+const imagePreviewUrl = ref('')
+const imagePreviewTitle = ref('')
+const PRODUCT_SELECT_DEFAULT_LIMIT = 80
+const PRODUCT_SELECT_SEARCH_LIMIT = 120
+type SourceTierTone = 'primary' | 'official' | 'local' | 'reference' | 'neutral'
+type SourceTierKey = 'primary' | 'official' | 'local' | 'reference' | 'other'
+type SourceTierMeta = {
+  key: SourceTierKey
+  label: string
+  shortLabel: string
+  tone: SourceTierTone
+  rank: number
+}
 
-const currentProductOption = computed(() => props.productOptions.find((item) => item.price_identity_key === props.selectedIdentityKey) || null)
+const SOURCE_TIER_META: Record<SourceTierKey, SourceTierMeta> = {
+  primary: { key: 'primary', label: '主价格源', shortLabel: '主源', tone: 'primary', rank: 0 },
+  official: { key: 'official', label: '官方参考源', shortLabel: '官方', tone: 'official', rank: 1 },
+  local: { key: 'local', label: '本地市场源', shortLabel: '本地', tone: 'local', rank: 2 },
+  reference: { key: 'reference', label: '第三方参考源', shortLabel: '第三方', tone: 'reference', rank: 3 },
+  other: { key: 'other', label: '未分层来源', shortLabel: '未分层', tone: 'neutral', rank: 4 },
+}
+
+const currentProductOption = computed(() =>
+  props.productOptions.find((item) => item.price_identity_key === props.selectedIdentityKey) ||
+  (props.selectedIdentityKey ? ({
+    price_identity_key: props.selectedIdentityKey,
+    price_identity_label: String(props.productSummary?.product_name || props.selectedIdentityKey),
+    site_count: Number(props.productSummary?.site_count || 0),
+  } as ProductOptionItem) : null),
+)
+const visibleProductOptions = computed(() => {
+  const query = normalizeProductSearchText(productSearchQuery.value)
+  const selectedKey = String(props.selectedIdentityKey || '').trim()
+  const selected = selectedKey
+    ? props.productOptions.find((item) => item.price_identity_key === selectedKey)
+    : null
+  const matched = props.productOptions
+    .filter((item) => {
+      if (!query) return true
+      return normalizeProductSearchText(
+        `${item.price_identity_label} ${item.price_identity_key} ${item.source_name || ''} ${item.source_category || ''} ${item.liancai_subcategory || ''}`,
+      ).includes(query)
+    })
+    .sort((left, right) => Number(right.site_count || 0) - Number(left.site_count || 0))
+    .slice(0, query ? PRODUCT_SELECT_SEARCH_LIMIT : PRODUCT_SELECT_DEFAULT_LIMIT)
+  const rows = selected ? [selected, ...matched.filter((item) => item.price_identity_key !== selected.price_identity_key)] : matched
+  return rows
+})
 const availableSites = computed(() => props.siteOptions || [])
 const isComparisonMode = computed(() => props.trendMode === 'cross_market')
 const shouldCarryForwardPrice = computed(() => isComparisonMode.value)
 const currentProductLabel = computed(() => currentProductOption.value?.price_identity_label || '')
+const summaryIdentityKey = computed(() => String(props.productSummary?.price_identity_key || '').trim())
+const productMismatch = computed(() => Boolean(props.selectedIdentityKey && summaryIdentityKey.value && summaryIdentityKey.value !== props.selectedIdentityKey))
+const fallbackProductLabel = computed(() => currentProductLabel.value || String(props.selectedIdentityKey || '当前商品'))
 const currentProductCoverageLabel = computed(() => {
   const siteCount = Number(currentProductOption.value?.site_count || 0)
   return siteCount ? `已覆盖 ${siteCount} 个市场` : '市场覆盖待确认'
@@ -313,7 +576,7 @@ const currentProductCoverageLabel = computed(() => {
 const currentSiteLabel = computed(() => String(props.selectedSiteName || '').trim())
 const currentScopeLabel = computed(() => (
   props.trendMode === 'cross_market'
-    ? `跨市场 · ${availableSites.value.length || 0} 个市场`
+    ? `跨市场 · ${availableSites.value.length || fallbackTrendRows.value.length || 0} 个市场`
     : (currentSiteLabel.value || '待选择单个市场')
 ))
 const currentOverviewRangeLabel = computed(() => (
@@ -336,21 +599,110 @@ const priceSpanLabel = computed(() => {
   }
   return (numericProductSummary.value.current_highest_price - numericProductSummary.value.current_lowest_price).toFixed(2)
 })
-const chartCategories = computed(() => buildChartCategories(props.trendRows))
-const allChartSeries = computed(() => buildChartSeries(props.trendRows, chartCategories.value, shouldCarryForwardPrice.value))
+const fallbackTrendRows = computed<ProductTrendRow[]>(() => {
+  if (props.trendRows.length || !props.productSummary) return []
+  const capturedAt = String(props.productSummary.latest_captured_at || new Date().toISOString())
+  const productName = currentProductLabel.value || String(props.productSummary.product_name || '当前商品')
+  const rows: ProductTrendRow[] = []
+  const lowestPrice = numericProductSummary.value.current_lowest_price
+  const averagePrice = numericProductSummary.value.average_price
+  const highestPrice = numericProductSummary.value.current_highest_price
+  if (lowestPrice != null) {
+    rows.push({
+      site_name: String(props.productSummary.current_lowest_site || '最低价来源'),
+      source_name: String(props.productSummary.current_lowest_site || '行情主表'),
+      source_tier: '本地市场源',
+      market_name: String(props.productSummary.current_lowest_site || '本地市场'),
+      region_label: String(props.productSummary.current_lowest_site || '本地市场'),
+      current_price: lowestPrice,
+      captured_at: capturedAt,
+      product_name: productName,
+      trend_series_name: String(props.productSummary.current_lowest_site || '最低价来源'),
+      trend_meta_label: '商品 summary 当前最低价',
+    })
+  }
+  if (averagePrice != null && averagePrice !== lowestPrice) {
+    rows.push({
+      site_name: '今日均价',
+      source_name: '行情主表',
+      source_tier: '第三方参考源',
+      market_name: '今日均价',
+      region_label: '本地市场',
+      current_price: averagePrice,
+      captured_at: capturedAt,
+      product_name: productName,
+      trend_series_name: '今日均价',
+      trend_meta_label: '商品 summary 平均价',
+    })
+  }
+  if (highestPrice != null && highestPrice !== averagePrice && highestPrice !== lowestPrice) {
+    rows.push({
+      site_name: String(props.productSummary.current_highest_site || '最高价来源'),
+      source_name: String(props.productSummary.current_highest_site || '行情主表'),
+      source_tier: '第三方参考源',
+      market_name: String(props.productSummary.current_highest_site || '本地市场'),
+      region_label: String(props.productSummary.current_highest_site || '本地市场'),
+      current_price: highestPrice,
+      captured_at: capturedAt,
+      product_name: productName,
+      trend_series_name: String(props.productSummary.current_highest_site || '最高价来源'),
+      trend_meta_label: '商品 summary 当前最高价',
+    })
+  }
+  return rows
+})
+const displayTrendRows = computed(() => props.trendRows.length ? props.trendRows : fallbackTrendRows.value)
+const chartCategories = computed(() => buildChartCategories(displayTrendRows.value))
+const allChartSeries = computed(() => buildChartSeries(displayTrendRows.value, chartCategories.value, shouldCarryForwardPrice.value))
 const comparisonSeriesPages = computed(() => buildSeriesPages(allChartSeries.value, isComparisonMode.value))
 const comparisonPageCount = computed(() => comparisonSeriesPages.value.length)
 const visibleChartSeries = computed(() => {
   const page = comparisonSeriesPages.value[comparisonPageIndex.value]
   return page && page.length ? page : (comparisonSeriesPages.value[0] || [])
 })
+const mobileTrendSvgLines = computed(() => buildMobileTrendSvgLines())
+const mobileTrendSvgDots = computed(() =>
+  mobileTrendSvgLines.value.flatMap((line) =>
+    line.dots.map((point) => ({
+      ...point,
+      name: line.name,
+      tone: line.tone,
+    })),
+  ),
+)
 const visibleSeriesNameSet = computed(() => new Set(visibleChartSeries.value.map((item) => String(item.name || '').trim()).filter(Boolean)))
 const recentTrendRows = computed(() =>
-  [...props.trendRows]
+  [...displayTrendRows.value]
     .filter((row) => visibleSeriesNameSet.value.has(buildTrendSeriesName(row)))
     .sort((left, right) => String(right.captured_at || '').localeCompare(String(left.captured_at || '')))
-    .slice(0, isMobileViewport.value ? 6 : 18),
+    .slice(0, isMobileViewport.value ? 2 : 18),
 )
+const visibleTierMetas = computed(() => {
+  const metaByKey = new Map<SourceTierKey, SourceTierMeta>()
+  recentTrendRows.value.forEach((row) => {
+    const meta = resolveTrendSourceTierMeta(row.source_tier)
+    if (!metaByKey.has(meta.key)) {
+      metaByKey.set(meta.key, meta)
+    }
+  })
+  return Array.from(metaByKey.values()).sort((left, right) => left.rank - right.rank)
+})
+const trendTierSummaryLabel = computed(() => {
+  if (!visibleTierMetas.value.length) {
+    return currentOverviewRangeLabel.value
+  }
+  if (visibleTierMetas.value.length === 1) {
+    return `${visibleTierMetas.value[0].label}优先`
+  }
+  return `${visibleTierMetas.value[0].shortLabel}优先 · ${visibleTierMetas.value.length} 个层级`
+})
+const latestTrendRow = computed(() => recentTrendRows.value[0] || null)
+const latestTrendSourceSummary = computed(() => {
+  if (!latestTrendRow.value) {
+    return props.productSummary?.current_lowest_site ?? '-'
+  }
+  return buildTrendSourceSummary(latestTrendRow.value)
+})
 const marketCompareCards = computed(() => {
   const latestBySeries = new Map<string, ProductTrendRow>()
 
@@ -371,6 +723,8 @@ const marketCompareCards = computed(() => {
     .map((row, index) => ({
       name: buildTrendSeriesName(row),
       meta: buildTrendMeta(row),
+      sourceLabel: buildTrendSourceSummary(row),
+      tierMeta: resolveTrendSourceTierMeta(row.source_tier),
       price: formatPrice(row.current_price),
       rank: index === 0 ? '当前低价' : `第 ${index + 1} 位`,
     }))
@@ -425,19 +779,108 @@ const sourceExplainers = computed(() => {
 const chartHeight = computed(() => {
   if (!isMobileViewport.value) return isNarrowViewport.value ? '460px' : '520px'
   if (isShortViewport.value) {
-    if (comparisonPageCount.value > 1 || visibleChartSeries.value.length >= 4) return '340px'
-    if (chartCategories.value.length >= 10) return '316px'
-    return '292px'
+    if (comparisonPageCount.value > 1 || visibleChartSeries.value.length >= 4) return '216px'
+    if (chartCategories.value.length >= 10) return '204px'
+    return '190px'
   }
-  if (comparisonPageCount.value > 1 || visibleChartSeries.value.length >= 4) return '404px'
-  if (chartCategories.value.length >= 10) return '376px'
-  return '348px'
+  if (comparisonPageCount.value > 1 || visibleChartSeries.value.length >= 4) return '236px'
+  if (chartCategories.value.length >= 10) return '220px'
+  return '204px'
 })
 const trendListCountLabel = computed(() => (
   isMobileViewport.value
-    ? `${recentTrendRows.value.length} / ${props.trendRows.length} 条`
-    : `${props.trendRows.length} 条`
+    ? `${recentTrendRows.value.length} / ${displayTrendRows.value.length} 条`
+    : `${displayTrendRows.value.length} 条`
 ))
+const recommendedTrendOptions = computed(() =>
+  props.productOptions
+    .filter((item) => item.price_identity_key !== props.selectedIdentityKey && Number(item.site_count || 0) > 0)
+    .sort((left, right) => Number(right.site_count || 0) - Number(left.site_count || 0))
+    .slice(0, isMobileViewport.value ? 3 : 5),
+)
+const hasProductMarketSnapshot = computed(() => {
+  if (displayTrendRows.value.length) return false
+  const summary = props.productSummary
+  if (!summary) return false
+  return [
+    summary.latest_captured_at,
+    summary.current_lowest_site,
+    summary.current_highest_site,
+    summary.site_count,
+    summary.current_price,
+    summary.current_lowest_price,
+    summary.current_highest_price,
+    summary.average_price,
+    summary.price_span,
+  ].some((value) => normalizeNumericValue(value) != null || String(value || '').trim().length > 0)
+})
+const emptyTrendTitle = computed(() => (
+  props.trendMode === 'cross_market'
+    ? '跨市场走势待补齐'
+    : '走势记录待补齐'
+))
+const emptyTrendModeHint = computed(() => {
+  if (hasProductMarketSnapshot.value && availableSites.value.length) {
+    return '当前商品已有单市场/summary 快照，可先切到单市场或查看行情快照。'
+  }
+  if (recommendedTrendOptions.value.length) {
+    return '可先改看下方有走势商品，或重新同步走势补齐记录。'
+  }
+  return props.trendMode === 'cross_market'
+    ? '跨市场会补齐断档；每页只展示一组完全重合的价格线。'
+    : ''
+})
+const emptyTrendDescription = computed(() => {
+  if (!currentProductLabel.value) {
+    return '先选择一个商品，系统会从真实接口读取走势记录。'
+  }
+  if (hasProductMarketSnapshot.value) {
+    if (availableSites.value.length > 0) {
+      return `${currentProductLabel.value} 已有行情快照/单市场数据，但跨市场连续走势还未成线；可查看单市场/行情快照继续决策。`
+    }
+    return `${currentProductLabel.value} 已有 summary/latest 行情快照，跨市场覆盖待补齐；可改看有走势商品或重新同步走势。`
+  }
+  if (availableSites.value.length > 0) {
+    return `${currentProductLabel.value} 已有关联市场，可查看单市场或重新同步走势。`
+  }
+  return `${currentProductLabel.value} 可比市场记录待补齐，可先改看下方有走势商品或重新同步走势。`
+})
+const sideEmptyTrendDescription = computed(() => {
+  if (hasProductMarketSnapshot.value) {
+    return '行情快照仍可参考，连续走势记录待补齐；可查看单市场/行情快照或重新同步走势。'
+  }
+  if (recommendedTrendOptions.value.length) {
+    return '当前筛选范围的连续走势记录待补齐，可切换下方有走势商品或重新同步走势。'
+  }
+  return '当前筛选范围的连续走势记录待补齐，可重新同步走势或切换趋势模式。'
+})
+
+function selectRecommendedTrendProduct(identityKey: string) {
+  if (!identityKey) return
+  emit('select-product', identityKey)
+}
+
+function openImagePreview(url: string | null | undefined, title: string) {
+  const normalizedUrl = String(url || '').trim()
+  if (!normalizedUrl) return
+  imagePreviewUrl.value = normalizedUrl
+  imagePreviewTitle.value = String(title || '').trim()
+  imagePreviewVisible.value = true
+}
+
+function normalizeProductSearchText(value: string) {
+  return String(value || '').replace(/\s+/g, '').toLowerCase()
+}
+
+function handleProductFilter(query: string) {
+  productSearchQuery.value = query
+}
+
+function handleProductSelectVisibleChange(visible: boolean) {
+  if (!visible) {
+    productSearchQuery.value = ''
+  }
+}
 
 async function ensureTrendChart() {
   if (!trendChartRef.value) return null
@@ -561,6 +1004,47 @@ function buildSeriesPages(seriesItems: Array<Record<string, any>>, comparisonMod
   return filteredPages
 }
 
+function buildMobileTrendSvgLines() {
+  const seriesItems = visibleChartSeries.value.slice(0, 2)
+  const numericSeries = seriesItems.map((seriesItem, index) => {
+    const values = Array.isArray(seriesItem.data)
+      ? seriesItem.data
+        .map((item: any) => Number(item?.value ?? item))
+        .filter((value: number) => !Number.isNaN(value))
+      : []
+    return {
+      name: String(seriesItem.name || `series-${index}`),
+      tone: index === 0 ? 'line-blue' : 'line-green',
+      values,
+    }
+  }).filter((item) => item.values.length)
+
+  const allValues = numericSeries.flatMap((item) => item.values)
+  if (!allValues.length) {
+    return []
+  }
+  const minValue = Math.min(...allValues)
+  const maxValue = Math.max(...allValues)
+  const range = Math.max(maxValue - minValue, 1)
+
+  return numericSeries.map((seriesItem) => {
+    const count = Math.max(seriesItem.values.length - 1, 1)
+    const dots = seriesItem.values.map((value, index) => {
+      const x = 18 + (index / count) * 284
+      const y = 126 - ((value - minValue) / range) * 96
+      return {
+        x: Number(x.toFixed(2)),
+        y: Number(y.toFixed(2)),
+      }
+    })
+    return {
+      ...seriesItem,
+      points: dots.map((point) => `${point.x},${point.y}`).join(' '),
+      dots,
+    }
+  })
+}
+
 async function renderTrendChart() {
   if (!trendChartRef.value) return
   await nextTick()
@@ -568,7 +1052,7 @@ async function renderTrendChart() {
   const chart = await ensureTrendChart()
   if (!chart) return
 
-  if (!props.trendRows.length) {
+  if (!displayTrendRows.value.length) {
     chart.clear()
     chart.resize()
     return
@@ -602,7 +1086,7 @@ async function renderTrendChart() {
     },
     legend: {
       type: 'scroll',
-      top: isMobileViewport.value ? 8 : 10,
+      top: isMobileViewport.value ? 0 : 10,
       left: isMobileViewport.value ? 12 : 18,
       right: isMobileViewport.value ? 12 : 52,
       icon: 'roundRect',
@@ -625,8 +1109,8 @@ async function renderTrendChart() {
     grid: {
       left: isSparseTimeline ? (isMobileViewport.value ? '14%' : '12%') : (isMobileViewport.value ? 18 : 24),
       right: isSparseTimeline ? (isMobileViewport.value ? '10%' : '12%') : 18,
-      top: isMobileViewport.value ? 84 : 62,
-      bottom: isMobileViewport.value ? 56 : 24,
+      top: isMobileViewport.value ? 42 : 62,
+      bottom: isMobileViewport.value ? 28 : 24,
       containLabel: true,
     },
     xAxis: {
@@ -638,7 +1122,7 @@ async function renderTrendChart() {
         hideOverlap: true,
         rotate: isMobileViewport.value ? 35 : 0,
         fontSize: isMobileViewport.value ? 10 : 12,
-        margin: isMobileViewport.value ? 14 : 8,
+        margin: isMobileViewport.value ? 10 : 8,
       },
       axisLine: { lineStyle: { color: '#d7e2f0' } },
       data: categories,
@@ -692,6 +1176,53 @@ function buildTrendMeta(row: ProductTrendRow) {
   return parts.length ? Array.from(new Set(parts)).join(' · ') : '未标注市场'
 }
 
+function buildTrendSourceName(row: ProductTrendRow) {
+  const explicitSourceName = String(row.source_name || '').trim()
+  if (explicitSourceName) {
+    return explicitSourceName
+  }
+  const siteText = String(row.site_name || '').trim()
+  if (siteText.includes('|')) {
+    return siteText.split('|')[0].trim()
+  }
+  return siteText
+}
+
+function buildTrendSourceSummary(row: ProductTrendRow) {
+  const sourceName = buildTrendSourceName(row)
+  const tierLabel = resolveTrendSourceTierMeta(row.source_tier).label
+  const parts = [sourceName, tierLabel].filter(Boolean)
+  return parts.length ? Array.from(new Set(parts)).join(' · ') : '来源待补充'
+}
+
+function resolveTrendSourceTierMeta(sourceTier?: string | null): SourceTierMeta {
+  const normalizedTier = String(sourceTier || '').trim()
+  if (!normalizedTier) {
+    return SOURCE_TIER_META.other
+  }
+  if (normalizedTier.includes('主价格') || normalizedTier.includes('主源')) {
+    return SOURCE_TIER_META.primary
+  }
+  if (normalizedTier.includes('官方')) {
+    return SOURCE_TIER_META.official
+  }
+  if (normalizedTier.includes('本地')) {
+    return SOURCE_TIER_META.local
+  }
+  if (normalizedTier.includes('第三方') || normalizedTier.includes('参考')) {
+    return SOURCE_TIER_META.reference
+  }
+  return {
+    ...SOURCE_TIER_META.other,
+    label: normalizedTier,
+    shortLabel: normalizedTier,
+  }
+}
+
+function sourceTierChipClass(tierMeta: SourceTierMeta) {
+  return `trend-source-tier-chip tone-${tierMeta.tone}`
+}
+
 function formatTrendAxisLabel(value?: string | null) {
   const text = String(value || '').trim()
   if (!text) return ''
@@ -723,7 +1254,14 @@ function formatTrendTime(value?: string | null) {
 }
 
 watch(
-  () => [props.trendRows, props.selectedIdentityKey, props.trendMode, props.selectedSiteName, comparisonPageIndex.value],
+  () => props.selectedIdentityKey,
+  () => {
+    showSupplierQuotePanel.value = false
+  },
+)
+
+watch(
+  () => [displayTrendRows.value, props.selectedIdentityKey, props.trendMode, props.selectedSiteName, comparisonPageIndex.value],
   async () => {
     await renderTrendChart()
   },
@@ -784,6 +1322,180 @@ onBeforeUnmount(() => {
 
 .trend-chart-shell {
   position: relative;
+}
+
+.trend-mobile-mode-switch {
+  display: none;
+}
+
+.trend-mobile-chart-title {
+  display: none;
+}
+
+.trend-mobile-svg-chart {
+  display: none;
+}
+
+:global(.trend-product-select-popper) {
+  width: min(520px, calc(100vw - 32px));
+  max-width: calc(100vw - 32px);
+}
+
+:global(.trend-product-select-popper .el-select-dropdown__item) {
+  height: auto;
+  min-height: 34px;
+  padding: 7px 12px;
+  line-height: 1.35;
+  white-space: normal;
+}
+
+:global(.trend-product-select-popper .trend-product-option) {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+:global(.trend-product-select-popper .trend-product-option img) {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  object-fit: cover;
+  background: #f1f5f9;
+  cursor: zoom-in;
+}
+
+.trend-empty-product-button img {
+  cursor: zoom-in;
+}
+
+.trend-image-preview-shell {
+  display: grid;
+  place-items: center;
+}
+
+.trend-image-preview {
+  max-width: 100%;
+  max-height: 76vh;
+  border-radius: 12px;
+}
+
+:global(.trend-product-select-popper .trend-product-option span) {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+:global(.trend-product-select-popper .trend-product-option strong) {
+  color: #112033;
+  font-size: 13px;
+  line-height: 1.25;
+}
+
+:global(.trend-product-select-popper .trend-product-option small) {
+  color: #64748b;
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.trend-empty-workbench {
+  display: grid;
+  gap: 14px;
+  min-height: 260px;
+  padding: 18px;
+  border: 1px solid rgba(96, 165, 250, 0.18);
+  border-radius: 20px;
+  background:
+    linear-gradient(145deg, rgba(239, 246, 255, 0.9), rgba(255, 255, 255, 0.98)),
+    linear-gradient(135deg, rgba(37, 99, 235, 0.05), transparent);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  align-content: start;
+}
+
+.trend-empty-workbench-copy {
+  display: grid;
+  gap: 6px;
+}
+
+.trend-empty-workbench-copy strong {
+  color: #112033;
+  font-size: 18px;
+  line-height: 1.25;
+}
+
+.trend-empty-workbench-copy span,
+.trend-empty-product-list > span,
+.trend-empty-product-button small {
+  color: #63738c;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.trend-empty-action-row,
+.trend-empty-product-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.trend-empty-product-list {
+  display: grid;
+}
+
+.trend-empty-action,
+.trend-empty-product-button {
+  min-height: 36px;
+  border: 1px solid rgba(54, 84, 134, 0.16);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.94);
+  color: #365486;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.trend-empty-action {
+  padding: 0 14px;
+}
+
+.trend-empty-action.primary {
+  border-color: rgba(37, 99, 235, 0.24);
+  background: #2563eb;
+  color: #fff;
+}
+
+.trend-empty-product-button {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 9px 11px;
+  text-align: left;
+}
+
+.trend-empty-product-button img {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  object-fit: cover;
+  background: #f1f5f9;
+}
+
+.trend-empty-product-button span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.trend-empty-product-button strong {
+  overflow: hidden;
+  color: #112033;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .trend-chart-nav {
@@ -896,7 +1608,7 @@ onBeforeUnmount(() => {
 
 .trend-mobile-detail-hero {
   padding: 14px;
-  border-radius: 20px;
+  border-radius: 16px;
   border: 1px solid rgba(96, 165, 250, 0.18);
   background: linear-gradient(145deg, rgba(239, 246, 255, 0.94), rgba(255, 255, 255, 0.96));
 }
@@ -946,7 +1658,8 @@ onBeforeUnmount(() => {
 .trend-mobile-decision-card span,
 .trend-mobile-decision-card small,
 .trend-mobile-market-value small,
-.trend-mobile-source-note p {
+.trend-mobile-source-note p,
+.trend-row-source-bar small {
   color: #63738c;
   font-size: 11px;
   line-height: 1.5;
@@ -966,6 +1679,56 @@ onBeforeUnmount(() => {
   border-radius: 16px;
   border: 1px solid rgba(148, 163, 184, 0.16);
   background: rgba(248, 250, 252, 0.9);
+}
+
+.trend-row-source-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.trend-source-tier-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-family: var(--code-font);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+.trend-source-tier-chip.tone-primary {
+  background: rgba(30, 64, 175, 0.12);
+  border: 1px solid rgba(37, 99, 235, 0.22);
+  color: #1d4ed8;
+}
+
+.trend-source-tier-chip.tone-official {
+  background: rgba(245, 158, 11, 0.14);
+  border: 1px solid rgba(245, 158, 11, 0.22);
+  color: #b45309;
+}
+
+.trend-source-tier-chip.tone-local {
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.2);
+  color: #047857;
+}
+
+.trend-source-tier-chip.tone-reference {
+  background: rgba(124, 58, 237, 0.1);
+  border: 1px solid rgba(124, 58, 237, 0.18);
+  color: #6d28d9;
+}
+
+.trend-source-tier-chip.tone-neutral {
+  background: rgba(148, 163, 184, 0.14);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  color: #475569;
 }
 
 .trend-mobile-decision-grid {
@@ -1013,9 +1776,417 @@ onBeforeUnmount(() => {
   margin: 0;
 }
 
+.trend-main-empty-state {
+  min-height: 240px;
+  padding: 22px 18px;
+}
+
 @media (max-width: 720px) {
+  .trend-workspace-panel.content-shell-panel {
+    display: grid;
+    grid-template-columns: minmax(0, 0.94fr) minmax(0, 1.06fr);
+    align-items: center;
+    gap: 10px 8px;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .trend-workspace-panel.content-shell-panel :deep(.el-loading-mask) {
+    border-radius: 16px;
+  }
+
+  .panel-header.content-panel-header,
+  .trend-selection-summary,
+  .trend-single-source-tip,
+  .trend-compare-tip,
+  .trend-mobile-decision-grid {
+    display: none;
+  }
+
+.trend-workspace-panel {
+  position: relative;
+}
+
+.trend-stale-data-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(37, 99, 235, 0.18);
+  border-radius: 14px;
+  background: rgba(239, 246, 255, 0.86);
+  color: #1e3a8a;
+  font-size: 13px;
+}
+
+.trend-stale-data-banner strong {
+  white-space: nowrap;
+}
+
+.trend-stale-data-banner span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trend-toolbar {
+    display: grid;
+    gap: 0;
+    grid-column: 1;
+    margin-bottom: 0;
+    padding: 12px;
+    border-radius: 16px;
+  }
+
+  .trend-picker-inline {
+    display: grid;
+    gap: 0;
+  }
+
+  .trend-picker-inline > span {
+    display: none;
+  }
+
+  .trend-picker-inline :deep(.el-select__wrapper) {
+    min-height: 34px;
+    border-radius: 999px;
+    box-shadow: 0 0 0 1px rgba(148, 163, 184, 0.18) inset;
+  }
+
+  .trend-toolbar-count {
+    display: none;
+  }
+
+  .trend-mobile-mode-switch {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    grid-column: 2;
+    align-self: center;
+    margin-bottom: 0;
+  }
+
+  .trend-content-shell,
+  .trend-empty-workbench {
+    grid-column: 1 / -1;
+    align-self: stretch;
+  }
+
+  .trend-main-empty-state,
+  .trend-pending-state {
+    grid-column: 1 / -1;
+  }
+
+  .trend-mobile-mode-switch button {
+    min-height: 42px;
+    border: 1px solid rgba(203, 213, 225, 0.82);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.98);
+    color: #475569;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 800;
+  }
+
+  .trend-mobile-mode-switch button.active {
+    border-color: transparent;
+    background: rgba(37, 99, 235, 0.12);
+    color: #2563eb;
+    box-shadow: none;
+  }
+
+  .trend-mobile-detail-hero {
+    padding: 14px 14px 12px;
+    border: 1px solid rgba(203, 213, 225, 0.72);
+    border-radius: 18px;
+    background:
+      radial-gradient(circle at top right, rgba(37, 99, 235, 0.08), transparent 34%),
+      linear-gradient(160deg, #f8fbff 0%, #ffffff 52%, #f8fafc 100%);
+    box-shadow: 0 12px 28px rgba(15, 23, 42, 0.05);
+  }
+
+  .trend-mobile-detail-head h3 {
+    font-size: 20px;
+    line-height: 1.16;
+  }
+
+  .trend-mobile-hero-chip {
+    min-height: 32px;
+    padding: 0 12px;
+    border-radius: 999px;
+    border: 1px solid rgba(203, 213, 225, 0.82);
+    background: rgba(255, 255, 255, 0.92);
+    color: #475569;
+    font-size: 11px;
+    font-weight: 800;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .trend-mobile-hero-price strong {
+    font-size: 28px;
+  }
+
+  .trend-mobile-overview {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .trend-mobile-pill {
+    display: grid;
+    gap: 4px;
+    padding: 10px 11px;
+    border: 1px solid rgba(226, 232, 240, 0.92);
+    border-radius: 14px;
+    background: #ffffff;
+  }
+
+  .trend-mobile-pill span {
+    color: #64748b;
+    font-size: 10px;
+    font-weight: 700;
+  }
+
+  .trend-mobile-pill strong {
+    color: #0f172a;
+    font-size: 15px;
+    line-height: 1.2;
+  }
+
+  .trend-mobile-pill small {
+    color: #64748b;
+    font-size: 11px;
+    line-height: 1.35;
+  }
+
+  .trend-mobile-chart-title {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+
+  .trend-mobile-chart-title strong {
+    color: #112033;
+    font-size: 15px;
+    line-height: 1.2;
+  }
+
+  .trend-mobile-chart-title span {
+    color: #63738c;
+    font-size: 11px;
+  }
+
+  .trend-mobile-svg-chart {
+    display: block;
+    width: 100%;
+    height: 164px;
+    border: 1px solid rgba(226, 232, 240, 0.92);
+    border-radius: 15px;
+    background: rgba(255, 255, 255, 0.9);
+  }
+
+  .trend-mobile-svg-chart line {
+    stroke: rgba(203, 213, 225, 0.84);
+    stroke-width: 1;
+  }
+
+  .trend-mobile-svg-chart polyline {
+    fill: none;
+    stroke-width: 2.6;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .trend-mobile-svg-chart .line-blue {
+    stroke: #2563eb;
+  }
+
+  .trend-mobile-svg-chart .line-green {
+    stroke: #16a34a;
+  }
+
+  .trend-mobile-svg-chart circle.line-blue {
+    fill: #2563eb;
+  }
+
+  .trend-mobile-svg-chart circle.line-green {
+    fill: #16a34a;
+  }
+
+  .trend-chart-shell,
+  .trend-mobile-market-board {
+    padding: 12px;
+    border: 1px solid rgba(226, 232, 240, 0.95);
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.98);
+    box-shadow: 0 12px 28px rgba(15, 23, 42, 0.05);
+  }
+
+  .trend-empty-workbench {
+    min-height: 0;
+    padding: 14px;
+    border-radius: 18px;
+    border-color: rgba(203, 213, 225, 0.72);
+    background:
+      linear-gradient(145deg, rgba(248, 251, 255, 0.94), rgba(255, 255, 255, 0.98)),
+      linear-gradient(135deg, rgba(37, 99, 235, 0.04), transparent);
+    box-shadow: 0 12px 28px rgba(15, 23, 42, 0.05);
+  }
+
+  .trend-empty-product-list-mobile .trend-empty-product-button {
+    min-height: 44px;
+    border-radius: 12px;
+    padding: 8px 10px;
+  }
+
+  .trend-empty-refresh-row .trend-empty-action {
+    min-height: 44px;
+  }
+
+  .trend-empty-next-actions button {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+    min-height: 52px;
+    padding: 9px 11px;
+    border: 1px solid rgba(203, 213, 225, 0.82);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.96);
+    color: #112033;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .trend-empty-next-actions button:active,
+  .trend-empty-next-actions button:focus-visible {
+    outline: none;
+    border-color: rgba(37, 99, 235, 0.24);
+    background: #eff6ff;
+  }
+
+  .trend-chart-mobile-nav {
+    gap: 8px;
+    margin-top: 8px;
+  }
+
+  .trend-chart-mobile-buttons button {
+    min-height: 42px;
+    border: 1px solid rgba(203, 213, 225, 0.82);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.98);
+    color: #2563eb;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 800;
+  }
+
+  .trend-chart-mobile-buttons button:disabled {
+    color: #94a3b8;
+  }
+
+  .trend-mobile-market-card {
+    padding: 10px 12px;
+    border-radius: 14px;
+    border: 1px solid rgba(226, 232, 240, 0.92);
+    background: #ffffff;
+  }
+
+  .trend-main-grid {
+    gap: 10px;
+  }
+
   .trend-mobile-decision-grid {
     grid-template-columns: 1fr;
   }
+
+  .trend-main-empty-state {
+    min-height: 0;
+    padding: 14px;
+    border-radius: 16px;
+  }
+
+  .trend-empty-workbench-copy strong {
+    font-size: 16px;
+  }
+
+  .trend-main-empty-copy {
+    display: grid;
+    gap: 6px;
+  }
+
+  .trend-main-empty-state {
+    min-height: 148px;
+  }
+
+  .trend-empty-product-list-mobile {
+    display: grid;
+    gap: 8px;
+    margin-top: 2px;
+  }
+
+  .trend-empty-product-list-mobile > span {
+    color: #63738c;
+    font-size: 11px;
+  }
+
+  .trend-empty-next-actions {
+    display: grid;
+    gap: 8px;
+    margin-top: 4px;
+  }
+
+  .trend-empty-next-actions > span {
+    color: #63738c;
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  .trend-empty-next-actions strong {
+    font-size: 13px;
+    line-height: 1.25;
+  }
+
+  .trend-empty-next-actions small {
+    color: #63738c;
+    font-size: 11px;
+    line-height: 1.35;
+  }
+
+  .trend-list-shell.compact {
+    margin-top: 6px;
+  }
+
+  .trend-list-head strong {
+    font-size: 14px;
+  }
+
+  .trend-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    padding: 10px 0;
+  }
+
+  .trend-row .trend-time {
+    display: none;
+  }
+
+  .trend-row strong {
+    font-size: 13px;
+  }
+
+  .trend-price {
+    font-size: 14px;
+  }
+
 }
 </style>

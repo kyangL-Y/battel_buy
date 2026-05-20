@@ -58,6 +58,7 @@ $stitchEnabled = [bool](Get-EnvValue -Name 'STITCH_API_KEY') -or (
     [bool](Get-EnvValue -Name 'STITCH_ACCESS_TOKEN') -and
     [bool](Get-EnvValue -Name 'GOOGLE_CLOUD_PROJECT')
 )
+$image2Enabled = [bool](Get-EnvValue -Name 'IMAGE2_API_KEY')
 
 $figmaBlock = @"
 [mcp_servers.figma]
@@ -75,6 +76,15 @@ command = "node"
 args = ["E:\\battel\\tools\\design-mcp\\stitch-proxy.mjs"]
 startup_timeout_sec = 20
 tool_timeout_sec = 120
+"@
+
+$image2Block = @"
+[mcp_servers.image2]
+type = "stdio"
+command = "node"
+args = ["E:\\battel\\tools\\design-mcp\\image2-mcp.mjs"]
+startup_timeout_sec = 20
+tool_timeout_sec = 300
 "@
 
 Copy-Item -LiteralPath $codexConfig -Destination $backupPath -Force
@@ -103,6 +113,15 @@ if ($stitchEnabled) {
 else {
     $content = Remove-McpBlock -Content $content -ServerName 'stitch'
     $actions += 'stitch=disabled(missing Stitch credentials)'
+}
+
+if ($image2Enabled) {
+    $content = Set-McpBlock -Content $content -ServerName 'image2' -Block $image2Block
+    $actions += 'image2=enabled'
+}
+else {
+    $content = Remove-McpBlock -Content $content -ServerName 'image2'
+    $actions += 'image2=disabled(missing IMAGE2_API_KEY)'
 }
 
 $normalizedContent = ($content.TrimEnd("`r", "`n") + "`r`n")

@@ -39,8 +39,19 @@ export const MARKET_CATEGORY_RULES: MarketCategoryRule[] = [
   },
 ]
 
-export function resolveMarketCategory(productName?: string | null) {
-  const normalizedName = String(productName || '').trim()
+export function resolveMarketCategory(rowOrProductName?: MarketSummaryItem | string | null) {
+  if (rowOrProductName && typeof rowOrProductName === 'object') {
+    const liancaiTopCategory = String(rowOrProductName.liancai_top_category || '').trim()
+    if (liancaiTopCategory) return liancaiTopCategory
+    const liancaiSubcategory = String(rowOrProductName.liancai_subcategory || '').trim()
+    if (liancaiSubcategory && liancaiSubcategory !== '全部') return liancaiSubcategory
+    const normalizedName = String(rowOrProductName.product_name || '').trim()
+    if (!normalizedName) return '精选'
+    const matchedRule = MARKET_CATEGORY_RULES.find((rule) => rule.keywords.test(normalizedName))
+    return matchedRule?.label || '精选'
+  }
+
+  const normalizedName = String(rowOrProductName || '').trim()
   if (!normalizedName) {
     return '精选'
   }
@@ -49,11 +60,30 @@ export function resolveMarketCategory(productName?: string | null) {
   return matchedRule?.label || '精选'
 }
 
+export function resolveMarketCategoryMeta(row?: MarketSummaryItem | null) {
+  const liancaiSubcategory = String(row?.liancai_subcategory || '').trim()
+  const liancaiTopCategory = String(row?.liancai_top_category || '').trim()
+  if (liancaiSubcategory || liancaiTopCategory) {
+    const primary = liancaiTopCategory || (liancaiSubcategory !== '全部' ? liancaiSubcategory : '') || '精选'
+    const secondary = liancaiSubcategory && liancaiSubcategory !== '全部' && liancaiSubcategory !== primary
+      ? liancaiSubcategory
+      : ''
+    return {
+      primary,
+      secondary,
+    }
+  }
+  return {
+    primary: resolveMarketCategory(row || ''),
+    secondary: '',
+  }
+}
+
 export function buildMarketCategoryTabs(rows: MarketSummaryItem[]) {
   const counts = new Map<string, number>()
 
   rows.forEach((row) => {
-    const label = resolveMarketCategory(row.product_name)
+    const label = resolveMarketCategory(row)
     counts.set(label, (counts.get(label) || 0) + 1)
   })
 

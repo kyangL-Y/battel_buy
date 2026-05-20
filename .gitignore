@@ -15,17 +15,22 @@ web/dist/
 
 # Local runtime data
 logs/
+*.log
+nul
 data/*.db
 data/*.sqlite
 data/*.sqlite3
 web/artifacts/
-web/preview*.log
+web/*.log
+web/*.png
 
 # Local tooling / scratch
 .claude/
 .helloagents/
 .streamlit/
+.tmp/
 .tmp_research/
+web/.tmp/
 web/test-results/
 
 # Release packages
