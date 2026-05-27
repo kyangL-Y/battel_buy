@@ -118,7 +118,7 @@ export function buildProductAlertHit(
     const seriesKey = String(item.trend_series_key || '').trim()
     return (!seriesKey || seriesKey === rule.identityKey) && sourceMatches(rule.sourceName, item)
   })
-  const latestTrend = trendCandidates.at(-1)
+  const latestTrend = trendCandidates.length ? trendCandidates[trendCandidates.length - 1] : undefined
   let summaryPrice: number | null = null
   if (!rule.sourceName) {
     const value = Number(summaryRow?.average_price ?? summaryRow?.lowest_price ?? 0)
@@ -149,6 +149,7 @@ export function buildProductAlertHit(
   ).trim()
 
   if (rule.maxPrice > 0 && currentPrice >= rule.maxPrice) {
+    const overflow = currentPrice - rule.maxPrice
     return {
       identityKey: rule.identityKey,
       productLabel: rule.productLabel,
@@ -158,10 +159,11 @@ export function buildProductAlertHit(
       triggered: true,
       tone: 'up',
       type: '最高价提醒',
-      rule: `当前价 >= ${rule.maxPrice.toFixed(2)}`,
+      rule: `当前价 ${currentPrice.toFixed(2)}，较上限 ${rule.maxPrice.toFixed(2)} 高 ${overflow.toFixed(2)}`,
     }
   }
   if (rule.minPrice > 0 && currentPrice <= rule.minPrice) {
+    const underflow = rule.minPrice - currentPrice
     return {
       identityKey: rule.identityKey,
       productLabel: rule.productLabel,
@@ -171,10 +173,18 @@ export function buildProductAlertHit(
       triggered: true,
       tone: 'down',
       type: '最低价提醒',
-      rule: `当前价 <= ${rule.minPrice.toFixed(2)}`,
+      rule: `当前价 ${currentPrice.toFixed(2)}，较下限 ${rule.minPrice.toFixed(2)} 低 ${underflow.toFixed(2)}`,
     }
   }
   if (rule.maxPrice > 0 || rule.minPrice > 0) {
+    const distanceToMin = rule.minPrice > 0 ? currentPrice - rule.minPrice : Number.POSITIVE_INFINITY
+    const distanceToMax = rule.maxPrice > 0 ? rule.maxPrice - currentPrice : Number.POSITIVE_INFINITY
+    const nearestDistance = Math.min(distanceToMin, distanceToMax)
+    const nearestRuleText = distanceToMin <= distanceToMax && rule.minPrice > 0
+      ? `距下限 ${rule.minPrice.toFixed(2)} 还差 ${Math.max(distanceToMin, 0).toFixed(2)}`
+      : rule.maxPrice > 0
+        ? `距上限 ${rule.maxPrice.toFixed(2)} 还差 ${Math.max(distanceToMax, 0).toFixed(2)}`
+        : ''
     return {
       identityKey: rule.identityKey,
       productLabel: rule.productLabel,
@@ -184,10 +194,7 @@ export function buildProductAlertHit(
       triggered: false,
       tone: 'warn',
       type: '价格观察',
-      rule: [
-        rule.minPrice > 0 ? `>= ${rule.minPrice.toFixed(2)}` : '',
-        rule.maxPrice > 0 ? `<= ${rule.maxPrice.toFixed(2)}` : '',
-      ].filter(Boolean).join(' 且 '),
+      rule: nearestDistance !== Number.POSITIVE_INFINITY ? `当前价 ${currentPrice.toFixed(2)}，${nearestRuleText}` : `当前价 ${currentPrice.toFixed(2)}`,
     }
   }
   return null

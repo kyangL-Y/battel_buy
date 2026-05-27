@@ -265,7 +265,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus/es/components/message/index.mjs'
-import { fetchProductSupplierQuotes, fetchSuppliers, submitSupplierQuote } from '../api'
+import { fetchProductSupplierQuotes, fetchSuppliers, getAccessToken, submitSupplierQuote } from '../api'
 import type {
   SupplierItem,
   SupplierQuoteCompareSummary,
@@ -286,7 +286,7 @@ const quoteSummary = ref<SupplierQuoteCompareSummary | null>(null)
 const quoteRows = ref<SupplierQuoteItem[]>([])
 const selectedSupplierId = ref<number | undefined>(undefined)
 const quoteKeyword = ref('')
-const quoteStatusFilter = ref<'all' | 'below' | 'available'>('all')
+const quoteStatusFilter = ref<'all' | 'below' | 'available' | 'out_of_stock'>('all')
 const selectedQuoteKeys = ref<string[]>([])
 const activeQuoteDetailKey = ref('')
 
@@ -338,6 +338,7 @@ const filteredQuoteRows = computed(() =>
   quoteRows.value.filter((item) => {
     if (quoteStatusFilter.value === 'below' && !isQuoteBelowMarket(item)) return false
     if (quoteStatusFilter.value === 'available' && !hasAvailableInventory(item)) return false
+    if (quoteStatusFilter.value === 'out_of_stock' && hasAvailableInventory(item)) return false
     const keyword = quoteKeyword.value.trim().toLowerCase()
     if (!keyword) return true
     return [
@@ -365,6 +366,7 @@ const quoteFilterTabs = computed(() => [
   { key: 'all' as const, label: '全部', count: quoteRows.value.length },
   { key: 'below' as const, label: '低于公开价', count: quoteRows.value.filter(isQuoteBelowMarket).length },
   { key: 'available' as const, label: '有货', count: quoteRows.value.filter(hasAvailableInventory).length },
+  { key: 'out_of_stock' as const, label: '缺货', count: quoteRows.value.filter((item) => !hasAvailableInventory(item)).length },
 ])
 
 function resetForm(keepSupplier = false) {
@@ -459,6 +461,10 @@ async function copySelectedQuotes() {
 }
 
 async function loadSupplierOptions() {
+  if (!getAccessToken()) {
+    supplierOptions.value = []
+    return
+  }
   try {
     const response = await fetchSuppliers(true)
     supplierOptions.value = response.items ?? []
@@ -473,6 +479,11 @@ async function loadQuoteRows() {
     quoteRows.value = []
     return
   }
+  if (!getAccessToken()) {
+    quoteSummary.value = null
+    quoteRows.value = []
+    return
+  }
   const response = await fetchProductSupplierQuotes(props.selectedIdentityKey)
   quoteSummary.value = response.summary
   quoteRows.value = response.items ?? []
@@ -480,6 +491,13 @@ async function loadQuoteRows() {
 
 async function reloadAll() {
   if (!props.selectedIdentityKey) return
+  if (!getAccessToken()) {
+    supplierOptions.value = []
+    quoteSummary.value = null
+    quoteRows.value = []
+    loading.value = false
+    return
+  }
   loading.value = true
   try {
     await Promise.all([loadSupplierOptions(), loadQuoteRows()])

@@ -358,6 +358,7 @@ import './supplier-portal.css'
 
 const MAIN_APP_PATH = '/'
 const SUPPLIER_BACKEND_PATH = '/supplier-backend'
+const ACCOUNT_USERNAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.@-]{2,63}$/
 const { isMobileViewport } = useViewport()
 
 const authSession = ref<AuthLoginResponse | null>(readAuthSession())
@@ -767,6 +768,10 @@ function submitRegisterRequest() {
   const username = registerForm.username.trim()
   if (!supplierName || !contactPhone || !username) {
     authError.value = '请填写供应商名称、手机号和登录账号'
+    return
+  }
+  if (!ACCOUNT_USERNAME_PATTERN.test(username)) {
+    authError.value = '登录账号需为 3-64 位，只能包含字母、数字、下划线、中划线、点或 @'
     return
   }
   authSubmitting.value = true

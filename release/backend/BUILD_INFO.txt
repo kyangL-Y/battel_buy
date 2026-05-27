@@ -1,4 +1,2 @@
-build_time=2026-05-20 14:20:13
-source_dir=E:\battel
-entry=main_api:app
-start=/bin/bash start_backend.sh
+build_time=2026-05-21 17:55:50
+notes=backend-runtime-only-no-frontend-dist

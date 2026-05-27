@@ -163,6 +163,26 @@ INGREDIENT_FAMILY_KEYWORDS = {
         "蛋",
     ],
 }
+INGREDIENT_PROCESSING_PROFILES = [
+    {
+        "keywords": ("牛肉", "牛腩", "牛腱", "牛里脊", "牛排"),
+        "edible_yield_ratio": 0.9,
+        "cooking_yield_ratio": 0.78,
+        "profile_label": "牛肉修切+炖煮损耗",
+    },
+    {
+        "keywords": ("黄瓜", "青瓜"),
+        "edible_yield_ratio": 0.86,
+        "cooking_yield_ratio": 1.0,
+        "profile_label": "黄瓜去皮损耗",
+    },
+    {
+        "keywords": ("土豆", "马铃薯", "洋芋"),
+        "edible_yield_ratio": 0.84,
+        "cooking_yield_ratio": 1.0,
+        "profile_label": "块茎去皮损耗",
+    },
+]
 MENU_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
@@ -385,6 +405,10 @@ def _build_menu_alias_keys(menu_name: str, ingredient_name: str) -> list[str]:
             candidates.extend(alias_keys)
     deduped: list[str] = []
     for item in candidates:
+        if "冷冻" in item:
+            candidates.append(item.replace("冷冻", "冻"))
+        if "速冻" in item:
+            candidates.append(item.replace("速冻", "冻"))
         if item and item not in deduped:
             deduped.append(item)
     return deduped
@@ -534,6 +558,20 @@ def _build_market_context_text(row: pd.Series) -> str:
             _safe_text(row.get("market_name")),
         ]
     )
+
+
+def _build_ingredient_match_rank(row: pd.Series, normalized_candidates: list[str]) -> int:
+    market_key = _normalize_name(_build_market_context_text(row))
+    product_key = _normalize_name(_safe_text(row.get("product_name")))
+    group_key = _normalize_name(_safe_text(row.get("group_name")))
+
+    if any(candidate and candidate == product_key for candidate in normalized_candidates):
+        return 0
+    if any(candidate and candidate == group_key for candidate in normalized_candidates):
+        return 1
+    if any(candidate and candidate in market_key for candidate in normalized_candidates):
+        return 2
+    return 3
 
 
 def _has_effective_location(row: pd.Series) -> bool:
@@ -696,6 +734,20 @@ def _infer_quantity(category: str | None, ingredient_family: str, diners: int, t
     if ingredient_family == "vegetable" or any(keyword in category_text for keyword in ["菜", "蔬", "菌", "豆"]):
         return round(effective_tables * 0.8 + effective_diners * 0.03, 2), "公斤"
     return round(effective_tables * 0.6 + effective_diners * 0.02, 2), "公斤"
+
+
+def _resolve_processing_profile(ingredient_name: str, category: str | None) -> tuple[float, float, str]:
+    ingredient_text = str(ingredient_name or "").strip()
+    category_text = str(category or "").strip()
+    combined_text = f"{ingredient_text} {category_text}"
+    for profile in INGREDIENT_PROCESSING_PROFILES:
+        keywords = tuple(profile.get("keywords") or ())
+        if any(keyword and keyword in combined_text for keyword in keywords):
+            edible_yield_ratio = float(profile.get("edible_yield_ratio") or 1.0)
+            cooking_yield_ratio = float(profile.get("cooking_yield_ratio") or 1.0)
+            profile_label = str(profile.get("profile_label") or "默认净料换算")
+            return edible_yield_ratio, cooking_yield_ratio, profile_label
+    return 1.0, 1.0, "默认净料换算"
 
 
 def enrich_menu_items_with_ai(
@@ -871,6 +923,8 @@ def build_procurement_plan(
         latest["match_key"] = latest["match_text"].apply(_normalize_name)
     plan_rows: list[dict[str, Any]] = []
     ingredient_rows: list[dict[str, Any]] = []
+    effective_tables = max(1, int(tables or 0))
+    effective_diners = max(1, int(diners or 0))
 
     for row in expanded_menu_items:
         menu_name = str(row.get("menu_name") or "").strip()
@@ -890,6 +944,10 @@ def build_procurement_plan(
         ingredient_family = _infer_ingredient_family(ingredient_name)
         if not candidates.empty and "current_price" in candidates.columns:
             candidates = candidates.dropna(subset=["current_price"]).copy()
+            candidates["ingredient_match_rank"] = candidates.apply(
+                lambda candidate_row: _build_ingredient_match_rank(candidate_row, normalized_candidates),
+                axis=1,
+            )
             if "spec_text" in candidates.columns:
                 spec_meta = candidates["spec_text"].apply(parse_spec)
                 candidates["kg_price"] = [
@@ -913,8 +971,8 @@ def build_procurement_plan(
                 axis=1,
             )
             candidates = candidates.sort_values(
-                ["location_rank", "source_priority", "kg_price", "current_price", "site_name"],
-                ascending=[True, True, True, True, True],
+                ["location_rank", "source_priority", "ingredient_match_rank", "kg_price", "current_price", "site_name"],
+                ascending=[True, True, True, True, True, True],
                 na_position="last",
             )
             if not candidates.empty:
@@ -929,18 +987,37 @@ def build_procurement_plan(
                     price_unit_basis = "原始报价"
 
         category = chosen.get("category") if chosen is not None else None
-        estimated_quantity, quantity_unit = _infer_quantity(category, ingredient_family=ingredient_family, diners=diners, tables=tables)
-        if estimated_quantity is not None:
-            estimated_quantity = round(float(estimated_quantity) * ingredient_ratio, 2)
+        net_quantity, quantity_unit = _infer_quantity(category, ingredient_family=ingredient_family, diners=effective_diners, tables=effective_tables)
+        if net_quantity is not None:
+            net_quantity = round(float(net_quantity) * ingredient_ratio, 2)
+        edible_yield_ratio, cooking_yield_ratio, profile_label = _resolve_processing_profile(ingredient_name, category)
+        purchase_yield_ratio = round(max(edible_yield_ratio * cooking_yield_ratio, 0.01), 4)
+        estimated_quantity = (
+            round(float(net_quantity) / purchase_yield_ratio, 2)
+            if net_quantity is not None
+            else None
+        )
         estimated_cost = round(unit_price * estimated_quantity, 2) if unit_price is not None and estimated_quantity is not None else None
+        processing_assumption = (
+            f"按{effective_tables}桌共{effective_diners}人测算；净料{net_quantity}公斤，"
+            f"套用{profile_label}（可食率{edible_yield_ratio:.0%}×熟制率{cooking_yield_ratio:.0%}），"
+            f"折算采购毛料{estimated_quantity}公斤。"
+            if estimated_quantity is not None and net_quantity is not None
+            else f"按{effective_tables}桌共{effective_diners}人测算；当前缺少可计算的数量或价格。"
+        )
 
         ingredient_rows.append(
             {
                 "menu_name": menu_name,
                 "ingredient_name": ingredient_name,
                 "ingredient_ratio": ingredient_ratio,
+                "net_quantity": net_quantity,
                 "estimated_quantity": estimated_quantity,
                 "quantity_unit": quantity_unit,
+                "edible_yield_ratio": edible_yield_ratio,
+                "cooking_yield_ratio": cooking_yield_ratio,
+                "purchase_yield_ratio": purchase_yield_ratio,
+                "processing_profile": profile_label,
                 "remarks": row.get("remarks"),
             }
         )
@@ -958,11 +1035,17 @@ def build_procurement_plan(
                 "menu_name": menu_name,
                 "ingredient_name": ingredient_name,
                 "ingredient_ratio": ingredient_ratio,
+                "net_quantity": net_quantity,
                 "estimated_quantity": estimated_quantity,
                 "quantity_unit": quantity_unit,
                 "price_unit_basis": price_unit_basis,
                 "reference_price": unit_price,
                 "estimated_cost": estimated_cost,
+                "edible_yield_ratio": edible_yield_ratio,
+                "cooking_yield_ratio": cooking_yield_ratio,
+                "purchase_yield_ratio": purchase_yield_ratio,
+                "processing_profile": profile_label,
+                "guest_context": f"{effective_tables}桌共{effective_diners}人",
                 "recommended_market": chosen.get("market_name") if chosen is not None else pd.NA,
                 "recommended_site": chosen.get("site_name") if chosen is not None else pd.NA,
                 "province": chosen.get("province") if chosen is not None else pd.NA,
@@ -988,7 +1071,7 @@ def build_procurement_plan(
                     else pd.NA
                 ),
                 "price_status": price_status,
-                "remarks": row.get("remarks") or recommendation_reason,
+                "remarks": row.get("remarks") or f"{processing_assumption} {recommendation_reason}",
             }
         )
 

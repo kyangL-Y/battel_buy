@@ -53,6 +53,11 @@ def test_parse_spec():
         "unit_value": 500.0,
         "spec_text": "元/500克",
     }
+    assert parse_spec("两斤/袋") == {
+        "unit_name": "g",
+        "unit_value": 1000.0,
+        "spec_text": "两斤/袋",
+    }
 
 
 def test_compute_unit_price():
@@ -100,3 +105,38 @@ def test_normalize_product_metadata_supports_chinese_units_and_compare_key():
     assert result["unit_price"] == 0.5
     assert result["jin_price"] == 2.5
     assert result["kg_price"] == 5.0
+
+
+def test_normalize_product_metadata_uses_product_name_spec_when_spec_only_has_unit():
+    result = normalize_product_metadata(
+        {
+            "product_name": "冻虾五斤",
+            "category": "水产",
+            "spec_text": "斤",
+        },
+        current_price=138.0,
+    )
+
+    assert result["spec_text"] == "5斤"
+    assert result["unit_name"] == "g"
+    assert result["unit_value"] == 2500.0
+    assert result["jin_price"] == 27.6
+    assert result["kg_price"] == 55.2
+
+
+def test_normalize_product_metadata_keeps_liancai_spec_raw_when_only_unit_present():
+    result = normalize_product_metadata(
+        {
+            "product_name": "冻虾五斤",
+            "category": "水产",
+            "spec_text": "斤",
+            "site_name": "莲菜网H5 | 冻品类",
+            "source_url": "https://m.liancaiwang.cn/list/index/id/6.html",
+        },
+        current_price=138.0,
+    )
+
+    assert result["spec_text"] == "斤"
+    assert result["unit_name"] == "g"
+    assert result["unit_value"] == 500.0
+    assert result["jin_price"] == 138.0

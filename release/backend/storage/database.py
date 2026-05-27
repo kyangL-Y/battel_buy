@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import threading
 from contextlib import contextmanager
 from datetime import datetime
@@ -16,6 +17,7 @@ from utils.config_loader import BASE_DIR, load_database_config
 
 
 DEFAULT_DB_PATH = BASE_DIR / "data" / "price_tracker.db"
+AUTH_USERNAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.@-]{2,63}$")
 TABLE_ORDER = [
     "products",
     "price_records",
@@ -174,7 +176,11 @@ AUTH_USER_COLUMNS = {
     "supplier_id": "INTEGER",
     "display_name": "TEXT",
     "is_active": "INTEGER",
+    "is_deleted": "INTEGER",
     "last_login_at": "TEXT",
+    "deleted_at": "TEXT",
+    "deleted_by": "TEXT",
+    "deleted_username": "TEXT",
     "updated_at": "TEXT",
 }
 
@@ -666,35 +672,14 @@ class Database:
                 SELECT id
                 FROM auth_users
                 WHERE username = :username
+                  AND COALESCE(is_deleted, 0) = 0
                 LIMIT 1
                 """
             ),
             {"username": DEFAULT_ADMIN_USERNAME},
         ).fetchone()
         if existing_row:
-            conn.execute(
-                text(
-                    """
-                    UPDATE auth_users
-                    SET password_hash = :password_hash,
-                        role = :role,
-                        supplier_id = :supplier_id,
-                        display_name = :display_name,
-                        is_active = :is_active,
-                        updated_at = :updated_at
-                    WHERE id = :user_id
-                    """
-                ),
-                {
-                    "user_id": int(existing_row[0]),
-                    "password_hash": hash_password(DEFAULT_ADMIN_PASSWORD),
-                    "role": "admin",
-                    "supplier_id": None,
-                    "display_name": DEFAULT_ADMIN_DISPLAY_NAME,
-                    "is_active": 1,
-                    "updated_at": now,
-                },
-            )
+            # 只在缺失时种子管理员；已有账号不应在每次启动时被重置密码或重新启用。
             return
 
         conn.execute(
@@ -728,6 +713,14 @@ class Database:
             raise ValueError("role must be admin or supplier")
         return normalized_role
 
+    def _normalize_auth_username(self, username: str | None) -> str:
+        normalized_username = str(username or "").strip()
+        if not normalized_username:
+            raise ValueError("username is required")
+        if not AUTH_USERNAME_RE.match(normalized_username):
+            raise ValueError("username must be 3-64 characters and only contain letters, numbers, underscore, dash, dot or @")
+        return normalized_username
+
     def upsert_auth_user(
         self,
         *,
@@ -739,9 +732,7 @@ class Database:
         is_active: bool = True,
         user_id: int | None = None,
     ) -> int:
-        normalized_username = str(username or "").strip()
-        if not normalized_username:
-            raise ValueError("username is required")
+        normalized_username = self._normalize_auth_username(username)
 
         normalized_role = self._normalize_auth_user_role(role)
         if normalized_role == "supplier" and supplier_id is None:
@@ -754,19 +745,34 @@ class Database:
             existing = None
             if user_id is not None:
                 existing = conn.execute(
-                    text("SELECT * FROM auth_users WHERE id = :user_id"),
+                    text("SELECT * FROM auth_users WHERE id = :user_id AND COALESCE(is_deleted, 0) = 0"),
                     {"user_id": int(user_id)},
                 ).mappings().fetchone()
+                if existing is None:
+                    raise ValueError("auth user not found")
             if existing is None and normalized_role == "supplier" and supplier_id is not None:
                 existing = conn.execute(
-                    text("SELECT * FROM auth_users WHERE role = 'supplier' AND supplier_id = :supplier_id"),
+                    text(
+                        """
+                        SELECT *
+                        FROM auth_users
+                        WHERE role = 'supplier'
+                          AND supplier_id = :supplier_id
+                          AND COALESCE(is_deleted, 0) = 0
+                        """
+                    ),
                     {"supplier_id": int(supplier_id)},
                 ).mappings().fetchone()
-            if existing is None:
-                existing = conn.execute(
-                    text("SELECT * FROM auth_users WHERE username = :username"),
-                    {"username": normalized_username},
-                ).mappings().fetchone()
+            username_owner = conn.execute(
+                text("SELECT * FROM auth_users WHERE username = :username AND COALESCE(is_deleted, 0) = 0"),
+                {"username": normalized_username},
+            ).mappings().fetchone()
+            if username_owner is not None:
+                username_owner_row = dict(username_owner)
+                if existing is None and normalized_role == "admin":
+                    existing = username_owner
+                elif existing is None or int(username_owner_row.get("id") or 0) != int(dict(existing).get("id") or 0):
+                    raise ValueError("username already exists")
 
             if existing is not None:
                 existing_row = dict(existing)
@@ -783,6 +789,10 @@ class Database:
                             supplier_id = :supplier_id,
                             display_name = :display_name,
                             is_active = :is_active,
+                            is_deleted = 0,
+                            deleted_at = NULL,
+                            deleted_by = NULL,
+                            deleted_username = NULL,
                             updated_at = :updated_at
                         WHERE id = :user_id
                         """
@@ -808,10 +818,12 @@ class Database:
                     """
                     INSERT INTO auth_users (
                         username, password_hash, role, supplier_id,
-                        display_name, is_active, last_login_at, created_at, updated_at
+                        display_name, is_active, is_deleted, last_login_at,
+                        deleted_at, deleted_by, deleted_username, created_at, updated_at
                     ) VALUES (
                         :username, :password_hash, :role, :supplier_id,
-                        :display_name, :is_active, :last_login_at, :created_at, :updated_at
+                        :display_name, :is_active, :is_deleted, :last_login_at,
+                        :deleted_at, :deleted_by, :deleted_username, :created_at, :updated_at
                     )
                     """
                 ),
@@ -822,7 +834,11 @@ class Database:
                     "supplier_id": int(supplier_id) if supplier_id is not None else None,
                     "display_name": str(display_name or "").strip() or None,
                     "is_active": 1 if is_active else 0,
+                    "is_deleted": 0,
                     "last_login_at": None,
+                    "deleted_at": None,
+                    "deleted_by": None,
+                    "deleted_username": None,
                     "created_at": now,
                     "updated_at": now,
                 },
@@ -839,6 +855,7 @@ class Database:
                     SET last_login_at = :last_login_at,
                         updated_at = :updated_at
                     WHERE id = :user_id
+                      AND COALESCE(is_deleted, 0) = 0
                     """
                 ),
                 {
@@ -849,7 +866,8 @@ class Database:
             )
         return int(user_id) if int(getattr(result, "rowcount", 0) or 0) > 0 else None
 
-    def _build_auth_user_query(self, where_sql: str) -> str:
+    def _build_auth_user_query(self, where_sql: str, *, include_deleted: bool = False) -> str:
+        deleted_filter = "" if include_deleted else " AND COALESCE(u.is_deleted, 0) = 0"
         return f"""
         SELECT
             u.id,
@@ -859,7 +877,11 @@ class Database:
             u.supplier_id,
             u.display_name,
             u.is_active,
+            u.is_deleted,
             u.last_login_at,
+            u.deleted_at,
+            u.deleted_by,
+            u.deleted_username,
             u.created_at,
             u.updated_at,
             s.supplier_name,
@@ -872,30 +894,149 @@ class Database:
             s.is_active AS supplier_is_active
         FROM auth_users u
         LEFT JOIN suppliers s ON s.id = u.supplier_id
-        WHERE {where_sql}
+        WHERE ({where_sql}){deleted_filter}
         LIMIT 1
         """
 
-    def get_auth_user_by_username(self, username: str) -> pd.DataFrame:
+    def get_auth_user_by_username(self, username: str, *, include_deleted: bool = False) -> pd.DataFrame:
         normalized_username = str(username or "").strip()
         if not normalized_username:
             return pd.DataFrame()
         return self._read_sql(
-            self._build_auth_user_query("u.username = :username"),
+            self._build_auth_user_query("u.username = :username", include_deleted=include_deleted),
             {"username": normalized_username},
         )
 
-    def get_auth_user_by_id(self, user_id: int) -> pd.DataFrame:
+    def get_auth_user_by_id(self, user_id: int, *, include_deleted: bool = False) -> pd.DataFrame:
         return self._read_sql(
-            self._build_auth_user_query("u.id = :user_id"),
+            self._build_auth_user_query("u.id = :user_id", include_deleted=include_deleted),
             {"user_id": int(user_id)},
         )
 
-    def get_auth_user_by_supplier_id(self, supplier_id: int) -> pd.DataFrame:
+    def get_auth_user_by_supplier_id(self, supplier_id: int, *, include_deleted: bool = False) -> pd.DataFrame:
         return self._read_sql(
-            self._build_auth_user_query("u.role = 'supplier' AND u.supplier_id = :supplier_id"),
+            self._build_auth_user_query(
+                "u.role = 'supplier' AND u.supplier_id = :supplier_id",
+                include_deleted=include_deleted,
+            ),
             {"supplier_id": int(supplier_id)},
         )
+
+    def get_auth_users(
+        self,
+        role: str | None = None,
+        active_status: str | None = None,
+        keyword: str | None = None,
+        include_deleted: bool = False,
+    ) -> pd.DataFrame:
+        where_clauses: list[str] = []
+        params: dict[str, Any] = {}
+        if not include_deleted:
+            where_clauses.append("COALESCE(u.is_deleted, 0) = 0")
+        normalized_role = str(role or "").strip().lower()
+        if normalized_role in {"admin", "supplier"}:
+            where_clauses.append("u.role = :role")
+            params["role"] = normalized_role
+        normalized_status = str(active_status or "").strip().lower()
+        if normalized_status == "active":
+            where_clauses.append("COALESCE(u.is_active, 0) = 1")
+        elif normalized_status == "inactive":
+            where_clauses.append("COALESCE(u.is_active, 0) = 0")
+        normalized_keyword = str(keyword or "").strip().lower()
+        if normalized_keyword:
+            params["keyword_like"] = f"%{normalized_keyword}%"
+            where_clauses.append(
+                """
+                (
+                    LOWER(COALESCE(u.username, '')) LIKE :keyword_like
+                    OR LOWER(COALESCE(u.display_name, '')) LIKE :keyword_like
+                    OR LOWER(COALESCE(s.supplier_name, '')) LIKE :keyword_like
+                    OR LOWER(COALESCE(s.contact_name, '')) LIKE :keyword_like
+                    OR LOWER(COALESCE(s.contact_phone, '')) LIKE :keyword_like
+                )
+                """
+            )
+        where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
+        return self._read_sql(
+            f"""
+            SELECT
+                u.id,
+                u.username,
+                u.password_hash,
+                u.role,
+                u.supplier_id,
+                u.display_name,
+                u.is_active,
+                u.is_deleted,
+                u.last_login_at,
+                u.deleted_at,
+                u.deleted_by,
+                u.deleted_username,
+                u.created_at,
+                u.updated_at,
+                s.supplier_name,
+                s.contact_name AS supplier_contact_name,
+                s.contact_phone AS supplier_contact_phone,
+                s.market_scope AS supplier_market_scope,
+                s.market_category AS supplier_market_category,
+                s.channel AS supplier_channel,
+                s.notes AS supplier_notes,
+                s.is_active AS supplier_is_active
+            FROM auth_users u
+            LEFT JOIN suppliers s ON s.id = u.supplier_id
+            {where_sql}
+            ORDER BY
+                CASE u.role WHEN 'admin' THEN 0 ELSE 1 END,
+                COALESCE(u.is_active, 0) DESC,
+                u.updated_at DESC,
+                u.id DESC
+            """,
+            params,
+        )
+
+    def delete_auth_user(self, user_id: int, deleted_by: str | None = None) -> bool:
+        now = datetime.utcnow().isoformat()
+        normalized_user_id = int(user_id)
+        archived_username = f"__deleted_{normalized_user_id}"
+        with self.connect() as conn:
+            existing = conn.execute(
+                text(
+                    """
+                    SELECT username
+                    FROM auth_users
+                    WHERE id = :user_id
+                      AND COALESCE(is_deleted, 0) = 0
+                    """
+                ),
+                {"user_id": normalized_user_id},
+            ).mappings().fetchone()
+            if existing is None:
+                return False
+            result = conn.execute(
+                text(
+                    """
+                    UPDATE auth_users
+                    SET username = :archived_username,
+                        is_active = 0,
+                        is_deleted = 1,
+                        deleted_at = :deleted_at,
+                        deleted_by = :deleted_by,
+                        deleted_username = :deleted_username,
+                        updated_at = :updated_at
+                    WHERE id = :user_id
+                      AND COALESCE(is_deleted, 0) = 0
+                    """
+                ),
+                {
+                    "user_id": normalized_user_id,
+                    "archived_username": archived_username,
+                    "deleted_at": now,
+                    "deleted_by": str(deleted_by or "").strip() or None,
+                    "deleted_username": str(existing.get("username") or "").strip() or None,
+                    "updated_at": now,
+                },
+            )
+            return int(getattr(result, "rowcount", 0) or 0) > 0
 
     def reset_all_data(self) -> None:
         with self.connect() as conn:
@@ -1896,11 +2037,9 @@ class Database:
         username: str | None = None,
     ) -> int:
         normalized_company_name = str(company_name or "").strip()
-        normalized_username = str(username or "").strip()
+        normalized_username = self._normalize_auth_username(username)
         if not normalized_company_name:
             raise ValueError("company_name is required")
-        if not normalized_username:
-            raise ValueError("username is required")
 
         existing_auth = self.get_auth_user_by_username(normalized_username)
         if not existing_auth.empty:

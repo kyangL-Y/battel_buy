@@ -6,6 +6,7 @@ from datetime import datetime
 from functools import lru_cache
 import hashlib
 from pathlib import Path
+import re
 import shutil
 import json
 import logging
@@ -54,7 +55,11 @@ from api.schemas import (
     AuthLoginRequest,
     AuthLoginResponse,
     AuthMeResponse,
+    AuthUserCreateRequest,
+    AuthUserDeleteResponse,
     AuthUserItem,
+    AuthUserListResponse,
+    AuthUserUpdateRequest,
     CrawlRunRequest,
     CrawlRunResponse,
     CrawlScheduleUpdateRequest,
@@ -138,6 +143,8 @@ DEFAULT_SUPPLIER_QUOTE_DUPLICATE_MATCH_FIELDS = (
     "market_scope",
 )
 SUPPORTED_SUPPLIER_QUOTE_DUPLICATE_MATCH_FIELDS = frozenset(DEFAULT_SUPPLIER_QUOTE_DUPLICATE_MATCH_FIELDS)
+ACCOUNT_USERNAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.@-]{2,63}$")
+MIN_ACCOUNT_PASSWORD_LENGTH = 8
 
 
 def get_crawl_manager() -> CrawlManager:
@@ -294,12 +301,14 @@ def _cached_product_summary_payload(
     cache_bucket: int,
     province: str,
     city: str,
+    source_name: str,
     liancai_top_category: str,
     liancai_subcategory: str,
     liancai_keyword: str,
     liancai_brand: str,
 ) -> dict:
     history_df = _cached_product_history_df(identity_key, cache_bucket)
+    history_df = _filter_by_source_name(history_df, source_name or None)
     history_df = _filter_by_liancai_category(
         history_df,
         liancai_top_category=liancai_top_category or None,
@@ -324,12 +333,14 @@ def _cached_product_trend_payload(
     series_key: str,
     province: str,
     city: str,
+    source_name: str,
     liancai_top_category: str,
     liancai_subcategory: str,
     liancai_keyword: str,
     liancai_brand: str,
 ) -> tuple[str, tuple[dict, ...]]:
     history_df = _cached_product_history_df(identity_key, cache_bucket)
+    history_df = _filter_by_source_name(history_df, source_name or None)
     history_df = _filter_by_liancai_category(
         history_df,
         liancai_top_category=liancai_top_category or None,
@@ -415,6 +426,30 @@ def _product_options_page_from_market_summary(
         "offset": offset,
         "has_more": end < total,
     }
+
+
+def _filter_product_option_items(items: tuple[dict, ...] | list[dict], keyword: str | None) -> tuple[dict, ...]:
+    normalized_keyword = str(keyword or "").strip().casefold()
+    if not normalized_keyword:
+        return tuple(items)
+
+    def matches(item: dict) -> bool:
+        haystack = " ".join(
+            str(item.get(column) or "").strip()
+            for column in [
+                "price_identity_label",
+                "price_identity_key",
+                "source_name",
+                "source_category",
+                "liancai_top_category",
+                "liancai_subcategory",
+                "liancai_keyword",
+                "liancai_brand_name",
+            ]
+        ).casefold()
+        return normalized_keyword in haystack
+
+    return tuple(item for item in items if matches(item))
 
 
 def _fetch_latest_product_rows(
@@ -1003,18 +1038,85 @@ def _build_supplier_comparison_label(quote_price: float | None, market_lowest_pr
 
 def _build_auth_user_item(user: dict) -> AuthUserItem:
     supplier_profile = user.get("supplier_profile") or None
+    supplier_id = int(user.get("supplier_id")) if user.get("supplier_id") is not None else None
+    if supplier_profile is None and supplier_id is not None and user.get("supplier_name"):
+        supplier_profile = {
+            "supplier_id": supplier_id,
+            "supplier_name": str(user.get("supplier_name") or "").strip(),
+            "market_category": user.get("supplier_market_category"),
+            "channel": user.get("supplier_channel"),
+            "market_scope": user.get("supplier_market_scope"),
+            "is_active": bool(user.get("supplier_is_active")) if user.get("supplier_is_active") is not None else True,
+        }
     return AuthUserItem(
         id=int(user.get("id") or 0),
         username=str(user.get("username") or "").strip(),
         role=str(user.get("role") or "supplier"),
         display_name=user.get("display_name"),
         is_active=bool(user.get("is_active")) if user.get("is_active") is not None else True,
-        supplier_id=int(user.get("supplier_id")) if user.get("supplier_id") is not None else None,
+        is_deleted=bool(user.get("is_deleted")) if user.get("is_deleted") is not None else False,
+        supplier_id=supplier_id,
         supplier_profile=supplier_profile,
         last_login_at=user.get("last_login_at"),
+        deleted_at=user.get("deleted_at"),
+        deleted_by=user.get("deleted_by"),
+        deleted_username=user.get("deleted_username"),
         created_at=user.get("created_at"),
         updated_at=user.get("updated_at"),
     )
+
+
+def _normalize_account_username(value: str | None) -> str | None:
+    username = str(value or "").strip()
+    if not username:
+        return None
+    if not ACCOUNT_USERNAME_RE.match(username):
+        raise HTTPException(status_code=400, detail="登录账号需为 3-64 位，只能包含字母、数字、下划线、中划线、点或 @")
+    return username
+
+
+def _hash_required_account_password(value: str | None, detail: str) -> str:
+    password = str(value or "").strip()
+    if not password:
+        raise HTTPException(status_code=400, detail=detail)
+    if len(password) < MIN_ACCOUNT_PASSWORD_LENGTH:
+        raise HTTPException(status_code=400, detail=f"账号密码至少 {MIN_ACCOUNT_PASSWORD_LENGTH} 位")
+    try:
+        return hash_password(password)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+def _ensure_account_username_available(username: str, existing_user_id: int | None = None) -> None:
+    existing_user = get_auth_user_by_username(username)
+    if not existing_user:
+        return
+    if existing_user_id is not None and int(existing_user.get("id") or 0) == int(existing_user_id):
+        return
+    raise HTTPException(status_code=400, detail="登录账号已被其他供应商使用")
+
+
+def _ensure_supplier_account_available(supplier_id: int | None, existing_user_id: int | None = None) -> None:
+    if supplier_id is None:
+        return
+    existing_rows = get_db().get_auth_user_by_supplier_id(int(supplier_id))
+    if existing_rows.empty:
+        return
+    existing_row = existing_rows.iloc[0].to_dict()
+    if existing_user_id is not None and int(existing_row.get("id") or 0) == int(existing_user_id):
+        return
+    raise HTTPException(status_code=400, detail="该供应商已绑定其他登录账号")
+
+
+def _ensure_auth_user_can_be_removed(user_id: int, existing_user: dict, current_user: dict) -> None:
+    if int(current_user.get("id") or 0) == int(user_id):
+        raise HTTPException(status_code=400, detail="不能删除或停用当前登录账号")
+    if str(existing_user.get("role") or "") != "admin":
+        return
+    active_admin_rows = _sanitize_dataframe(get_db().get_auth_users(role="admin", active_status="active"))
+    active_admin_ids = {int(item.get("id") or 0) for item in active_admin_rows}
+    if int(user_id) in active_admin_ids and len(active_admin_ids) <= 1:
+        raise HTTPException(status_code=400, detail="至少保留一个启用的管理员账号")
 
 
 def _build_product_supplier_quotes_response(identity_key: str, supplier_id: int | None = None) -> dict:
@@ -1852,6 +1954,8 @@ def create_app() -> FastAPI:
     def crawl_schedule(payload: CrawlScheduleUpdateRequest) -> dict:
         item = get_crawl_manager().update_schedule(
             enabled=payload.enabled,
+            mode=payload.mode,
+            daily_run_time=payload.daily_run_time,
             interval_seconds=payload.interval_seconds,
             fetch_mode=payload.fetch_mode,
             target_scope=payload.target_scope,
@@ -1932,6 +2036,7 @@ def create_app() -> FastAPI:
     def product_options(
         province: str | None = Query(default=None),
         city: str | None = Query(default=None),
+        keyword: str | None = Query(default=None),
         source_name: str | None = Query(default=None),
         liancai_top_category: str | None = Query(default=None),
         liancai_subcategory: str | None = Query(default=None),
@@ -1944,12 +2049,13 @@ def create_app() -> FastAPI:
         should_compute_full_options = bool(
             province
             or city
+            or keyword
             or liancai_keyword
             or liancai_brand
             or limit == 0
         )
         if should_compute_full_options:
-            items = _cached_product_options_payload(
+            items = _filter_product_option_items(_cached_product_options_payload(
                 cache_bucket,
                 str(province or ""),
                 str(city or ""),
@@ -1958,7 +2064,7 @@ def create_app() -> FastAPI:
                 str(liancai_subcategory or ""),
                 str(liancai_keyword or ""),
                 str(liancai_brand or ""),
-            )
+            ), keyword)
             total = len(items)
             start = min(offset, total)
             end = total if limit == 0 else min(start + limit, total)
@@ -1999,6 +2105,7 @@ def create_app() -> FastAPI:
                 str(liancai_keyword or ""),
                 str(liancai_brand or ""),
             )
+            items = _filter_product_option_items(items, keyword)
             total = len(items)
             start = min(offset, total)
             end = total if limit == 0 else min(start + limit, total)
@@ -2027,6 +2134,7 @@ def create_app() -> FastAPI:
         identity_key: str,
         province: str | None = Query(default=None),
         city: str | None = Query(default=None),
+        source_name: str | None = Query(default=None),
         liancai_top_category: str | None = Query(default=None),
         liancai_subcategory: str | None = Query(default=None),
         liancai_keyword: str | None = Query(default=None),
@@ -2038,6 +2146,7 @@ def create_app() -> FastAPI:
             _product_response_cache_bucket(),
             str(province or ""),
             str(city or ""),
+            str(source_name or "").strip(),
             str(liancai_top_category or ""),
             str(liancai_subcategory or ""),
             str(liancai_keyword or ""),
@@ -2053,6 +2162,7 @@ def create_app() -> FastAPI:
         series_key: str | None = Query(default=None),
         province: str | None = Query(default=None),
         city: str | None = Query(default=None),
+        source_name: str | None = Query(default=None),
         liancai_top_category: str | None = Query(default=None),
         liancai_subcategory: str | None = Query(default=None),
         liancai_keyword: str | None = Query(default=None),
@@ -2067,6 +2177,7 @@ def create_app() -> FastAPI:
             str(series_key or ""),
             str(province or ""),
             str(city or ""),
+            str(source_name or "").strip(),
             str(liancai_top_category or ""),
             str(liancai_subcategory or ""),
             str(liancai_keyword or ""),
@@ -2114,6 +2225,107 @@ def create_app() -> FastAPI:
     @app.get("/api/auth/me", response_model=AuthMeResponse)
     def auth_me(current_user: dict = Depends(require_authenticated_user)) -> AuthMeResponse:
         return AuthMeResponse(user=_build_auth_user_item(current_user))
+
+    @app.get("/api/auth/users", response_model=AuthUserListResponse)
+    def auth_users(
+        role: str | None = Query(default=None),
+        status: str | None = Query(default=None),
+        keyword: str | None = Query(default=None),
+        current_user: dict = Depends(require_admin_user),
+    ) -> AuthUserListResponse:
+        rows = _sanitize_dataframe(
+            get_db().get_auth_users(role=role, active_status=status, keyword=keyword)
+        )
+        return AuthUserListResponse(items=[_build_auth_user_item(row) for row in rows])
+
+    @app.post("/api/auth/users", response_model=AuthUserItem)
+    def create_auth_user(
+        payload: AuthUserCreateRequest,
+        current_user: dict = Depends(require_admin_user),
+    ) -> AuthUserItem:
+        username = _normalize_account_username(payload.username)
+        if not username:
+            raise HTTPException(status_code=400, detail="登录账号不能为空")
+        supplier_id = payload.supplier_id if payload.role == "supplier" else None
+        if payload.role == "supplier" and supplier_id is None:
+            raise HTTPException(status_code=400, detail="供应商账号必须绑定供应商")
+        _ensure_account_username_available(username)
+        _ensure_supplier_account_available(supplier_id)
+        password_hash = _hash_required_account_password(payload.password, "创建账号时必须填写初始密码")
+        try:
+            user_id = get_db().upsert_auth_user(
+                username=username,
+                password_hash=password_hash,
+                role=payload.role,
+                supplier_id=supplier_id,
+                display_name=payload.display_name,
+                is_active=payload.is_active,
+            )
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        created_user = get_auth_user_by_id(user_id)
+        if not created_user:
+            raise HTTPException(status_code=500, detail="账号创建成功但返回数据缺失")
+        return _build_auth_user_item(created_user)
+
+    @app.put("/api/auth/users/{user_id}", response_model=AuthUserItem)
+    def update_auth_user(
+        user_id: int,
+        payload: AuthUserUpdateRequest,
+        current_user: dict = Depends(require_admin_user),
+    ) -> AuthUserItem:
+        existing_user = get_auth_user_by_id(user_id)
+        if not existing_user:
+            raise HTTPException(status_code=404, detail="账号不存在")
+        if int(current_user.get("id") or 0) == int(user_id):
+            if payload.role != "admin":
+                raise HTTPException(status_code=400, detail="不能把当前登录管理员降级为供应商")
+            if not payload.is_active:
+                raise HTTPException(status_code=400, detail="不能删除或停用当前登录账号")
+        if str(existing_user.get("role") or "") == "admin" and (payload.role != "admin" or not payload.is_active):
+            active_admin_rows = _sanitize_dataframe(get_db().get_auth_users(role="admin", active_status="active"))
+            active_admin_ids = {int(item.get("id") or 0) for item in active_admin_rows}
+            if int(user_id) in active_admin_ids and len(active_admin_ids) <= 1:
+                raise HTTPException(status_code=400, detail="至少保留一个启用的管理员账号")
+
+        username = _normalize_account_username(payload.username)
+        if not username:
+            raise HTTPException(status_code=400, detail="登录账号不能为空")
+        supplier_id = payload.supplier_id if payload.role == "supplier" else None
+        if payload.role == "supplier" and supplier_id is None:
+            raise HTTPException(status_code=400, detail="供应商账号必须绑定供应商")
+        _ensure_account_username_available(username, existing_user_id=user_id)
+        _ensure_supplier_account_available(supplier_id, existing_user_id=user_id)
+        password_hash = _hash_required_account_password(payload.password, "账号密码不能为空") if payload.password else None
+        try:
+            updated_user_id = get_db().upsert_auth_user(
+                user_id=user_id,
+                username=username,
+                password_hash=password_hash,
+                role=payload.role,
+                supplier_id=supplier_id,
+                display_name=payload.display_name,
+                is_active=payload.is_active,
+            )
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        updated_user = get_auth_user_by_id(updated_user_id)
+        if not updated_user:
+            raise HTTPException(status_code=500, detail="账号更新成功但返回数据缺失")
+        return _build_auth_user_item(updated_user)
+
+    @app.delete("/api/auth/users/{user_id}", response_model=AuthUserDeleteResponse)
+    def delete_auth_user(
+        user_id: int,
+        current_user: dict = Depends(require_admin_user),
+    ) -> AuthUserDeleteResponse:
+        existing_user = get_auth_user_by_id(user_id)
+        if not existing_user:
+            raise HTTPException(status_code=404, detail="账号不存在")
+        _ensure_auth_user_can_be_removed(user_id, existing_user, current_user)
+        if not get_db().delete_auth_user(user_id, deleted_by=get_actor_display_name(current_user)):
+            raise HTTPException(status_code=404, detail="账号不存在")
+        return AuthUserDeleteResponse(deleted=True, user_id=int(user_id))
 
     @app.get("/api/product/{identity_key}/supplier-quotes", response_model=ProductSupplierQuotesResponse)
     def product_supplier_quotes(
@@ -2174,7 +2386,11 @@ def create_app() -> FastAPI:
         supplier_name = payload.supplier_name or str(request_row.get("company_name") or "").strip()
         contact_name = payload.contact_name if payload.contact_name is not None else request_row.get("contact_name")
         contact_phone = payload.contact_phone if payload.contact_phone is not None else request_row.get("contact_phone")
-        account_username = str(request_row.get("username") or "").strip()
+        account_username = _normalize_account_username(str(request_row.get("username") or ""))
+        if not account_username:
+            raise HTTPException(status_code=400, detail="注册申请缺少登录账号")
+        _ensure_account_username_available(account_username)
+        password_hash = _hash_required_account_password(payload.account_password, "通过注册申请时必须填写初始密码")
         try:
             supplier_id = get_db().upsert_supplier(
                 supplier_name=supplier_name,
@@ -2188,7 +2404,7 @@ def create_app() -> FastAPI:
             )
             get_db().upsert_auth_user(
                 username=account_username,
-                password_hash=hash_password(payload.account_password or "12345678"),
+                password_hash=password_hash,
                 role="supplier",
                 supplier_id=supplier_id,
                 display_name=payload.account_display_name or contact_name or supplier_name,
@@ -2263,25 +2479,33 @@ def create_app() -> FastAPI:
         payload: SupplierCreateRequest,
         current_user: dict = Depends(require_admin_user),
     ) -> SupplierItem:
-        supplier_id = get_db().upsert_supplier(
-            supplier_name=payload.supplier_name,
-            contact_name=payload.contact_name,
-            contact_phone=payload.contact_phone,
-            market_scope=payload.market_scope,
-            market_category=payload.market_category,
-            channel=payload.channel,
-            notes=payload.notes,
-            is_active=payload.is_active,
-        )
-        if payload.account_username:
-            get_db().upsert_auth_user(
-                username=payload.account_username,
-                password_hash=hash_password(payload.account_password or "12345678"),
-                role="supplier",
-                supplier_id=supplier_id,
-                display_name=payload.account_display_name or payload.contact_name or payload.supplier_name,
-                is_active=payload.account_is_active,
+        account_username = _normalize_account_username(payload.account_username)
+        account_password_hash = None
+        if account_username:
+            _ensure_account_username_available(account_username)
+            account_password_hash = _hash_required_account_password(payload.account_password, "创建供应商账号时必须填写初始密码")
+        try:
+            supplier_id = get_db().upsert_supplier(
+                supplier_name=payload.supplier_name,
+                contact_name=payload.contact_name,
+                contact_phone=payload.contact_phone,
+                market_scope=payload.market_scope,
+                market_category=payload.market_category,
+                channel=payload.channel,
+                notes=payload.notes,
+                is_active=payload.is_active,
             )
+            if account_username:
+                get_db().upsert_auth_user(
+                    username=account_username,
+                    password_hash=account_password_hash,
+                    role="supplier",
+                    supplier_id=supplier_id,
+                    display_name=payload.account_display_name or payload.contact_name or payload.supplier_name,
+                    is_active=payload.account_is_active,
+                )
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
         supplier_df = get_db().get_suppliers(active_only=False)
         supplier_rows = _sanitize_dataframe(supplier_df)
         supplier_row = next((item for item in supplier_rows if int(item.get("id") or 0) == supplier_id), None)
@@ -2295,34 +2519,45 @@ def create_app() -> FastAPI:
         payload: SupplierUpdateRequest,
         current_user: dict = Depends(require_admin_user),
     ) -> SupplierItem:
-        updated_supplier_id = get_db().upsert_supplier(
-            supplier_name=payload.supplier_name,
-            contact_name=payload.contact_name,
-            contact_phone=payload.contact_phone,
-            market_scope=payload.market_scope,
-            market_category=payload.market_category,
-            channel=payload.channel,
-            notes=payload.notes,
-            is_active=payload.is_active,
-            supplier_id=supplier_id,
-        )
-        existing_auth_rows = get_db().get_auth_user_by_supplier_id(updated_supplier_id)
+        existing_auth_rows = get_db().get_auth_user_by_supplier_id(supplier_id)
         existing_auth_user = existing_auth_rows.iloc[0].to_dict() if not existing_auth_rows.empty else None
-        if payload.account_username or existing_auth_user is not None:
-            next_password_hash = existing_auth_user.get("password_hash") if existing_auth_user else None
-            if payload.account_password:
-                next_password_hash = hash_password(payload.account_password)
-            if not (payload.account_username or existing_auth_user):
-                raise HTTPException(status_code=400, detail="供应商账号缺少 username")
-            get_db().upsert_auth_user(
-                user_id=int(existing_auth_user.get("id") or 0) if existing_auth_user else None,
-                username=payload.account_username or str(existing_auth_user.get("username") or ""),
-                password_hash=next_password_hash,
-                role="supplier",
-                supplier_id=updated_supplier_id,
-                display_name=payload.account_display_name or payload.contact_name or payload.supplier_name,
-                is_active=payload.account_is_active if payload.account_is_active is not None else bool(existing_auth_user.get("is_active")) if existing_auth_user else True,
+        account_username = _normalize_account_username(payload.account_username)
+        if account_username:
+            _ensure_account_username_available(
+                account_username,
+                int(existing_auth_user.get("id") or 0) if existing_auth_user else None,
             )
+        if account_username and existing_auth_user is None and not payload.account_password:
+            raise HTTPException(status_code=400, detail="创建供应商账号时必须填写初始密码")
+        try:
+            updated_supplier_id = get_db().upsert_supplier(
+                supplier_name=payload.supplier_name,
+                contact_name=payload.contact_name,
+                contact_phone=payload.contact_phone,
+                market_scope=payload.market_scope,
+                market_category=payload.market_category,
+                channel=payload.channel,
+                notes=payload.notes,
+                is_active=payload.is_active,
+                supplier_id=supplier_id,
+            )
+            if account_username or existing_auth_user is not None:
+                next_password_hash = existing_auth_user.get("password_hash") if existing_auth_user else None
+                if payload.account_password:
+                    next_password_hash = _hash_required_account_password(payload.account_password, "账号密码不能为空")
+                if not (account_username or existing_auth_user):
+                    raise HTTPException(status_code=400, detail="供应商账号缺少 username")
+                get_db().upsert_auth_user(
+                    user_id=int(existing_auth_user.get("id") or 0) if existing_auth_user else None,
+                    username=account_username or str(existing_auth_user.get("username") or ""),
+                    password_hash=next_password_hash,
+                    role="supplier",
+                    supplier_id=updated_supplier_id,
+                    display_name=payload.account_display_name or payload.contact_name or payload.supplier_name,
+                    is_active=payload.account_is_active if payload.account_is_active is not None else bool(existing_auth_user.get("is_active")) if existing_auth_user else True,
+                )
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
         supplier_df = get_db().get_suppliers(active_only=False)
         supplier_rows = _sanitize_dataframe(supplier_df)
         supplier_row = next((item for item in supplier_rows if int(item.get("id") or 0) == updated_supplier_id), None)

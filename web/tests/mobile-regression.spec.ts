@@ -166,6 +166,92 @@ test('移动端点击商品卡片进入单品趋势后保留可刷新分享的�
   await expect(page.getByText('伊利淡奶油1L*6盒 | 伊利 | 902').first()).toBeVisible()
 })
 
+test('移动端单品详情左上返回优先回到来源行情页', async ({ page }) => {
+  const product = {
+    price_identity_key: 'return-flow|001',
+    price_identity_label: '返回流转商品 | 001',
+    site_count: 2,
+    price_observation_count: 2,
+    latest_captured_at: '2026-05-17T08:00:00',
+    source_name: '莲菜网',
+    source_category: '测试分类',
+  }
+
+  await page.route('**/api/market/summary**', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        items: [
+          {
+            price_identity_key: product.price_identity_key,
+            product_name: product.price_identity_label,
+            group_name: '返回流转商品',
+            category: '测试分类',
+            average_price: 11.5,
+            lowest_price: 10.8,
+            highest_price: 12.4,
+            market_count: 2,
+            site_count: 2,
+          },
+        ],
+      }),
+    })
+  })
+  await page.route('**/api/product/options**', async (route) => {
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [product] }) })
+  })
+  await page.route('**/api/product/*/summary**', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        item: {
+          price_identity_key: product.price_identity_key,
+          product_name: product.price_identity_label,
+          site_count: 2,
+          market_count: 2,
+          current_lowest_price: 10.8,
+          current_highest_price: 12.4,
+          average_price: 11.5,
+        },
+      }),
+    })
+  })
+  await page.route('**/api/product/*/trend**', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        mode: 'cross_market',
+        items: [
+          {
+            price_identity_key: product.price_identity_key,
+            product_name: product.price_identity_label,
+            trend_series_key: 'market-a',
+            trend_series_name: '市场 A',
+            market_name: '市场 A',
+            current_price: 11.5,
+            captured_at: '2026-05-17T08:00:00',
+          },
+        ],
+      }),
+    })
+  })
+  await page.route('**/api/product/*/supplier-quotes**', async (route) => {
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [], summary: null }) })
+  })
+
+  await page.goto('/?mode=workspace&tab=summary', { waitUntil: 'domcontentloaded' })
+  await expect(page.getByTestId('market-mobile-card').first()).toBeVisible({ timeout: 10_000 })
+  await page.getByTestId('market-mobile-card').first().click()
+
+  await expect(page.getByLabel('趋势模式切换')).toBeVisible({ timeout: 15_000 })
+  await expect(page).toHaveURL(/tab=trend/)
+  await page.getByRole('button', { name: '返回汇总行情' }).click()
+
+  await expect(page.getByTestId('market-mobile-list')).toBeVisible()
+  await expect(page).toHaveURL(/tab=summary/)
+  await expect(page).not.toHaveURL(/identity_key=/)
+})
+
 
 test('移动端分类来源卡片遇到重复分类名称时不产生 Vue key 冲突', async ({ page }) => {
   const warnings: string[] = []
@@ -195,6 +281,64 @@ test('移动端分类来源卡片遇到重复分类名称时不产生 Vue key �
   await page.goto('/', { waitUntil: 'networkidle' })
   await expect(page.getByTestId('mobile-source-groups')).toBeVisible()
   expect(warnings.filter((text) => text.includes('Duplicate keys found'))).toEqual([])
+})
+
+
+test('移动端首页分类进入行情时保留所选分类', async ({ page }) => {
+  await page.route('**/api/liancai/category-summary**', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        items: [
+          { liancai_top_category: '蔬菜类', liancai_subcategory: '叶菜类', product_count: 2 },
+          { liancai_top_category: '水产类', liancai_subcategory: '鲜活水产', product_count: 3 },
+        ],
+      }),
+    })
+  })
+  await page.route('**/api/market/summary**', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        items: [
+          {
+            price_identity_key: 'veg|001',
+            product_name: '上海青 | 公斤',
+            group_name: '上海青',
+            category: '蔬菜类',
+            liancai_top_category: '蔬菜类',
+            average_price: 4.2,
+            lowest_price: 3.9,
+            highest_price: 4.8,
+            market_count: 2,
+            site_count: 2,
+          },
+          {
+            price_identity_key: 'fish|001',
+            product_name: '鲈鱼 | 公斤',
+            group_name: '鲈鱼',
+            category: '水产类',
+            liancai_top_category: '水产类',
+            average_price: 31.5,
+            lowest_price: 29,
+            highest_price: 34,
+            market_count: 3,
+            site_count: 3,
+          },
+        ],
+      }),
+    })
+  })
+
+  await page.goto('/', { waitUntil: 'domcontentloaded' })
+  await expect(page.getByTestId('mobile-source-groups')).toBeVisible()
+  await page.getByTestId('mobile-source-groups').getByRole('button', { name: /水产类/ }).click()
+
+  await expect(page.getByTestId('market-mobile-list')).toBeVisible()
+  await expect(page.getByRole('heading', { name: '水产类' })).toBeVisible()
+  await expect(page.getByTestId('market-mobile-list')).toContainText('鲈鱼 | 公斤')
+  await expect(page.getByTestId('market-mobile-list')).not.toContainText('上海青 | 公斤')
+  await expect(page).toHaveURL(/tab=summary/)
 })
 
 
@@ -278,6 +422,94 @@ test('移动端底部单品入口自动选中商品后写入可刷新分享的�
 
   await page.reload({ waitUntil: 'domcontentloaded' })
   await expect(page.getByText('底部入口商品 | 001').first()).toBeVisible({ timeout: 15_000 })
+})
+
+
+test('移动端单品搜索无结果时不回退展示默认商品', async ({ page }) => {
+  const optionKeywords: string[] = []
+  const product = {
+    price_identity_key: 'trend-default|001',
+    price_identity_label: '默认测试单品 | 001',
+    site_count: 2,
+    price_observation_count: 2,
+    source_name: '莲菜网',
+    source_category: '测试分类',
+  }
+
+  await page.route('**/api/market/summary**', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({ items: [] }),
+    })
+  })
+  await page.route('**/api/product/options**', async (route) => {
+    const url = new URL(route.request().url())
+    const keyword = url.searchParams.get('keyword') || ''
+    optionKeywords.push(keyword)
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        items: keyword ? [] : [product],
+        total: keyword ? 0 : 1,
+        limit: 40,
+        offset: 0,
+        has_more: false,
+      }),
+    })
+  })
+  await page.route('**/api/product/*/summary**', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        item: {
+          price_identity_key: product.price_identity_key,
+          product_name: product.price_identity_label,
+          site_count: 2,
+          market_count: 2,
+        },
+      }),
+    })
+  })
+  await page.route('**/api/product/*/trend**', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        mode: 'cross_market',
+        items: [
+          {
+            price_identity_key: product.price_identity_key,
+            product_name: product.price_identity_label,
+            trend_series_key: 'market-a',
+            trend_series_name: '市场 A',
+            market_name: '市场 A',
+            current_price: 12.5,
+            captured_at: '2026-05-17T08:00:00',
+          },
+        ],
+      }),
+    })
+  })
+  await page.route('**/api/product/*/supplier-quotes**', async (route) => {
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [], summary: null }) })
+  })
+  await page.addInitScript(() => {
+    window.localStorage.clear()
+    window.sessionStorage.clear()
+  })
+
+  await page.goto('/?mode=workspace&tab=trend', { waitUntil: 'domcontentloaded' })
+  await expect.poll(() => optionKeywords.includes('')).toBeTruthy()
+  await expect(page.getByLabel('趋势模式切换')).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByText('默认测试单品 | 001').first()).toBeVisible({ timeout: 15_000 })
+  const productSelect = page.getByRole('combobox', { name: '选择商品' })
+  await productSelect.click({ force: true })
+  await expect(page.locator('.trend-product-select-popper .el-select-dropdown__item').filter({ hasText: '默认测试单品' })).toBeVisible()
+
+  await productSelect.fill('不存在商品', { force: true })
+  await expect.poll(() => optionKeywords.includes('不存在商品')).toBeTruthy()
+
+  await expect(page.locator('.trend-product-select-popper .el-select-dropdown__item').filter({ hasText: '默认测试单品' })).toHaveCount(0)
+  await expect(page.locator('.trend-product-select-popper').filter({ hasText: /No data|No matching data|无匹配数据|暂无数据/ }).first()).toBeVisible()
 })
 
 
@@ -475,8 +707,8 @@ test('移动端主流程无横向溢出且关键工作区可用', async ({ page 
   await page.goto('/', { waitUntil: 'domcontentloaded' })
 
   await expect(page.getByTestId('sales-landing-view')).toBeVisible()
-  await expect(page.getByRole('heading', { name: '市场价格工作台' })).toBeVisible()
-  await expect(page.getByText('重点商品行情')).toBeVisible()
+  await expect(page.getByRole('heading', { name: '市场价格总览' })).toBeVisible()
+  await expect(page.getByText('价格参考商品')).toBeVisible()
   await expectNoHorizontalOverflow(page)
 
   await page.getByTestId('enter-workspace-button').click()

@@ -99,7 +99,7 @@
             </label>
             <label>
               <span>初始密码</span>
-              <el-input v-model="reviewForm.account_password" type="password" show-password placeholder="留空默认 12345678" />
+              <el-input v-model="reviewForm.account_password" type="password" show-password placeholder="通过审核必须填写，至少 8 位" />
             </label>
           </div>
 
@@ -150,6 +150,7 @@ import {
 } from '../api'
 import type { SupplierRegistrationRequestItem, SupplierRegistrationRequestStatus } from '../types'
 
+const MIN_ACCOUNT_PASSWORD_LENGTH = 8
 const requests = ref<SupplierRegistrationRequestItem[]>([])
 const loading = ref(false)
 const reviewing = ref<'approve' | 'reject' | null>(null)
@@ -229,6 +230,15 @@ async function loadRequests() {
 
 async function approveSelectedRequest() {
   if (!selectedRequest.value) return
+  const accountPassword = reviewForm.account_password.trim()
+  if (!accountPassword) {
+    ElMessage.warning('通过注册申请前必须填写初始密码')
+    return
+  }
+  if (accountPassword.length < MIN_ACCOUNT_PASSWORD_LENGTH) {
+    ElMessage.warning(`初始密码至少 ${MIN_ACCOUNT_PASSWORD_LENGTH} 位`)
+    return
+  }
   reviewing.value = 'approve'
   try {
     await approveSupplierRegistrationRequest(selectedRequest.value.id, {
@@ -239,13 +249,13 @@ async function approveSelectedRequest() {
       market_category: reviewForm.market_category.trim() || undefined,
       channel: reviewForm.channel.trim() || undefined,
       account_display_name: reviewForm.account_display_name.trim() || undefined,
-      account_password: reviewForm.account_password.trim() || undefined,
+      account_password: accountPassword,
       review_notes: reviewForm.review_notes.trim() || undefined,
     })
     ElMessage.success('注册申请已通过并转为正式供应商')
     await loadRequests()
-  } catch {
-    ElMessage.error('注册申请通过失败')
+  } catch (error) {
+    ElMessage.error(extractApiErrorDetail(error) || '注册申请通过失败')
   } finally {
     reviewing.value = null
   }

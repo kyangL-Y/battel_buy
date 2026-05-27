@@ -7,7 +7,7 @@ from typing import Any, Callable
 
 import pandas as pd
 
-from parsers.normalizer import format_price_unit_basis, parse_spec
+from parsers.normalizer import format_price_unit_basis, is_liancai_source, parse_spec, resolve_effective_spec_text
 from utils.location_catalog import match_standard_city, match_standard_province
 from utils.source_config import resolve_source_tier
 
@@ -104,6 +104,9 @@ LOCATION_SPECIAL_CITY_PREFIXES = (
     "平凉",
     "南昌",
 )
+ZHENGZHOU_MONITOR_SOURCE_MARKERS = ("菜篮子监测", "zzny.zhengzhou.gov.cn")
+ZHENGZHOU_MONITOR_PROVINCE = "河南省"
+ZHENGZHOU_MONITOR_CITY = "郑州市"
 QUOTE_EXPORT_PRIORITY_COLUMNS = [
     "group_name",
     "site_name",
@@ -416,16 +419,36 @@ def _collapse_trend_to_daily_latest(df: pd.DataFrame) -> pd.DataFrame:
     return trend_df.sort_values(["captured_day", "trend_series_name"], na_position="last").reset_index(drop=True)
 
 
-def _normalize_cross_site_price(current_price: Any, spec_text: Any) -> tuple[float | None, str]:
+def _normalize_cross_site_price(
+    current_price: Any,
+    spec_text: Any,
+    product_name: Any = None,
+    site_name: Any = None,
+    source_name: Any = None,
+    source_url: Any = None,
+) -> tuple[float | None, str]:
     try:
         price = float(current_price)
     except (TypeError, ValueError):
         return None, str(spec_text).strip() if spec_text is not None and not pd.isna(spec_text) else ""
 
-    spec_info = parse_spec(str(spec_text) if spec_text is not None and not pd.isna(spec_text) else None)
+    if is_liancai_source(
+        {
+            "site_name": site_name,
+            "source_name": source_name,
+            "source_url": source_url,
+        }
+    ):
+        return price, str(spec_text).strip() if spec_text is not None and not pd.isna(spec_text) else ""
+
+    normalized_spec_input = resolve_effective_spec_text(
+        str(spec_text) if spec_text is not None and not pd.isna(spec_text) else None,
+        str(product_name) if product_name is not None and not pd.isna(product_name) else None,
+    )
+    spec_info = parse_spec(normalized_spec_input)
     unit_name = spec_info.get("unit_name")
     unit_value = spec_info.get("unit_value")
-    normalized_spec_text = str(spec_text).strip() if spec_text is not None and not pd.isna(spec_text) else ""
+    normalized_spec_text = normalized_spec_input or ""
 
     if unit_name == "g" and unit_value not in (None, 0):
         return round(price / float(unit_value) * 1000, 6), "公斤"
@@ -437,6 +460,28 @@ def _normalize_cross_site_price(current_price: Any, spec_text: Any) -> tuple[flo
 def _normalize_cross_site_spec_text(spec_text: Any) -> str:
     _, normalized_spec_text = _normalize_cross_site_price(1.0, spec_text)
     return normalized_spec_text
+
+
+def _normalize_price_columns(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty:
+        return df.copy()
+    normalized_price_meta = df.apply(
+        lambda row: _normalize_cross_site_price(
+            row.get("current_price"),
+            row.get("spec_text"),
+            row.get("product_name"),
+            row.get("site_name"),
+            row.get("source_name"),
+            row.get("source_url"),
+        ),
+        axis=1,
+    )
+    normalized_df = df.copy()
+    normalized_df["current_price"] = normalized_price_meta.apply(lambda item: item[0])
+    normalized_df["normalized_spec_text"] = normalized_price_meta.apply(lambda item: item[1])
+    normalized_df["price_unit_basis"] = normalized_df["normalized_spec_text"].apply(format_price_unit_basis)
+    normalized_df["spec_text"] = normalized_df["normalized_spec_text"]
+    return normalized_df
 
 
 def build_cross_site_identity_frame(df: pd.DataFrame) -> pd.DataFrame:
@@ -540,6 +585,43 @@ def _normalize_explicit_city(value: Any) -> str | None:
     if re.search(r"(市场|批发|物流|交易|农产品|农副产品|海吉星|国际|有限公司)", text):
         return None
     return None
+
+
+def _is_zhengzhou_monitor_source_row(row: pd.Series) -> bool:
+    for field_name in ("source_name", "site_name", "source_url", "market_name", "group_name"):
+        text = _normalize_location_text(row.get(field_name))
+        if not text:
+            continue
+        lowered = text.lower()
+        if any(marker in text or marker in lowered for marker in ZHENGZHOU_MONITOR_SOURCE_MARKERS):
+            return True
+    return False
+
+
+def _is_zhengzhou_monitor_scope_allowed(selected_province: str | None, selected_city: str | None) -> bool:
+    normalized_city = _normalize_explicit_city(selected_city)
+    if normalized_city:
+        return normalized_city == ZHENGZHOU_MONITOR_CITY
+    normalized_province = _normalize_explicit_province(selected_province)
+    if normalized_province:
+        return normalized_province == ZHENGZHOU_MONITOR_PROVINCE
+    return False
+
+
+def _apply_zhengzhou_monitor_scope(
+    df: pd.DataFrame,
+    *,
+    selected_province: str | None,
+    selected_city: str | None,
+) -> pd.DataFrame:
+    if df.empty:
+        return df.copy()
+    monitor_mask = df.apply(_is_zhengzhou_monitor_source_row, axis=1)
+    if not monitor_mask.any():
+        return df
+    if _is_zhengzhou_monitor_scope_allowed(selected_province, selected_city):
+        return df
+    return df[~monitor_mask].copy()
 
 
 def _is_valid_city_candidate(candidate: str | None) -> bool:
@@ -1430,6 +1512,13 @@ def compute_cross_site_price_summary(
     )
     if latest.empty:
         return pd.DataFrame()
+    latest = _apply_zhengzhou_monitor_scope(
+        latest,
+        selected_province=selected_province,
+        selected_city=selected_city,
+    )
+    if latest.empty:
+        return pd.DataFrame()
 
     latest = apply_location_priority(
         latest.copy(),
@@ -1452,7 +1541,14 @@ def compute_cross_site_price_summary(
         axis=1,
     )
     normalized_price_meta = latest.apply(
-        lambda row: _normalize_cross_site_price(row.get("current_price"), row.get("spec_text")),
+        lambda row: _normalize_cross_site_price(
+            row.get("current_price"),
+            row.get("spec_text"),
+            row.get("product_name"),
+            row.get("site_name"),
+            row.get("source_name"),
+            row.get("source_url"),
+        ),
         axis=1,
     )
     latest["comparable_price"] = normalized_price_meta.apply(lambda item: item[0])
@@ -1868,6 +1964,13 @@ def build_single_product_selector_options(
     if latest.empty:
         return pd.DataFrame()
     latest = _prepare_trend_display_rows(latest)
+    latest = _apply_zhengzhou_monitor_scope(
+        latest,
+        selected_province=selected_province,
+        selected_city=selected_city,
+    )
+    if latest.empty:
+        return pd.DataFrame()
     latest = apply_location_priority(
         latest,
         selected_province=selected_province,
@@ -2004,6 +2107,13 @@ def _build_single_product_latest_snapshot(
     base = _filter_single_product_history(df, identity_key)
     if base.empty:
         return pd.DataFrame()
+    base = _apply_zhengzhou_monitor_scope(
+        base,
+        selected_province=selected_province,
+        selected_city=selected_city,
+    )
+    if base.empty:
+        return pd.DataFrame()
 
     base["captured_at"] = pd.to_datetime(base["captured_at"], errors="coerce")
     base = base.dropna(subset=["captured_at"])
@@ -2018,6 +2128,10 @@ def _build_single_product_latest_snapshot(
         selected_province=selected_province,
         selected_city=selected_city,
     )
+    base = _normalize_price_columns(base)
+    base = base.dropna(subset=["current_price"]).copy()
+    if base.empty:
+        return pd.DataFrame()
 
     base = base.sort_values(
         ["location_priority", "trend_series_key", "captured_at"],
@@ -2088,6 +2202,13 @@ def build_cross_market_product_trend(
     base = _filter_single_product_history(df, identity_key)
     if base.empty:
         return pd.DataFrame()
+    base = _apply_zhengzhou_monitor_scope(
+        base,
+        selected_province=selected_province,
+        selected_city=selected_city,
+    )
+    if base.empty:
+        return pd.DataFrame()
     base["captured_at"] = pd.to_datetime(base["captured_at"], errors="coerce")
     base = _prepare_trend_display_rows(base)
     base = apply_location_priority(
@@ -2095,6 +2216,10 @@ def build_cross_market_product_trend(
         selected_province=selected_province,
         selected_city=selected_city,
     )
+    base = _normalize_price_columns(base)
+    base = base.dropna(subset=["current_price"]).copy()
+    if base.empty:
+        return pd.DataFrame()
     base = base.sort_values(["location_priority", "captured_at", "trend_series_name"], ascending=[True, True, True], na_position="last")
     return _collapse_trend_to_daily_latest(base)
 

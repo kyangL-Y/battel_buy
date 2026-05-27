@@ -1,6 +1,8 @@
 import json
 
-from api.crawl_manager import CrawlManager, build_crawler_service
+from datetime import datetime
+
+from api.crawl_manager import CrawlManager, _next_daily_run_at, build_crawler_service
 from utils.source_config import filter_sources_by_region
 
 
@@ -49,6 +51,16 @@ def test_build_crawler_service_uses_low_load_defaults():
     assert service.fallback_to_playwright is False
     assert service.enable_api_discovery is False
     assert service.public_source_crawler.default_max_workers == 1
+
+
+def test_next_daily_run_at_uses_today_or_tomorrow():
+    now = datetime.fromisoformat("2026-05-23T02:00:00+08:00")
+    next_run = _next_daily_run_at(now, "03:30")
+    assert next_run.isoformat() == "2026-05-23T03:30:00+08:00"
+
+    after_run_time = datetime.fromisoformat("2026-05-23T04:00:00+08:00")
+    next_day_run = _next_daily_run_at(after_run_time, "03:30")
+    assert next_day_run.isoformat() == "2026-05-24T03:30:00+08:00"
 
 
 def test_crawl_manager_skips_disabled_sources(tmp_path, monkeypatch):

@@ -57,6 +57,24 @@
       </div>
     </div>
 
+    <section v-if="!effectiveAuthRole" class="procurement-auth-preview" aria-label="供应商管理能力预览">
+      <article>
+        <span>登录后第一步</span>
+        <strong>维护正式供应商</strong>
+        <small>新增、停用、分类和联系信息只在采购端统一管理。</small>
+      </article>
+      <article>
+        <span>登录后第二步</span>
+        <strong>处理注册审核</strong>
+        <small>新申请供应商审核通过后，直接转入正式供应商档案。</small>
+      </article>
+      <article>
+        <span>登录后第三步</span>
+        <strong>分配供应商账号</strong>
+        <small>给供应商开通报价入口，避免报价、结算、档案混在一起。</small>
+      </article>
+    </section>
+
     <el-alert
       v-else-if="effectiveAuthRole !== 'admin'"
       class="procurement-permission-alert"
@@ -76,9 +94,17 @@
         <strong>注册审核</strong>
         <small>处理新申请并转正式供应商</small>
       </button>
+      <button type="button" :class="{ active: currentView === 'accounts' }" @click="currentView = 'accounts'">
+        <strong>账号管理</strong>
+        <small>管理员、供应商账号与权限</small>
+      </button>
     </div>
 
     <SupplierRegistrationAdminPanel v-if="effectiveAuthRole === 'admin' && currentView === 'applications'" />
+    <AccountAdminPanel
+      v-else-if="effectiveAuthRole === 'admin' && currentView === 'accounts'"
+      :current-user-id="localAuthSession?.user.id"
+    />
 
     <div v-else-if="effectiveAuthRole === 'admin'" class="procurement-layout">
       <section class="procurement-list-shell">
@@ -208,7 +234,7 @@
             </label>
             <label>
               <span>{{ selectedSupplier?.account_username ? '重置密码' : '初始密码' }}</span>
-              <el-input v-model="accountForm.account_password" type="password" show-password placeholder="留空则保持原密码；新建时留空默认 12345678" />
+              <el-input v-model="accountForm.account_password" type="password" show-password placeholder="新建账号必须填写；编辑时留空保持原密码" />
             </label>
             <label>
               <span>账号状态</span>
@@ -251,6 +277,7 @@ import {
   updateSupplier,
   writeAuthSession,
 } from '../api'
+import AccountAdminPanel from './AccountAdminPanel.vue'
 import SupplierRegistrationAdminPanel from './SupplierRegistrationAdminPanel.vue'
 import type { AuthLoginResponse, AuthUserRole, SupplierItem, SupplierOverviewResponse, SupplierUpdatePayload } from '../types'
 
@@ -258,7 +285,9 @@ const props = defineProps<{
   authRole?: AuthUserRole | null
 }>()
 
-const currentView = ref<'archive' | 'applications'>('archive')
+const ACCOUNT_USERNAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.@-]{2,63}$/
+const MIN_ACCOUNT_PASSWORD_LENGTH = 8
+const currentView = ref<'archive' | 'applications' | 'accounts'>('archive')
 const loading = ref(false)
 const saving = ref(false)
 const authSubmitting = ref(false)
@@ -362,6 +391,29 @@ function selectSupplier(id: number) {
   selectedSupplierId.value = id
 }
 
+function validateAccountFormBeforeSave() {
+  const username = accountForm.account_username.trim()
+  const password = accountForm.account_password.trim()
+  const hasExistingAccount = Boolean(selectedSupplier.value?.account_username)
+  if (!username && password) {
+    ElMessage.warning('请先填写登录账号，再设置账号密码')
+    return false
+  }
+  if (username && !ACCOUNT_USERNAME_PATTERN.test(username)) {
+    ElMessage.warning('登录账号需为 3-64 位，只能包含字母、数字、下划线、中划线、点或 @')
+    return false
+  }
+  if (username && !hasExistingAccount && !password) {
+    ElMessage.warning('新建供应商账号必须填写初始密码')
+    return false
+  }
+  if (password && password.length < MIN_ACCOUNT_PASSWORD_LENGTH) {
+    ElMessage.warning(`账号密码至少 ${MIN_ACCOUNT_PASSWORD_LENGTH} 位`)
+    return false
+  }
+  return true
+}
+
 async function loadAll() {
   if (effectiveAuthRole.value !== 'admin') {
     suppliers.value = []
@@ -431,6 +483,9 @@ async function saveSupplierForm() {
     ElMessage.warning('请填写供应商名称')
     return
   }
+  if (!validateAccountFormBeforeSave()) {
+    return
+  }
   saving.value = true
   try {
     const payload: SupplierUpdatePayload = {
@@ -456,8 +511,8 @@ async function saveSupplierForm() {
       ElMessage.success('供应商已更新')
     }
     await loadAll()
-  } catch {
-    ElMessage.error('供应商保存失败')
+  } catch (error) {
+    ElMessage.error(extractApiErrorDetail(error) || '供应商保存失败')
   } finally {
     saving.value = false
   }
@@ -495,6 +550,7 @@ onMounted(async () => {
 .procurement-head,
 .procurement-stats,
 .procurement-auth-gate,
+.procurement-auth-preview,
 .procurement-view-switch,
 .procurement-layout,
 .procurement-list-shell,
@@ -595,6 +651,42 @@ onMounted(async () => {
   margin: 0;
   color: #dc2626;
   font-size: 12px;
+}
+
+.procurement-auth-preview {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  padding: 14px;
+  border-color: #dbeafe;
+  background: linear-gradient(135deg, #ffffff, #f8fbff);
+}
+
+.procurement-auth-preview article {
+  display: grid;
+  gap: 6px;
+  min-height: 116px;
+  padding: 14px 15px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.procurement-auth-preview span {
+  color: #2563eb;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.procurement-auth-preview strong {
+  color: #0f172a;
+  font-size: 17px;
+}
+
+.procurement-auth-preview small {
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .procurement-permission-alert {
@@ -823,6 +915,7 @@ onMounted(async () => {
 @media (max-width: 1180px) {
   .procurement-stats,
   .procurement-auth-gate,
+  .procurement-auth-preview,
   .procurement-layout,
   .procurement-form-grid,
   .procurement-list-summary {

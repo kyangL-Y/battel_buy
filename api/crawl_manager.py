@@ -37,6 +37,33 @@ def _safe_int(value: Any, default: int) -> int:
     return parsed if parsed > 0 else default
 
 
+def _normalize_schedule_mode(value: Any) -> str:
+    normalized = str(value or "").strip()
+    return normalized if normalized in {"interval", "daily_time"} else "interval"
+
+
+def _normalize_daily_run_time(value: Any, default: str = "03:30") -> str:
+    text = str(value or "").strip()
+    try:
+        hour_text, minute_text = text.split(":", 1)
+        hour = int(hour_text)
+        minute = int(minute_text)
+    except (TypeError, ValueError):
+        return default
+    if 0 <= hour <= 23 and 0 <= minute <= 59 and len(hour_text) == 2 and len(minute_text) == 2:
+        return f"{hour:02d}:{minute:02d}"
+    return default
+
+
+def _next_daily_run_at(now: datetime, run_time: str) -> datetime:
+    normalized_time = _normalize_daily_run_time(run_time)
+    hour, minute = (int(part) for part in normalized_time.split(":", 1))
+    candidate = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    if candidate <= now:
+        candidate += timedelta(days=1)
+    return candidate
+
+
 def build_crawler_service(fetch_mode: str, runtime_settings: dict[str, Any]) -> PriceCrawlerService:
     crawler_config = runtime_settings.get("crawler", {})
     timeout = _safe_int(crawler_config.get("default_timeout"), 15)
@@ -94,7 +121,7 @@ class CrawlManager:
         self._stop_event = threading.Event()
         self._scheduler_thread: threading.Thread | None = None
         self._job_thread: threading.Thread | None = None
-        self._schedule_signature: tuple[bool, int, str] | None = None
+        self._schedule_signature: tuple[Any, ...] | None = None
         self._next_run_at: datetime | None = None
         self._state: dict[str, Any] = {
             "is_running": False,
@@ -158,6 +185,8 @@ class CrawlManager:
             "last_failed_count": int(state["last_failed_count"] or 0),
             "next_run_at": _to_iso(next_run_at),
             "schedule_enabled": bool(schedule.get("enabled", False)),
+            "schedule_mode": _normalize_schedule_mode(schedule.get("mode")),
+            "schedule_daily_run_time": _normalize_daily_run_time(schedule.get("daily_run_time")),
             "schedule_interval_seconds": _safe_int(schedule.get("interval_seconds"), 3600),
             "schedule_fetch_mode": str(schedule.get("fetch_mode") or "requests"),
             "schedule_target_scope": str(schedule.get("target_scope") or "all_saved"),
@@ -174,6 +203,8 @@ class CrawlManager:
         self,
         *,
         enabled: bool | None = None,
+        mode: str | None = None,
+        daily_run_time: str | None = None,
         interval_seconds: int | None = None,
         fetch_mode: str | None = None,
         target_scope: str | None = None,
@@ -184,6 +215,10 @@ class CrawlManager:
         schedule = dict(runtime_settings.get("schedule", {}))
         if enabled is not None:
             schedule["enabled"] = bool(enabled)
+        if mode is not None:
+            schedule["mode"] = _normalize_schedule_mode(mode)
+        if daily_run_time is not None:
+            schedule["daily_run_time"] = _normalize_daily_run_time(daily_run_time)
         if interval_seconds is not None:
             schedule["interval_seconds"] = _safe_int(interval_seconds, 3600)
         if fetch_mode is not None:
@@ -260,17 +295,26 @@ class CrawlManager:
             runtime_settings = load_runtime_config(self.runtime_path)
             schedule = runtime_settings.get("schedule", {})
             enabled = bool(schedule.get("enabled", False))
+            mode = _normalize_schedule_mode(schedule.get("mode"))
+            daily_run_time = _normalize_daily_run_time(schedule.get("daily_run_time"))
             interval_seconds = _safe_int(schedule.get("interval_seconds"), 3600)
             fetch_mode = str(schedule.get("fetch_mode") or "requests")
             target_scope = str(schedule.get("target_scope") or "all_saved")
             target_province = str(schedule.get("target_province") or "").strip() or None
             target_city = str(schedule.get("target_city") or "").strip() or None
-            signature = (enabled, interval_seconds, fetch_mode, target_scope, target_province, target_city)
+            signature = (enabled, mode, daily_run_time, interval_seconds, fetch_mode, target_scope, target_province, target_city)
 
             with self._lock:
                 if signature != self._schedule_signature:
                     self._schedule_signature = signature
-                    self._next_run_at = _now() + timedelta(seconds=interval_seconds) if enabled else None
+                    now = _now()
+                    self._next_run_at = (
+                        _next_daily_run_at(now, daily_run_time)
+                        if enabled and mode == "daily_time"
+                        else now + timedelta(seconds=interval_seconds)
+                        if enabled
+                        else None
+                    )
                 is_running = bool(self._state["is_running"])
                 next_run_at = self._next_run_at
 
@@ -359,6 +403,8 @@ class CrawlManager:
             finished_at = _now()
             runtime_settings = load_runtime_config(self.runtime_path)
             schedule = runtime_settings.get("schedule", {})
+            mode = _normalize_schedule_mode(schedule.get("mode"))
+            daily_run_time = _normalize_daily_run_time(schedule.get("daily_run_time"))
             interval_seconds = _safe_int(schedule.get("interval_seconds"), 3600)
             with self._lock:
                 self._state.update(
@@ -382,7 +428,9 @@ class CrawlManager:
                     }
                 )
                 self._next_run_at = (
-                    finished_at + timedelta(seconds=interval_seconds)
+                    _next_daily_run_at(finished_at, daily_run_time)
+                    if bool(schedule.get("enabled", False)) and mode == "daily_time"
+                    else finished_at + timedelta(seconds=interval_seconds)
                     if bool(schedule.get("enabled", False))
                     else None
                 )

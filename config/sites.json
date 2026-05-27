@@ -128,7 +128,7 @@
     "strategy": "pfsc_chart_batch",
     "max_pages": 20,
     "max_varieties": 60,
-    "max_workers": 6,
+    "max_workers": 3,
     "fallback_strategy": null
   },
   {
@@ -162,7 +162,7 @@
     "notes": "农业农村部重点农产品市场信息平台公开批发价格接口，按品种查询全国市场行情。",
     "strategy": "moa_wholesale_batch",
     "max_varieties": 60,
-    "max_workers": 6,
+    "max_workers": 3,
     "fallback_strategy": null
   },
   {

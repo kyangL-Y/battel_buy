@@ -682,7 +682,7 @@
 
 
 
-        <h1>{{ pageTitle }}</h1>
+        <h1>{{ pageTitle }}<small class="pcw-build-badge">{{ workbenchBuildMarker }}</small></h1>
 
 
 
@@ -771,6 +771,7 @@
 
 
         <section
+          v-if="showWorkbenchFilter"
 
 
 
@@ -858,7 +859,7 @@
 
 
 
-            v-for="(item, index) in topFilters"
+            v-for="entry in displayedTopFilters"
 
 
 
@@ -866,7 +867,7 @@
 
 
 
-            :key="`${currentSection}-${index}-${item}`"
+            :key="`${currentSection}-${entry.index}-${entry.value}`"
 
 
 
@@ -882,7 +883,7 @@
 
 
 
-            :data-testid="currentSection === 'trend' && index === 0 ? 'pcw-trend-product-filter' : undefined"
+            :data-testid="currentSection === 'trend' && entry.index === 0 ? 'pcw-trend-product-filter' : undefined"
 
 
 
@@ -914,8 +915,8 @@
 
 
 
-              :class="{ active: isFilterSelected(index), focused: activeFilterIndex === index, open: activeFilterMenu === index }"
-              :disabled="!hasFilterChoices(index)"
+              :class="{ active: isFilterSelected(entry.index), focused: activeFilterIndex === entry.index, open: activeFilterMenu === entry.index }"
+              :disabled="!hasFilterChoices(entry.index)"
 
 
 
@@ -923,7 +924,7 @@
 
 
 
-              :aria-expanded="activeFilterMenu === index"
+              :aria-expanded="activeFilterMenu === entry.index"
 
 
 
@@ -931,7 +932,7 @@
 
 
 
-              :title="getFilterButtonTitle(index, item)"
+              :title="getFilterButtonTitle(entry.index, entry.value)"
 
 
 
@@ -939,7 +940,7 @@
 
 
 
-              @click="handleFilterSelect(index)"
+              @click="handleFilterSelect(entry.index)"
 
 
 
@@ -955,7 +956,7 @@
 
 
 
-              <span>{{ getFilterButtonLabel(index, item) }}</span>
+              <span>{{ getFilterButtonLabel(entry.index, entry.value) }}</span>
 
 
 
@@ -963,7 +964,7 @@
 
 
 
-              <small>{{ hasFilterChoices(index) ? '⌄' : '—' }}</small>
+              <small>{{ hasFilterChoices(entry.index) ? '⌄' : '—' }}</small>
 
 
 
@@ -979,7 +980,7 @@
 
 
 
-            <div v-if="activeFilterMenu === index" class="pcw-filter-menu" role="menu">
+            <div v-if="activeFilterMenu === entry.index" class="pcw-filter-menu" role="menu">
 
 
 
@@ -995,7 +996,7 @@
 
 
 
-                v-if="(sectionFilterOptions[currentSection]?.[index] || []).length > 1"
+                v-if="(sectionFilterOptions[currentSection]?.[entry.index] || []).length > 1"
 
 
 
@@ -1067,7 +1068,7 @@
 
 
 
-                v-for="option in getVisibleFilterOptions(index)"
+                v-for="option in getVisibleFilterOptions(entry.index)"
 
 
 
@@ -1075,7 +1076,7 @@
 
 
 
-                :key="`${currentSection}-${index}-${option.optionIndex}-${option.value}`"
+                :key="`${currentSection}-${entry.index}-${option.optionIndex}-${option.value}`"
 
 
 
@@ -1091,7 +1092,7 @@
 
 
 
-                :class="{ selected: filterSelections[currentSection]?.[index] === option.optionIndex }"
+                :class="{ selected: filterSelections[currentSection]?.[entry.index] === option.optionIndex }"
 
 
 
@@ -1107,7 +1108,7 @@
 
 
 
-                :aria-checked="filterSelections[currentSection]?.[index] === option.optionIndex"
+                :aria-checked="filterSelections[currentSection]?.[entry.index] === option.optionIndex"
 
 
 
@@ -1122,7 +1123,7 @@
                 :title="formatFilterLabel(option.value)"
 
 
-                @click="selectFilterOption(index, option.optionIndex)"
+                @click="selectFilterOption(entry.index, option.optionIndex)"
 
 
 
@@ -1234,7 +1235,7 @@
 
 
 
-        <section :class="['pcw-kpis', `is-${currentSection}`]" aria-label="今日指标">
+        <section v-if="topKpis.length" :class="['pcw-kpis', `is-${currentSection}`]" aria-label="今日指标">
 
 
 
@@ -1386,7 +1387,6 @@
 
 
 
-                  <th>来源</th>
 
 
 
@@ -1418,7 +1418,6 @@
 
 
 
-                  <th>较昨日</th>
 
 
 
@@ -1474,7 +1473,7 @@
 
 
 
-                  <td colspan="9">
+                  <td colspan="7">
 
 
 
@@ -1590,7 +1589,6 @@
                   <td :title="formatDisplayCategoryPath(row)">{{ formatDisplayCategoryPath(row) }}</td>
 
 
-                  <td :title="row.source">{{ row.source }}</td>
 
 
 
@@ -1622,7 +1620,6 @@
 
 
 
-                  <td :class="row.changeTone">{{ row.change }}</td>
 
 
 
@@ -1809,7 +1806,7 @@
 
 
 
-          <aside v-if="false" class="pcw-right">
+          <aside v-if="currentSection === 'summary'" class="pcw-right">
 
 
 
@@ -1817,7 +1814,7 @@
 
 
 
-            <section class="pcw-card pcw-quotes">
+            <section v-if="quoteRows.length" class="pcw-card pcw-quotes">
 
 
 
@@ -2652,6 +2649,39 @@
 
 
 
+            <div v-if="activeTrendRow" class="pcw-trend-hover-inspector">
+              <article>
+                <span>当前时间点</span>
+                <strong>{{ activeTrendTooltip?.date || '最新' }}</strong>
+                <small>{{ activeTrendRow.captured_at ? formatShortDateTime(activeTrendRow.captured_at) : '最近趋势点' }}</small>
+              </article>
+              <article>
+                <span>报价</span>
+                <strong>{{ activeTrendTooltip?.price || '-' }}</strong>
+                <small>{{ isUsingTrendSnapshot ? '行情快照点' : '真实趋势点' }}</small>
+              </article>
+              <article>
+                <span>来源</span>
+                <strong>{{ activeTrendTooltip?.market || '真实来源' }}</strong>
+                <small>{{ activeTrendRow.source_name || activeTrendRow.site_name || activeTrendRow.trend_series_name || '真实来源' }}</small>
+              </article>
+            </div>
+            <div v-if="trendPointRailRows.length" class="pcw-trend-point-rail">
+              <button
+                v-for="item in trendPointRailRows"
+                :key="`${item.index}-${item.label}-${item.price}`"
+                type="button"
+                :class="{ active: activeTrendPointIndex === item.index }"
+                @mouseenter="setHoveredTrendPoint(item.index)"
+                @focus="setHoveredTrendPoint(item.index)"
+                @click="setHoveredTrendPoint(item.index)"
+              >
+                <span>{{ item.label }}</span>
+                <strong>{{ item.price }}</strong>
+                <small>{{ item.source }}</small>
+              </button>
+            </div>
+
             <div v-if="!trendChartRows.length" class="pcw-chart-empty" data-testid="pcw-trend-empty-state">
 
 
@@ -2764,7 +2794,7 @@
 
 
 
-            <section class="pcw-card pcw-trend-quotes">
+            <section v-if="trendQuoteRows.length" class="pcw-card pcw-trend-quotes">
 
 
 
@@ -3116,7 +3146,7 @@
 
 
 
-          <section class="pcw-card pcw-market-compare">
+            <section v-if="trendMarketRows.length" class="pcw-card pcw-market-compare">
 
 
 
@@ -3268,7 +3298,7 @@
 
 
 
-          <section class="pcw-card pcw-trend-dynamics">
+          <section v-if="trendDynamics.length" class="pcw-card pcw-trend-dynamics">
 
 
 
@@ -3332,7 +3362,7 @@
 
 
 
-          <section class="pcw-card pcw-peer-products">
+          <section v-if="peerRows.length" class="pcw-card pcw-peer-products">
 
 
 
@@ -3572,7 +3602,7 @@
 
 
 
-              <button type="button" @click="openActionPanel('高优先级预警', priorityAlerts.map((item) => [item.name, item.type, item.detail].filter(Boolean).join(' ')), 'alerts')">查看明细 ›</button>
+              <button type="button" @click="openActionPanel('高优先级预警', priorityAlerts.map((item) => [item.title, item.type, item.detail].filter(Boolean).join(' ')), 'alerts')">查看明细 ›</button>
                         <button type="button" @click="openAlertSettingsPanel">设置提醒</button>
 
 
@@ -4080,7 +4110,7 @@
 
 
 
-          <aside v-if="false" class="pcw-alert-side">
+          <aside class="pcw-alert-side">
 
 
 
@@ -4112,7 +4142,7 @@
 
 
 
-                <button type="button" @click="openActionPanel('高优先级预警', priorityAlerts.map((item) => `${item.name} ${item.type} ${item.detail}`), 'alerts')">查看明细 ›</button>
+                <button type="button" @click="openActionPanel('高优先级预警', priorityAlerts.map((item) => `${item.title} ${item.type} ${item.detail}`), 'alerts')">查看明细 ›</button>
 
 
 
@@ -4329,310 +4359,7 @@
 
 
           </aside>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-          <section v-if="false" class="pcw-card pcw-alert-chart">
-
-
-
-
-
-
-
-            <div class="pcw-card-head">
-
-
-
-
-
-
-
-              <h2>预警趋势</h2>
-
-
-
-
-
-
-
-              <button type="button" @click="setChartRange(chartRange === 7 ? 30 : 7)">{{ chartRangeLabel }}⌄</button>
-
-
-
-
-
-
-
-            </div>
-
-
-
-
-
-
-
-            <div class="pcw-legend">
-
-
-
-
-
-
-
-              <span class="up">上涨预警</span>
-
-
-
-
-
-
-
-              <span class="down">下跌预警</span>
-
-
-
-
-
-
-
-              <span class="warn">波动预警</span>
-
-
-
-
-
-
-
-              <span class="blue">预警总数</span>
-
-
-
-
-
-
-
-            </div>
-
-
-
-
-
-
-
-            <svg viewBox="0 0 720 220" role="img" aria-label="预警趋势">
-
-
-
-
-
-
-
-              <g class="grid">
-
-
-
-
-
-
-
-                <path d="M36 20H700M36 70H700M36 120H700M36 170H700M36 210H700" />
-
-
-
-
-
-
-
-              </g>
-
-
-
-
-
-
-
-              <g class="bars">
-
-
-
-
-
-
-
-                <rect
-
-
-
-
-
-
-
-                  v-for="bar in alertChartBars"
-
-
-
-
-
-
-
-                  :key="`${bar.x}-${bar.y}`"
-
-
-
-
-
-
-
-                  :x="bar.x"
-
-
-
-
-
-
-
-                  :y="bar.y"
-
-
-
-
-
-
-
-                  :width="bar.width"
-
-
-
-
-
-
-
-                  :height="bar.height"
-
-
-
-
-
-
-
-                />
-
-
-
-
-
-
-
-              </g>
-
-
-
-
-
-
-
-              <polyline class="line-blue" :points="alertChartLinePoints" />
-
-
-
-
-
-
-
-              <g class="pcw-axis">
-
-
-
-
-
-
-
-                <text v-for="label in chartAxisLabels" :key="`alert-${label.x}`" :x="label.x" y="218">{{ label.text }}</text>
-
-
-
-
-
-
-
-              </g>
-
-
-
-
-
-
-
-            </svg>
-
-
-
-
-
-
-
-            <div v-if="!hasAlertSignals" class="pcw-chart-empty alert">
-
-
-
-
-
-
-
-              <strong>暂无预警趋势</strong>
-
-
-
-
-
-
-
-              <span>真实信号产生后会绘制上涨、下跌、波动和总量趋势。</span>
-
-
-
-
-
-
-
-            </div>
-
-
-
-
-
-
-
-          </section>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-          <section v-if="false" class="pcw-card pcw-alert-advice">
+          <section class="pcw-card pcw-alert-advice">
 
 
 
@@ -4688,7 +4415,7 @@
 
 
 
-          <section v-if="false" class="pcw-card pcw-rule-card">
+          <section class="pcw-card pcw-rule-card">
 
 
 
@@ -5153,7 +4880,7 @@
           />
         </section>
 
-        <section v-else :key="`pcw-section-module-${currentSection}`" :class="['pcw-module', `pcw-module-${currentSection}`, moduleDensityClass, moduleLayoutClass]">
+        <section v-else :key="`pcw-section-module-${currentSection}`" :class="['pcw-module', `pcw-module-${currentSection}`, moduleDensityClass, moduleLayoutClass, { 'is-quotes-empty': isQuotesModuleEmpty }]">
 
 
 
@@ -5161,7 +4888,7 @@
 
 
 
-          <section v-if="isGeneratedModuleLayout" class="pcw-module-command">
+          <section v-if="isGeneratedModuleLayout && !isPurchaseModuleEmpty" class="pcw-module-command">
 
 
 
@@ -5297,7 +5024,12 @@
 
 
 
-            <div class="pcw-module-command-brief">
+            <div v-if="isPurchaseModuleEmpty" class="pcw-module-command-empty-note">
+              <strong>当前还没有可直接执行的采购动作</strong>
+              <span>先去报价记录补齐供应商报价，或进入采购计划整理待确认项，再回到这里执行。</span>
+            </div>
+
+            <div v-else class="pcw-module-command-brief">
 
 
 
@@ -5465,7 +5197,159 @@
             @update-global-alert-rules="emit('update-global-alert-rules', $event)"
           />
 
-          <section class="pcw-module-grid">
+          <section v-if="currentSection === 'settings'" class="pcw-card pcw-settings-quick-panel">
+            <div class="pcw-card-head">
+              <h2>本页只保留来源配置和同步控制</h2>
+              <button type="button" @click="handleSettingsRunCrawl">立即同步 ›</button>
+            </div>
+            <div class="pcw-settings-quick-grid">
+              <article v-for="item in settingsQuickCards" :key="item.label" :class="item.tone">
+                <span>{{ item.label }}</span>
+                <strong>{{ item.value }}</strong>
+                <small>{{ item.detail }}</small>
+              </article>
+            </div>
+          </section>
+
+          <section v-else-if="currentSection === 'market'" class="pcw-market-health-board">
+            <section class="pcw-card pcw-market-health-list">
+              <div class="pcw-card-head">
+                <h2>来源健康巡检</h2>
+                <button type="button" @click="handleModulePrimaryAction">刷新行情 ›</button>
+              </div>
+              <div class="pcw-market-health-rows">
+                <article v-for="item in marketHealthRows" :key="item.name" :class="item.tone">
+                  <div>
+                    <strong>{{ item.name }}</strong>
+                    <small>{{ item.detail }}</small>
+                  </div>
+                  <span>{{ item.latest }}</span>
+                  <b>{{ item.records }}</b>
+                </article>
+              </div>
+            </section>
+            <aside class="pcw-market-health-side">
+              <section class="pcw-card pcw-market-health-pulse">
+                <div class="pcw-card-head">
+                  <h2>同步脉冲</h2>
+                </div>
+                <article v-for="item in marketCoverageCards" :key="item.label" :class="item.tone">
+                  <span>{{ item.label }}</span>
+                  <strong>{{ item.value }}</strong>
+                  <small>{{ item.detail }}</small>
+                </article>
+              </section>
+              <section class="pcw-card pcw-market-failure-list">
+                <div class="pcw-card-head">
+                  <h2>优先排查</h2>
+                </div>
+                <p v-for="item in marketFailureRows" :key="item.name">
+                  <b>{{ item.name }}</b>
+                  <span>{{ item.reason }}</span>
+                </p>
+              </section>
+            </aside>
+          </section>
+
+          <section v-else-if="currentSection === 'reports'" class="pcw-report-workbench">
+            <section class="pcw-card pcw-report-composition">
+              <div class="pcw-card-head">
+                <h2>品类结构</h2>
+                <button type="button" @click="handleModulePrimaryAction">导出报表 ›</button>
+              </div>
+              <div class="pcw-report-bars">
+                <article v-for="item in reportCategoryRows" :key="item.category">
+                  <div>
+                    <strong>{{ item.category }}</strong>
+                    <small>{{ item.count }} 个商品 · {{ item.avg }}</small>
+                  </div>
+                  <span><i :style="{ width: `${item.percent}%` }"></i></span>
+                  <b>{{ item.percent }}%</b>
+                </article>
+              </div>
+            </section>
+            <aside class="pcw-report-side">
+              <section class="pcw-card pcw-report-export-card">
+                <div class="pcw-card-head">
+                  <h2>报表包</h2>
+                </div>
+                <article v-for="item in reportExportCards" :key="item.label">
+                  <span>{{ item.label }}</span>
+                  <strong>{{ item.value }}</strong>
+                  <small>{{ item.detail }}</small>
+                </article>
+              </section>
+              <section class="pcw-card pcw-report-risk-card">
+                <div class="pcw-card-head">
+                  <h2>风险摘要</h2>
+                </div>
+                <p v-for="item in reportRiskRows" :key="item.title" :class="item.tone">
+                  <b>{{ item.title }}</b>
+                  <span>{{ item.detail }}</span>
+                </p>
+              </section>
+            </aside>
+          </section>
+
+          <section v-else-if="isPurchaseModuleEmpty" class="pcw-card pcw-module-empty-compact">
+            <div class="pcw-card-head">
+              <h2>采购还不能执行，先补齐一条链</h2>
+            </div>
+            <div class="pcw-purchase-empty-path">
+              <article v-for="item in purchaseEmptyActions" :key="item.label">
+                <span>{{ item.step }}</span>
+                <strong>{{ item.label }}</strong>
+                <small>{{ item.detail }}</small>
+                <button type="button" @click="openWorkbenchActionSection(item.section, item.identityKey || '')">{{ item.action }}</button>
+              </article>
+            </div>
+            <div class="pcw-purchase-empty-feed">
+              <section>
+                <strong>当前卡点</strong>
+                <p v-for="item in purchaseEmptyBlockers" :key="item">{{ item }}</p>
+              </section>
+              <section>
+                <strong>最近可参考趋势</strong>
+                <button
+                  v-for="item in purchaseTrendCarryRows"
+                  :key="`${item.source}-${item.time}-${item.price}`"
+                  type="button"
+                  @click="openWorkbenchActionSection('trend', item.identityKey)"
+                >
+                  <span>{{ item.source }} · {{ item.time }}</span>
+                  <b>{{ item.price }}</b>
+                </button>
+                <p v-if="!purchaseTrendCarryRows.length">先从汇总行情选择商品，再进入趋势页确认真实来源。</p>
+              </section>
+            </div>
+          </section>
+
+          <section v-else-if="isQuotesModuleEmpty" class="pcw-card pcw-quotes-empty-compact">
+            <div class="pcw-card-head">
+              <h2>报价入库待办</h2>
+              <button type="button" @click="handleModulePrimaryAction">去报价后台 ›</button>
+            </div>
+            <div class="pcw-quotes-empty-grid">
+              <article v-for="item in quoteEmptyActionCards" :key="item.label">
+                <span>{{ item.label }}</span>
+                <strong>{{ item.value }}</strong>
+                <small>{{ item.detail }}</small>
+                <button type="button" @click="openWorkbenchActionSection(item.section, item.identityKey || '')">{{ item.action }}</button>
+              </article>
+            </div>
+            <div class="pcw-quotes-empty-feed">
+              <section>
+                <strong>当前链路</strong>
+                <p v-for="item in quoteEmptyWorkflowRows" :key="item">{{ item }}</p>
+              </section>
+              <section>
+                <strong>下一步</strong>
+                <p>供应商报价同步后，这里才展开表格、质量侧栏和报价流明细；无数据时不再占一整屏。</p>
+              </section>
+            </div>
+          </section>
+
+          <section v-else class="pcw-module-grid">
 
 
 
@@ -6667,7 +6551,7 @@
 
 
 
-          <section class="pcw-card pcw-timeline">
+          <section v-if="timelineRows.length" class="pcw-card pcw-timeline">
 
 
 
@@ -6755,62 +6639,51 @@
 
 
 
-          <section class="pcw-card pcw-advice">
-
-
-
-
-
-
-
+          <section class="pcw-card pcw-summary-actions">
             <div class="pcw-card-head">
-
-
-
-
-
-
-
-              <h2>采购建议</h2>
-
-
-
-
-
-
-
+              <h2>今天先处理这几项</h2>
+              <button type="button" @click="handleNavSelect('purchase')">去执行 ›</button>
             </div>
+            <div class="pcw-summary-action-grid">
+              <button
+                v-for="item in summaryActionCards"
+                :key="`${item.label}-${item.title}`"
+                type="button"
+                class="pcw-summary-action-card"
+                @click="openWorkbenchActionSection(item.section, item.identityKey)"
+              >
+                <span>{{ item.label }}</span>
+                <strong>{{ item.title }}</strong>
+                <small>{{ item.detail }}</small>
+              </button>
+            </div>
+          </section>
 
-
-
-
-
-
-
-            <ul>
-
-
-
-
-
-
-
-              <li v-for="item in summaryAdviceRows" :key="item">{{ item }}</li>
-
-
-
-
-
-
-
-            </ul>
-
-
-
-
-
-
-
+          <section class="pcw-card pcw-summary-opportunities">
+            <div class="pcw-card-head">
+              <h2>价差机会</h2>
+              <button type="button" @click="handleNavSelect('trend')">看趋势 ›</button>
+            </div>
+            <div v-if="!summaryOpportunityRows.length" class="pcw-panel-empty compact">
+              <strong>暂无可复核机会</strong>
+              <span>当前筛选结果还没有足够的价差或报价覆盖。</span>
+            </div>
+            <button
+              v-for="item in summaryOpportunityRows"
+              :key="`${item.identityKey}-${item.name}`"
+              type="button"
+              class="pcw-summary-opportunity"
+              @click="openWorkbenchActionSection('trend', item.identityKey)"
+            >
+              <div>
+                <strong>{{ item.name }}</strong>
+                <small>{{ item.market }} · {{ item.quotes }} 条报价</small>
+              </div>
+              <div class="pcw-summary-opportunity-metrics">
+                <b>{{ item.low }}</b>
+                <span>价差 {{ item.spread }}</span>
+              </div>
+            </button>
           </section>
 
 
@@ -6819,7 +6692,7 @@
 
 
 
-          <section class="pcw-card pcw-alerts">
+          <section v-if="alerts.length" class="pcw-card pcw-alerts">
 
 
 
@@ -8513,7 +8386,7 @@ const selectedLocationLabel = ref('')
 
 
 
-const pageSizeOptions = [8, 15, 30, 50, 100]
+const pageSizeOptions = [8, 16, 32, 50, 100]
 const pageSize = ref(8)
 
 
@@ -8908,8 +8781,12 @@ const sectionToWorkspaceTab: Partial<Record<SectionId, 'signals' | 'summary' | '
 function syncSectionFromActiveTab(tab: string) {
   if (
     tab === 'summary'
-    && ['market', 'suppliers', 'quotes', 'reports', 'settings', 'purchase'].includes(currentSection.value)
+    && ['trend', 'alerts', 'market', 'suppliers', 'quotes', 'reports', 'settings', 'purchase', 'plan'].includes(currentSection.value)
   ) {
+    return
+  }
+
+  if (tab === 'menu' && currentSection.value === 'plan') {
     return
   }
 
@@ -9646,6 +9523,14 @@ function openSummaryProductTrend(identityKey: string) {
   if (!identityKey) return
   emit('select-product', identityKey)
   void handleNavSelect('trend')
+}
+
+function openWorkbenchActionSection(sectionId: SectionId, identityKey = '') {
+  if (sectionId === 'trend' && identityKey) {
+    openSummaryProductTrend(identityKey)
+    return
+  }
+  void handleNavSelect(sectionId)
 }
 
 function showMissingAlertIdentityHint(actionLabel: string, row: AlertTaskRow) {
@@ -13605,6 +13490,7 @@ const moduleView = computed(() => sectionModuleViews.value[currentSection.value]
 
 
 const currentDateLabel = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai' }).format(new Date())
+const workbenchBuildMarker = '上传时间 2026-05-27 18:47'
 
 
 
@@ -13894,15 +13780,6 @@ const kpis = computed(() => {
 
 
 
-    {
-      label: '数据同步',
-      value: latestLabel ? '已同步' : '同步',
-      detail: latestLabel || (quoteTotal || sourceTotal ? `${sourceTotal} 源 / ${quoteTotal} 报价` : settingsCrawlProgressLabel.value),
-      tone: latestLabel || quoteTotal || sourceTotal ? 'green' : 'blue',
-    },
-
-
-
   ]
 
 
@@ -14095,7 +13972,6 @@ const trendKpis = computed(() => {
 
 
 
-    { label: '数据状态', value: props.trendLoading ? '加载中' : '已同步', detail: selectedProductName.value || props.selectedIdentityKey || '未选择商品', tone: props.trendLoading ? 'warn' : 'green' },
 
 
 
@@ -14459,11 +14335,11 @@ function shouldKeepSectionKpi(sectionId: SectionId, item: { label: string; value
   if (sectionId === 'suppliers') {
     return ['待补报价', '最近有报价', '已接入供应商'].includes(item.label) || (!isZeroLike && item.label === '停用供应商')
   }
+  if (sectionId === 'purchase' && isPurchaseModuleEmpty.value) {
+    return false
+  }
   if (sectionId === 'market') {
     return ['异常来源', '当前有返回', '已配置来源'].includes(item.label) || (!isZeroLike && item.label === '本轮报价记录')
-  }
-  if (sectionId === 'purchase') {
-    return ['等你确认', '最低可下单价', '可采购报价'].includes(item.label) || (!isZeroLike && item.label === '当前建议成本')
   }
   return !isZeroLike || ['采集状态', '自动同步', '高风险建议', '待补报价', '等你确认', '异常来源'].includes(item.label)
 }
@@ -14634,7 +14510,25 @@ const topFilters = computed(() => {
 
 
 
+const displayedTopFilters = computed(() => {
+  const values = topFilters.value
+  let visibleIndexes = values.map((_, index) => index)
+
+  if (currentSection.value === 'summary') {
+    visibleIndexes = [0, 1, 2, 4]
+  } else if (currentSection.value === 'trend') {
+    visibleIndexes = [0, 1, 2]
+  }
+
+  return visibleIndexes
+    .filter((index) => values[index] != null)
+    .map((index) => ({ index, value: values[index] }))
+})
+
+const showWorkbenchFilter = computed(() => currentSection.value !== 'suppliers')
+
 const topKpis = computed(() => {
+  if (currentSection.value === 'suppliers') return []
 
 
 
@@ -14852,6 +14746,82 @@ const moduleHasSideItems = computed(() => moduleSideItems.value.length > 0)
 
 
 const moduleHasFlowItems = computed(() => moduleFlowItems.value.length > 0)
+const isPurchaseModuleEmpty = computed(() => currentSection.value === 'purchase' && !moduleHasTableRows.value && !moduleHasSideItems.value && !moduleHasFlowItems.value)
+const isQuotesModuleEmpty = computed(() => currentSection.value === 'quotes' && !moduleHasTableRows.value)
+
+const quoteEmptyActionCards = computed(() => {
+  const focusedIdentityKey = props.selectedIdentityKey || selectedSummaryRow.value?.price_identity_key || ''
+  return [
+    {
+      label: '当前商品报价',
+      value: String(focusedSupplierQuotes.value.length),
+      detail: focusedSupplierQuotes.value.length ? '已有供应商报价可复核' : '当前商品暂无供应商报价',
+      action: '看趋势',
+      section: 'trend' as SectionId,
+      identityKey: focusedIdentityKey,
+    },
+    {
+      label: '趋势可承接',
+      value: String(trendQuoteRows.value.length),
+      detail: trendQuoteRows.value.length ? '可先从趋势报价转采购动作' : '暂无趋势报价可承接',
+      action: '单品趋势',
+      section: 'trend' as SectionId,
+      identityKey: focusedIdentityKey,
+    },
+    {
+      label: '供应商报价库',
+      value: String(props.supplierOverview?.summary?.total_quote_count || 0),
+      detail: props.supplierOverview?.summary?.latest_quoted_at
+        ? `最近 ${formatShortDateTime(props.supplierOverview.summary.latest_quoted_at)}`
+        : '等待供应商提交报价',
+      action: '报价后台',
+      section: 'quotes' as SectionId,
+      identityKey: '',
+    },
+  ]
+})
+
+const quoteEmptyWorkflowRows = computed(() => [
+  selectedProductName.value ? `${selectedProductName.value} 当前未命中供应商报价记录。` : '当前筛选条件未命中供应商报价记录。',
+  trendQuoteRows.value.length ? `已有 ${trendQuoteRows.value.length} 条趋势报价，可先进入单品趋势复核。` : '趋势报价和供应商报价都为空时，只保留入库待办。',
+  '补齐供应商、报价、单位和状态后，报价记录表格会自动展开。',
+])
+
+const purchaseEmptyActions = computed(() => {
+  const identityKey = props.selectedIdentityKey || selectedSummaryRow.value?.price_identity_key || ''
+  return [
+    {
+      step: '01',
+      label: '先选采购商品',
+      detail: selectedProductName.value ? `当前商品：${selectedProductName.value}` : '从汇总行情里选一个真实商品作为采购对象。',
+      action: '去汇总选品',
+      section: 'summary' as SectionId,
+      identityKey: '',
+    },
+    {
+      step: '02',
+      label: '补供应商报价',
+      detail: '没有可下单报价时，不展开采购表格，先进入报价记录补价。',
+      action: '补报价',
+      section: 'quotes' as SectionId,
+      identityKey,
+    },
+    {
+      step: '03',
+      label: '生成采购计划',
+      detail: '报价链补齐后，再回采购计划按菜单和数量生成执行动作。',
+      action: '采购计划',
+      section: 'plan' as SectionId,
+      identityKey: '',
+    },
+  ]
+})
+
+const purchaseEmptyBlockers = computed(() => [
+  focusedSupplierQuotes.value.length ? `当前商品已有 ${focusedSupplierQuotes.value.length} 条报价，但还没有有效可采购报价。` : '当前商品没有供应商可下单报价。',
+  trendChartRows.value.length ? `趋势页已有 ${trendChartRows.value.length} 个真实/快照点，可先复核价格方向。` : '趋势链路还未形成可承接价格点。',
+  props.planRows?.length ? `采购计划已有 ${props.planRows.length} 条明细，等待报价补齐后执行。` : '采购计划暂未生成可执行明细。',
+])
 
 const moduleEmptyTitle = computed(() => {
   if (currentSection.value === 'settings') {
@@ -15308,7 +15278,7 @@ const quoteRows = computed(() => {
 
 
 
-  return rows.slice(0, 4).map((item) => ({
+  return rows.slice(0, 3).map((item) => ({
 
 
 
@@ -18575,6 +18545,34 @@ const activeTrendDot = computed(() => {
   const index = activeTrendPointIndex.value
   return index >= 0 ? bigTrendDots.value[index] || null : null
 })
+const activeTrendRow = computed(() => {
+  const index = activeTrendPointIndex.value
+  return index >= 0 ? trendChartRows.value[index] || null : null
+})
+
+const trendPointRailRows = computed(() => {
+  const rows = trendChartRows.value
+  if (!rows.length) return []
+  const indexes = rows.length <= 6
+    ? rows.map((_, index) => index)
+    : Array.from(new Set([
+        0,
+        Math.floor((rows.length - 1) * 0.2),
+        Math.floor((rows.length - 1) * 0.4),
+        Math.floor((rows.length - 1) * 0.6),
+        Math.floor((rows.length - 1) * 0.8),
+        rows.length - 1,
+      ]))
+  return indexes.map((index) => {
+    const row = rows[index]
+    return {
+      index,
+      label: row?.captured_at ? formatMonthDay(row.captured_at) : `点 ${index + 1}`,
+      price: formatNumber(row?.current_price),
+      source: row?.source_name || row?.site_name || row?.trend_series_name || row?.market_name || '真实来源',
+    }
+  })
+})
 
 
 
@@ -19086,6 +19084,249 @@ const summaryAdviceRows = computed(() => {
 
 
 
+
+const visibleQuoteCount = computed(() => focusedSupplierQuotes.value.length || quoteRows.value.length)
+
+const summaryActionCards = computed(() => {
+  const rows = (props.rows || []).filter((item) => Number(item.average_price || 0) > 0)
+  const widestRow = [...rows].sort((left, right) => (
+    Number(right.highest_price || right.average_price || 0) - Number(right.lowest_price || right.average_price || 0)
+  ) - (
+    Number(left.highest_price || left.average_price || 0) - Number(left.lowest_price || left.average_price || 0)
+  ))[0]
+  const lowestAverageRow = [...rows].sort((left, right) => Number(left.average_price || 0) - Number(right.average_price || 0))[0]
+  const focusedIdentityKey = selectedSummaryRow.value?.price_identity_key || props.selectedIdentityKey || ''
+  const recommendationCount = props.procurementRecommendations?.length || 0
+
+  return [
+    {
+      label: '默认追踪',
+      title: selectedProductName.value || selectedSummaryRow.value?.product_name || '进入单品趋势',
+      detail: trendChartRows.value.length ? `当前已挂 ${trendChartRows.value.length} 个趋势点` : '先把当前商品的趋势看明白',
+      section: 'trend' as SectionId,
+      identityKey: focusedIdentityKey,
+    },
+    {
+      label: '最大价差',
+      title: widestRow?.product_name || '等待价差商品',
+      detail: widestRow
+        ? `价差 ${formatSpread(widestRow.lowest_price, widestRow.highest_price)} · ${widestRow.lowest_price_site || widestRow.region_label || '本地市场'}`
+        : '当前还没有可复核的价差商品',
+      section: 'trend' as SectionId,
+      identityKey: widestRow?.price_identity_key || '',
+    },
+    {
+      label: '最低均价',
+      title: lowestAverageRow?.product_name || '等待低价商品',
+      detail: lowestAverageRow
+        ? `均价 ${formatNumber(lowestAverageRow.average_price)} · 最低 ${formatNumber(lowestAverageRow.lowest_price || lowestAverageRow.average_price)}`
+        : '当前没有低价参考',
+      section: 'trend' as SectionId,
+      identityKey: lowestAverageRow?.price_identity_key || '',
+    },
+    {
+      label: '采购承接',
+      title: recommendationCount ? `${recommendationCount} 条采购建议` : `${visibleQuoteCount.value} 条报价待承接`,
+      detail: recommendationCount ? '去我的采购把建议接成动作' : '先核价，再回采购执行',
+      section: recommendationCount ? 'purchase' as SectionId : 'quotes' as SectionId,
+      identityKey: '',
+    },
+  ]
+})
+
+const summaryOpportunityRows = computed(() => (
+  [...(props.rows || [])]
+    .filter((item) => Number(item.lowest_price || item.average_price || 0) > 0)
+    .sort((left, right) => (
+      Number(right.highest_price || right.average_price || 0) - Number(right.lowest_price || right.average_price || 0)
+    ) - (
+      Number(left.highest_price || left.average_price || 0) - Number(left.lowest_price || left.average_price || 0)
+    ))
+    .slice(0, 4)
+    .map((item) => ({
+      name: item.product_name || item.price_identity_key || '当前商品',
+      market: item.lowest_price_site || item.region_label || '本地市场',
+      low: formatNumber(item.lowest_price || item.average_price),
+      spread: formatSpread(item.lowest_price, item.highest_price),
+      quotes: String(item.price_observation_count || item.market_count || item.site_count || 0),
+      identityKey: item.price_identity_key || item.product_name || '',
+    }))
+))
+
+const purchaseTrendCarryRows = computed(() => trendChartRows.value.slice(-4).reverse().map((item) => ({
+  source: item.source_name || item.trend_series_name || item.site_name || '真实来源',
+  market: item.market_name || item.region_label || item.city || '本地市场',
+  price: formatNumber(item.current_price),
+  time: item.captured_at ? formatShortDateTime(item.captured_at) : '最新',
+  identityKey: props.selectedIdentityKey || selectedSummaryRow.value?.price_identity_key || '',
+})))
+
+const purchaseRunbookSteps = computed(() => {
+  const currentProductName = selectedProductName.value || selectedSummaryRow.value?.product_name || '当前商品'
+  const recommendationCount = props.procurementRecommendations?.length || 0
+  return [
+    {
+      step: '先补价',
+      title: '补齐供应商可下单价',
+      detail: visibleQuoteCount.value
+        ? `当前已抓到 ${visibleQuoteCount.value} 条报价，先核报价来源与库存。`
+        : `当前商品 ${currentProductName} 还没有可直接下单的供应商报价。`,
+      actionLabel: '去报价记录',
+      section: 'quotes' as SectionId,
+      identityKey: '',
+    },
+    {
+      step: '再看趋势',
+      title: '确认今天该不该下单',
+      detail: trendChartRows.value.length
+        ? `已有 ${trendChartRows.value.length} 个趋势点，先看最低价和真实来源。`
+        : '先进入单品趋势看最近走势和来源变化。',
+      actionLabel: '看单品趋势',
+      section: 'trend' as SectionId,
+      identityKey: props.selectedIdentityKey || selectedSummaryRow.value?.price_identity_key || '',
+    },
+    {
+      step: '后执行',
+      title: '把建议接成采购动作',
+      detail: recommendationCount
+        ? `当前已有 ${recommendationCount} 条采购建议，可回我的采购承接。`
+        : '整理完报价和趋势后，再去采购计划确认执行。',
+      actionLabel: '去采购计划',
+      section: 'plan' as SectionId,
+      identityKey: '',
+    },
+  ]
+})
+
+const purchaseExecutionNotes = computed(() => {
+  const currentProductName = selectedProductName.value || selectedSummaryRow.value?.product_name || '当前商品'
+  if (props.procurementRecommendations?.length) {
+    return (props.procurementRecommendations || [])
+      .slice(0, 3)
+      .map((item) => `${item.ingredient_name || item.identity_key || currentProductName}：${item.reason_summary || formatRecommendedAction(item.recommended_action, '先按建议处理')}`)
+  }
+  if (trendSuggestions.value.length) {
+    return trendSuggestions.value.slice(0, 3)
+  }
+  return [
+    `${currentProductName} 先补供应商报价，再决定是否今天直接下单。`,
+    '如果最低价来源持续走低，优先在趋势页确认来源是否真实稳定。',
+    '回采购计划前，先把供应商、报价和库存核在一条链上。',
+  ]
+})
+
+const settingsQuickCards = computed(() => {
+  const sources = props.sourceCoverageRows || []
+  const enabledCount = sources.filter((item) => item.enabled !== false).length
+  const failedCount = sources.filter((item) => Number(item.failed_count || 0) > 0).length
+  const latestCapture = sources
+    .map((item) => item.latest_capture)
+    .filter((value): value is string => Boolean(value))
+    .sort()
+    .at(-1)
+  return [
+    {
+      label: '来源配置',
+      value: `${enabledCount}/${sources.length}`,
+      detail: sources.length ? '启用来源 / 全部来源' : '暂无来源配置',
+      tone: enabledCount ? 'green' : 'warn',
+    },
+    {
+      label: '异常来源',
+      value: String(failedCount),
+      detail: failedCount ? '优先检查失败来源策略' : '暂无失败来源',
+      tone: failedCount ? 'warn' : 'green',
+    },
+    {
+      label: '最近同步',
+      value: latestCapture ? formatMonthDay(latestCapture) : '-',
+      detail: latestCapture ? formatShortDateTime(latestCapture) : '等待同步',
+      tone: latestCapture ? 'blue' : 'warn',
+    },
+  ]
+})
+
+const marketHealthRows = computed(() => {
+  const sources = props.sourceCoverageRows || []
+  const rows = sources.length
+    ? sources.map((item) => {
+      const failed = Number(item.failed_count || 0) > 0 || Boolean(item.last_failure)
+      return {
+        name: item.configured_name || item.source_name || item.source_url || '未命名来源',
+        detail: failed ? (item.last_failure || `失败 ${item.failed_count || 0} 次`) : formatSourceCategoryPath(item),
+        latest: item.latest_capture ? formatShortDateTime(item.latest_capture) : '未同步',
+        records: `${item.price_record_count || item.market_count || item.source_item_count || 0} 条`,
+        tone: item.enabled === false ? 'off' : failed ? 'warn' : 'ok',
+      }
+    })
+    : marketModuleView.value.tableRows.map((item) => ({
+      name: String(item[0] || '行情来源'),
+      detail: String(item[1] || '真实行情主表'),
+      latest: String(item[2] || '-'),
+      records: String(item[4] || '-'),
+      tone: String(item[5] || '').includes('离线') ? 'off' : 'ok',
+    }))
+  return rows.slice(0, 8)
+})
+
+const marketCoverageCards = computed(() => {
+  const sources = props.sourceCoverageRows || []
+  const enabledCount = sources.filter((item) => item.enabled !== false).length
+  const recordTotal = sources.reduce((sum, item) => sum + Number(item.price_record_count || item.market_count || item.source_item_count || 0), 0)
+  const latestCapture = sources.map((item) => item.latest_capture).filter((value): value is string => Boolean(value)).sort().at(-1)
+  return [
+    { label: '启用来源', value: `${enabledCount}/${sources.length}`, detail: '来源覆盖状态', tone: enabledCount ? 'ok' : 'warn' },
+    { label: '价格记录', value: String(recordTotal || props.rows.length), detail: '来源累计记录', tone: 'ok' },
+    { label: '最近同步', value: latestCapture ? formatMonthDay(latestCapture) : '-', detail: latestCapture ? formatShortDateTime(latestCapture) : '等待同步', tone: latestCapture ? 'ok' : 'warn' },
+  ]
+})
+
+const marketFailureRows = computed(() => {
+  const failedSources = (props.sourceCoverageRows || [])
+    .filter((item) => Number(item.failed_count || 0) > 0 || item.last_failure || item.enabled === false)
+    .slice(0, 4)
+    .map((item) => ({
+      name: item.configured_name || item.source_name || item.source_url || '未命名来源',
+      reason: item.last_failure || (item.enabled === false ? '来源已停用' : `失败 ${item.failed_count || 0} 次`),
+    }))
+  return failedSources.length ? failedSources : [
+    { name: '暂无异常来源', reason: '当前先关注覆盖、同步时间和价格记录量。' },
+  ]
+})
+
+const reportCategoryRows = computed(() => {
+  const rows = reportsModuleView.value.tableRows
+    .filter((item) => !isEmptyModuleRow(item))
+    .map((item) => ({
+      category: String(item[0] || '未归类'),
+      count: Number(item[1] || 0),
+      avg: String(item[2] || '-'),
+    }))
+    .sort((left, right) => right.count - left.count)
+    .slice(0, 8)
+  const maxCount = Math.max(...rows.map((item) => item.count), 1)
+  return rows.map((item) => ({
+    ...item,
+    percent: Math.max(4, Math.round((item.count / maxCount) * 100)),
+  }))
+})
+
+const reportExportCards = computed(() => [
+  { label: '行情日报', value: String(props.rows.length), detail: '可导出商品明细' },
+  { label: '来源覆盖', value: String(props.sourceCoverageRows?.length || 0), detail: '来源配置数量' },
+  { label: '均价覆盖', value: props.rows.length ? `${Math.round((props.rows.filter((item) => item.average_price != null).length / props.rows.length) * 100)}%` : '0%', detail: '可统计均价比例' },
+])
+
+const reportRiskRows = computed(() => {
+  const risks = signalItems.value.slice(0, 4).map((item) => ({
+    title: item.product_name || item.identity_key || '风险商品',
+    detail: item.reason_summary || formatRecommendedAction(item.recommended_action),
+    tone: item.signal_level === 'high' || item.signal_level === 'critical' ? 'warn' : 'blue',
+  }))
+  return risks.length ? risks : [
+    { title: '暂无风险信号', detail: '当前报表以品类结构、均价覆盖和来源覆盖为主。', tone: 'green' },
+  ]
+})
 
 const trendAlertRows = computed(() => {
 
@@ -19846,7 +20087,7 @@ const alertChartLinePoints = computed(() => {
 
 
 
-const moduleChartBars = computed(() => {
+const moduleChartSeries = computed(() => {
 
 
 
@@ -19854,9 +20095,15 @@ const moduleChartBars = computed(() => {
 
 
 
-  if (!moduleHasChartData.value) return []
+  if (!moduleHasChartData.value) {
+    return { barValues: [] as number[], primaryValues: [] as number[], secondaryValues: [] as number[] }
+  }
   if (currentSection.value === 'market') {
-    return buildBarSet(marketTrendSeries.value.map((item) => item.high), [78, 118, 206, 246, 334, 374, 462, 502], 34, 24, 200)
+    return {
+      barValues: marketTrendSeries.value.map((item) => item.high),
+      primaryValues: marketTrendSeries.value.map((item) => item.avg),
+      secondaryValues: marketTrendSeries.value.map((item) => item.low),
+    }
   }
 
 
@@ -19865,7 +20112,7 @@ const moduleChartBars = computed(() => {
 
 
 
-  const rowCount = moduleTableRows.value.length
+  const metricValues = moduleView.value.metrics.map((item, index) => scoreModuleMetric(item, index))
 
 
 
@@ -19873,7 +20120,7 @@ const moduleChartBars = computed(() => {
 
 
 
-  const sideCount = moduleSideItems.value.length
+  const tableValues = filteredModuleTableRows.value.slice(0, 8).map((row, index) => scoreModuleRow(row, index))
 
 
 
@@ -19881,7 +20128,7 @@ const moduleChartBars = computed(() => {
 
 
 
-  const flowCount = moduleFlowItems.value.length
+  const sideValues = moduleSideItems.value.slice(0, 6).map((item, index) => scoreModuleSideItem(item, index))
 
 
 
@@ -19889,7 +20136,7 @@ const moduleChartBars = computed(() => {
 
 
 
-  const metricTotal = moduleView.value.metrics.reduce((sum, item) => sum + Number(String(item.value).replace(/[^\d.-]/g, '')) || sum, 0)
+  const flowValues = moduleFlowItems.value.slice(0, 6).map((item, index) => scoreModuleFlowItem(item, index))
 
 
 
@@ -19897,7 +20144,13 @@ const moduleChartBars = computed(() => {
 
 
 
-  return buildBarSet([rowCount, sideCount, flowCount, metricTotal || rowCount], [78, 118, 206, 246, 334, 374, 462, 502], 34, 24, 200)
+  const combinedValues = [...metricValues, ...tableValues, ...sideValues, ...flowValues]
+
+  return {
+    barValues: expandChartValues(combinedValues, 8, `${currentSection.value}-bars`),
+    primaryValues: expandChartValues([...tableValues, ...metricValues, ...sideValues], 5, `${currentSection.value}-primary`),
+    secondaryValues: expandChartValues([...flowValues, ...sideValues, ...metricValues.slice().reverse(), ...tableValues.slice().reverse()], 5, `${currentSection.value}-secondary`),
+  }
 
 
 
@@ -19921,6 +20174,14 @@ const moduleChartBars = computed(() => {
 
 
 
+const moduleChartBars = computed(() => {
+
+  if (!moduleHasChartData.value) return []
+
+  return buildBarSet(moduleChartSeries.value.barValues, [78, 118, 206, 246, 334, 374, 462, 502], 34, 24, 200)
+
+})
+
 const moduleChartLinePoints = computed(() => {
 
 
@@ -19930,9 +20191,7 @@ const moduleChartLinePoints = computed(() => {
 
 
   if (!moduleHasChartData.value) return ''
-  if (currentSection.value === 'market') {
-    return buildModuleValueLinePoints(marketTrendSeries.value.map((item) => item.avg))
-  }
+  return buildModuleValueLinePoints(moduleChartSeries.value.primaryValues)
 
 
 
@@ -20005,6 +20264,7 @@ const moduleChartLowLinePoints = computed(() => {
 
 
   if (!moduleHasChartData.value) return ''
+  return buildModuleValueLinePoints(moduleChartSeries.value.secondaryValues)
   if (currentSection.value === 'market') {
     return buildModuleValueLinePoints(marketTrendSeries.value.map((item) => item.low))
   }
@@ -20070,6 +20330,94 @@ const moduleChartLowLinePoints = computed(() => {
 
 
 
+
+function extractChartNumbers(value?: string | number | null) {
+
+  const matches = String(value ?? '').match(/-?\d+(?:\.\d+)?/g)
+
+  return (matches || []).map((item) => Math.abs(Number(item))).filter((item) => Number.isFinite(item) && item > 0)
+
+}
+
+function scoreChartText(value?: string | number | null, scale = 1) {
+
+  const text = String(value ?? '').replace(/\s+/g, '')
+
+  return text ? Math.max(1, Math.min(text.length * scale, 48)) : 0
+
+}
+
+function scoreModuleMetric(item: { label: string; value: string; detail: string }, index: number) {
+
+  const numericScore = averageNumbers([
+    ...extractChartNumbers(item.value),
+    ...extractChartNumbers(item.detail),
+  ]) || 0
+
+  return numericScore + scoreChartText(item.label, 1.4) + scoreChartText(item.detail, 0.28) + (index + 1) * 5
+
+}
+
+function scoreModuleRow(row: string[], index: number) {
+
+  return row.reduce((sum, cell, cellIndex) => {
+    const numbers = extractChartNumbers(cell)
+    const numericScore = numbers.length ? (averageNumbers(numbers) || 0) : 0
+    const textScore = scoreChartText(cell, cellIndex === 0 ? 1.3 : 0.75)
+
+    return sum + numericScore + textScore + (cellIndex + 1) * 2
+  }, (index + 1) * 4)
+
+}
+
+function scoreModuleSideItem(item: { label: string; title: string; detail: string }, index: number) {
+
+  return (
+    (averageNumbers([
+      ...extractChartNumbers(item.label),
+      ...extractChartNumbers(item.detail),
+    ]) || 0)
+    + scoreChartText(item.title, 1.1)
+    + scoreChartText(item.detail, 0.42)
+    + (index + 1) * 3
+  )
+
+}
+
+function scoreModuleFlowItem(item: { step: string; text: string }, index: number) {
+
+  return (
+    (averageNumbers([
+      ...extractChartNumbers(item.step),
+      ...extractChartNumbers(item.text),
+    ]) || 0)
+    + scoreChartText(item.step, 1.2)
+    + scoreChartText(item.text, 0.38)
+    + (index + 1) * 4
+  )
+
+}
+
+function expandChartValues(values: number[], size: number, seedText: string) {
+
+  const seed = Array.from(seedText).reduce((sum, char) => sum + char.charCodeAt(0), 0)
+  const cleanValues = values.map((item) => Math.abs(Number(item))).filter((item) => Number.isFinite(item) && item > 0)
+
+  if (!cleanValues.length) {
+    return Array.from({ length: size }, (_, index) => 12 + ((seed + index * 11) % 37))
+  }
+
+  const expanded = [...cleanValues]
+
+  while (expanded.length < size) {
+    const source = cleanValues[expanded.length % cleanValues.length]
+    const modifier = 1 + (((seed + expanded.length) % 5) * 0.09)
+    expanded.push(Number((source * modifier + ((seed + expanded.length) % 9)).toFixed(2)))
+  }
+
+  return expanded.slice(0, size)
+
+}
 
 function uniqueText(values: Array<string | null | undefined>, limit = 200) {
 
@@ -22258,7 +22606,10 @@ function isEmptyModuleSideItem(item: { title: string; detail: string }) {
 
 
 
-  return item.title === '等待真实数据' && item.detail === '接口返回后自动更新此处内容'
+  return (
+    (item.title === '等待真实数据' && item.detail === '接口返回后自动更新此处内容')
+    || (item.title === '暂无可展示数据' && item.detail === '当前没有可确认的真实记录')
+  )
 
 
 
@@ -22290,7 +22641,10 @@ function isEmptyModuleFlowItem(item: { step: string; text: string }) {
 
 
 
-  return item.step === '同步' && item.text === '等待真实接口返回后生成流转记录'
+  return (
+    (item.step === '同步' && item.text === '等待真实接口返回后生成流转记录')
+    || (item.step === '空' && item.text === '当前没有可展示的真实流程记录')
+  )
 
 
 
@@ -30734,11 +31088,12 @@ th{height:36px;background:#f8fafc;color:#64748b;font-size:12px;font-weight:600}t
 }
 
 .pcw-grid-summary-full {
-  grid-template-columns: minmax(0, 1fr) !important;
+  grid-template-columns: minmax(0, 1fr) 292px !important;
+  align-items: start;
 }
 
 .pcw-grid-summary-full .pcw-table-card {
-  min-height: 520px !important;
+  min-height: 380px !important;
 }
 
 .pcw-grid-summary-full .pcw-table-card td:nth-child(1),
@@ -30801,7 +31156,7 @@ th{height:36px;background:#f8fafc;color:#64748b;font-size:12px;font-weight:600}t
 
 /* PC summary compact density: keep all core columns visible at 1366px. */
 .pcw-grid-summary-full .pcw-table-card table {
-  min-width: 1040px !important;
+  min-width: 920px !important;
 }
 
 .pcw-grid-summary-full .pcw-table-card th,
@@ -30811,58 +31166,54 @@ th{height:36px;background:#f8fafc;color:#64748b;font-size:12px;font-weight:600}t
 
 .pcw-grid-summary-full .pcw-table-card th:nth-child(1),
 .pcw-grid-summary-full .pcw-table-card td:nth-child(1) {
-  width: 280px !important;
+  width: 240px !important;
 }
 
 .pcw-grid-summary-full .pcw-table-card th:nth-child(2),
 .pcw-grid-summary-full .pcw-table-card td:nth-child(2) {
-  width: 70px !important;
+  width: 92px !important;
 }
 
 .pcw-grid-summary-full .pcw-table-card th:nth-child(3),
 .pcw-grid-summary-full .pcw-table-card td:nth-child(3) {
-  width: 170px !important;
+  width: 96px !important;
 }
 
 .pcw-grid-summary-full .pcw-table-card th:nth-child(4),
 .pcw-grid-summary-full .pcw-table-card td:nth-child(4),
 .pcw-grid-summary-full .pcw-table-card th:nth-child(5),
 .pcw-grid-summary-full .pcw-table-card td:nth-child(5) {
-  width: 104px !important;
+  width: 92px !important;
 }
 
 .pcw-grid-summary-full .pcw-table-card th:nth-child(6),
-.pcw-grid-summary-full .pcw-table-card td:nth-child(6),
-.pcw-grid-summary-full .pcw-table-card th:nth-child(7),
-.pcw-grid-summary-full .pcw-table-card td:nth-child(7),
-.pcw-grid-summary-full .pcw-table-card th:nth-child(8),
-.pcw-grid-summary-full .pcw-table-card td:nth-child(8) {
+.pcw-grid-summary-full .pcw-table-card td:nth-child(6) {
   width: 76px !important;
 }
 
-.pcw-grid-summary-full .pcw-table-card th:nth-child(9),
-.pcw-grid-summary-full .pcw-table-card td:nth-child(9) {
+.pcw-grid-summary-full .pcw-table-card th:nth-child(7),
+.pcw-grid-summary-full .pcw-table-card td:nth-child(7) {
   width: 86px !important;
 }
 
 .pcw-grid-summary-full .pcw-product {
-  grid-template-columns: 64px minmax(0, 1fr);
-  gap: 10px;
+  grid-template-columns: 56px minmax(0, 1fr);
+  gap: 8px;
 }
 
 .pcw-grid-summary-full .pcw-product .pcw-thumb {
-  width: 64px !important;
-  height: 64px !important;
-  border-radius: 12px !important;
-  flex-basis: 64px;
+  width: 56px !important;
+  height: 56px !important;
+  border-radius: 10px !important;
+  flex-basis: 56px;
 }
 
 .pcw-grid-summary-full .pcw-table-card tbody tr {
-  min-height: 86px;
+  min-height: 62px;
 }
 
 .pcw-grid-summary-full .pcw-table-card tbody td {
-  padding-block: 8px !important;
+  padding-block: 4px !important;
 }
 
 /* PC clarity pass: keep only the actions that help the current purchase flow. */
@@ -31827,7 +32178,851 @@ th{height:36px;background:#f8fafc;color:#64748b;font-size:12px;font-weight:600}t
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
 }
 
+.pcw-kpis.is-summary {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.pcw-kpis.is-trend {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.pcw-module-command-empty-note {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  margin-top: 2px;
+  padding: 12px 14px;
+  border: 1px dashed #fbbf24;
+  border-radius: 12px;
+  background: #fffaf0;
+  color: #9a3412;
+}
+
+.pcw-module-command-empty-note strong {
+  color: #9a3412;
+  font-size: 13px;
+}
+
+.pcw-module-command-empty-note span {
+  color: #b45309;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.pcw-module-empty-compact {
+  display: grid;
+  gap: 12px;
+  padding: 16px 18px;
+}
+
+.pcw-module-empty-compact-body {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.pcw-module-empty-compact-body article {
+  display: grid;
+  gap: 4px;
+  min-height: 92px;
+  padding: 12px 14px;
+  border: 1px solid #dfe7f1;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.pcw-module-empty-compact-body span {
+  color: #607089;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.pcw-module-empty-compact-body strong {
+  color: #10203d;
+  font-size: 18px;
+  line-height: 1.1;
+}
+
+.pcw-module-empty-compact-body small {
+  color: #7a8aa3;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.pcw-module-empty-compact-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.pcw-module-empty-compact-actions button {
+  height: 34px;
+  padding: 0 14px;
+  border: 1px solid #dbe4ef;
+  border-radius: 8px;
+  background: #fff;
+  color: #24344d;
+  font-weight: 700;
+}
+
+.pcw-module-empty-compact-actions button.primary {
+  border-color: #2563eb;
+  background: #2563eb;
+  color: #fff;
+}
+
+.pcw-purchase-empty-path {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  padding: 16px;
+}
+
+.pcw-purchase-empty-path article {
+  display: grid;
+  gap: 8px;
+  min-height: 168px;
+  padding: 16px;
+  border: 1px solid #dfe7f1;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #fff, #f8fbff);
+}
+
+.pcw-purchase-empty-path span {
+  width: max-content;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #fff7ed;
+  color: #c2410c;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.pcw-purchase-empty-path strong {
+  color: #10203d;
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+.pcw-purchase-empty-path small {
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.pcw-purchase-empty-path button {
+  height: 34px;
+  margin-top: auto;
+  border: 1px solid #bfdbfe;
+  border-radius: 10px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-weight: 800;
+}
+
+.pcw-purchase-empty-feed {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 0.82fr);
+  gap: 12px;
+  padding: 0 16px 16px;
+}
+
+.pcw-purchase-empty-feed section {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  padding: 14px;
+  border: 1px solid #edf1f6;
+  border-radius: 12px;
+  background: #fbfdff;
+}
+
+.pcw-purchase-empty-feed strong {
+  color: #10203d;
+  font-size: 14px;
+}
+
+.pcw-purchase-empty-feed p,
+.pcw-purchase-empty-feed span {
+  margin: 0;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.pcw-purchase-empty-feed button {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  padding: 10px 0;
+  border: 0;
+  border-bottom: 1px solid #edf1f6;
+  background: transparent;
+  text-align: left;
+}
+
+.pcw-purchase-empty-feed button:last-child {
+  border-bottom: 0;
+}
+
+.pcw-purchase-empty-feed b {
+  color: #16a34a;
+  font-size: 15px;
+}
+
+.pcw-trend-hover-inspector {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: -2px 16px 16px;
+}
+
+.pcw-trend-hover-inspector article {
+  display: grid;
+  gap: 4px;
+  min-height: 74px;
+  padding: 12px 14px;
+  border: 1px solid #dfe7f1;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+}
+
+.pcw-trend-hover-inspector span {
+  color: #607089;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.pcw-trend-hover-inspector strong {
+  color: #10203d;
+  font-size: 18px;
+  line-height: 1.1;
+}
+
+.pcw-trend-hover-inspector small {
+  color: #7a8aa3;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.pcw-main {
+  gap: 12px;
+  padding: 16px 18px 20px;
+}
+
+.pcw-trend-point-rail {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(108px, 1fr));
+  gap: 10px;
+  margin: 0 16px 16px;
+}
+
+.pcw-trend-point-rail button {
+  display: grid;
+  gap: 4px;
+  min-height: 74px;
+  padding: 11px 12px;
+  border: 1px solid #dfe7f1;
+  border-radius: 12px;
+  background: #fff;
+  text-align: left;
+}
+
+.pcw-trend-point-rail button.active {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  box-shadow: 0 0 0 3px rgba(191, 219, 254, 0.38);
+}
+
+.pcw-trend-point-rail span {
+  color: #607089;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.pcw-trend-point-rail strong {
+  color: #10203d;
+  font-size: 18px;
+  line-height: 1.05;
+}
+
+.pcw-trend-point-rail small {
+  color: #7a8aa3;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.pcw-bottom {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 352px);
+  gap: 14px;
+  align-items: start;
+}
+
+.pcw-summary-actions {
+  grid-column: 1 / -1;
+}
+
+.pcw-summary-action-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  padding: 14px 16px 16px;
+}
+
+.pcw-summary-action-card {
+  display: grid;
+  gap: 6px;
+  min-height: 116px;
+  padding: 14px 15px;
+  border: 1px solid #dfe7f1;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+  text-align: left;
+}
+
+.pcw-summary-action-card span,
+.pcw-summary-opportunity small {
+  color: #607089;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.pcw-summary-action-card strong {
+  color: #10203d;
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+.pcw-summary-action-card small {
+  color: #7a8aa3;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.pcw-summary-opportunities {
+  display: grid;
+  align-content: start;
+}
+
+.pcw-summary-opportunity {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  margin: 0 14px;
+  padding: 12px 0;
+  border-bottom: 1px solid #edf1f6;
+  background: transparent;
+  text-align: left;
+}
+
+.pcw-summary-opportunity:last-child {
+  border-bottom: 0;
+}
+
+.pcw-summary-opportunity strong {
+  display: block;
+  color: #10203d;
+  font-size: 14px;
+}
+
+.pcw-summary-opportunity-metrics {
+  display: grid;
+  gap: 4px;
+  justify-items: end;
+}
+
+.pcw-summary-opportunity-metrics b {
+  color: #1d4ed8;
+  font-size: 18px;
+}
+
+.pcw-summary-opportunity-metrics span {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.pcw-purchase-runbook {
+  display: grid;
+  gap: 14px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #edf1f6;
+}
+
+.pcw-purchase-runbook-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.pcw-purchase-runbook-grid article,
+.pcw-purchase-runbook-panel {
+  display: grid;
+  gap: 8px;
+  padding: 14px 15px;
+  border: 1px solid #dfe7f1;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+}
+
+.pcw-purchase-runbook-grid article span {
+  color: #f97316;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.pcw-purchase-runbook-grid article strong,
+.pcw-purchase-runbook-panel strong {
+  color: #10203d;
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+.pcw-purchase-runbook-grid article small,
+.pcw-purchase-runbook-list-item small,
+.pcw-purchase-runbook-notes p {
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.pcw-purchase-runbook-grid article button,
+.pcw-purchase-runbook-list-item,
+.pcw-purchase-runbook-panel .pcw-card-head button {
+  border-radius: 10px;
+}
+
+.pcw-purchase-runbook-grid article button {
+  height: 34px;
+  margin-top: 2px;
+  border: 1px solid #bfdbfe;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-weight: 800;
+}
+
+.pcw-purchase-runbook-feed {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 0.9fr);
+  gap: 12px;
+}
+
+.pcw-purchase-runbook-panel .pcw-card-head {
+  height: auto;
+  min-height: 0;
+  padding: 0 0 10px;
+  border-bottom: 1px solid #edf1f6;
+}
+
+.pcw-purchase-runbook-list {
+  display: grid;
+}
+
+.pcw-purchase-runbook-list-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  padding: 11px 0;
+  border-bottom: 1px solid #edf1f6;
+  background: transparent;
+  text-align: left;
+}
+
+.pcw-purchase-runbook-list-item:last-child {
+  border-bottom: 0;
+}
+
+.pcw-purchase-runbook-list-item b {
+  color: #16a34a;
+  font-size: 16px;
+}
+
+.pcw-purchase-runbook-notes {
+  display: grid;
+  gap: 10px;
+}
+
+.pcw-purchase-runbook-notes p {
+  margin: 0;
+  padding-left: 14px;
+  border-left: 3px solid #dbeafe;
+}
+
+.pcw-module-quotes.is-quotes-empty {
+  gap: 12px;
+}
+
+.pcw-module-quotes.is-quotes-empty .pcw-module-command {
+  min-height: 0;
+  padding: 18px 20px;
+}
+
+.pcw-quotes-empty-compact {
+  display: grid;
+  align-content: start;
+  overflow: hidden;
+}
+
+.pcw-quotes-empty-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  padding: 14px 16px;
+}
+
+.pcw-quotes-empty-grid article {
+  display: grid;
+  gap: 7px;
+  min-height: 132px;
+  padding: 14px 15px;
+  border: 1px solid #dfe7f1;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+}
+
+.pcw-quotes-empty-grid span {
+  color: #607089;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.pcw-quotes-empty-grid strong {
+  color: #10203d;
+  font-size: 24px;
+  line-height: 1;
+}
+
+.pcw-quotes-empty-grid small {
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.pcw-quotes-empty-grid button {
+  height: 32px;
+  margin-top: auto;
+  border: 1px solid #bfdbfe;
+  border-radius: 9px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-weight: 800;
+}
+
+.pcw-quotes-empty-feed {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 0.72fr);
+  gap: 12px;
+  padding: 0 16px 16px;
+}
+
+.pcw-quotes-empty-feed section {
+  display: grid;
+  gap: 8px;
+  padding: 13px 14px;
+  border: 1px solid #edf1f6;
+  border-radius: 12px;
+  background: #fbfdff;
+}
+
+.pcw-quotes-empty-feed strong {
+  color: #10203d;
+  font-size: 14px;
+}
+
+.pcw-quotes-empty-feed p {
+  margin: 0;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.pcw-settings-quick-panel {
+  display: grid;
+  overflow: hidden;
+}
+
+.pcw-settings-quick-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  padding: 14px 16px 16px;
+}
+
+.pcw-settings-quick-grid article {
+  display: grid;
+  gap: 6px;
+  min-height: 104px;
+  padding: 14px 15px;
+  border: 1px solid #dfe7f1;
+  border-radius: 12px;
+  background: #fbfdff;
+}
+
+.pcw-settings-quick-grid article.green {
+  border-color: #bbf7d0;
+  background: #f7fffb;
+}
+
+.pcw-settings-quick-grid article.warn {
+  border-color: #fed7aa;
+  background: #fffaf5;
+}
+
+.pcw-settings-quick-grid span {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.pcw-settings-quick-grid strong {
+  color: #10203d;
+  font-size: 24px;
+  line-height: 1;
+}
+
+.pcw-settings-quick-grid small {
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.pcw-market-health-board,
+.pcw-report-workbench {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 16px;
+  align-items: start;
+}
+
+.pcw-market-health-list,
+.pcw-report-composition {
+  overflow: hidden;
+}
+
+.pcw-market-health-rows,
+.pcw-report-bars {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+}
+
+.pcw-market-health-rows article {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 116px 76px;
+  gap: 12px;
+  align-items: center;
+  min-height: 58px;
+  padding: 12px 14px;
+  border: 1px solid #e2e8f0;
+  border-left: 4px solid #22c55e;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.pcw-market-health-rows article.warn {
+  border-left-color: #f97316;
+  background: #fffaf5;
+}
+
+.pcw-market-health-rows article.off {
+  border-left-color: #94a3b8;
+  background: #f8fafc;
+}
+
+.pcw-market-health-rows strong,
+.pcw-market-health-rows small,
+.pcw-market-health-rows span,
+.pcw-market-health-rows b {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pcw-market-health-rows strong,
+.pcw-report-bars strong {
+  color: #10203d;
+  font-size: 14px;
+}
+
+.pcw-market-health-rows small,
+.pcw-market-health-rows span,
+.pcw-report-bars small {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.pcw-market-health-rows b {
+  justify-self: end;
+  color: #0f766e;
+  font-size: 13px;
+}
+
+.pcw-market-health-side,
+.pcw-report-side {
+  display: grid;
+  gap: 16px;
+}
+
+.pcw-market-health-pulse,
+.pcw-report-export-card,
+.pcw-market-failure-list,
+.pcw-report-risk-card {
+  overflow: hidden;
+}
+
+.pcw-market-health-pulse article,
+.pcw-report-export-card article {
+  display: grid;
+  gap: 5px;
+  margin: 0 14px;
+  padding: 13px 0;
+  border-bottom: 1px solid #edf1f6;
+}
+
+.pcw-market-health-pulse article:last-child,
+.pcw-report-export-card article:last-child {
+  border-bottom: 0;
+}
+
+.pcw-market-health-pulse span,
+.pcw-report-export-card span,
+.pcw-market-failure-list span,
+.pcw-report-risk-card span {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.pcw-market-health-pulse strong,
+.pcw-report-export-card strong {
+  color: #10203d;
+  font-size: 26px;
+  line-height: 1;
+}
+
+.pcw-market-failure-list p,
+.pcw-report-risk-card p {
+  display: grid;
+  gap: 5px;
+  margin: 0 14px;
+  padding: 12px 0;
+  border-bottom: 1px solid #edf1f6;
+}
+
+.pcw-market-failure-list p:last-child,
+.pcw-report-risk-card p:last-child {
+  border-bottom: 0;
+}
+
+.pcw-market-failure-list b,
+.pcw-report-risk-card b {
+  color: #10203d;
+  font-size: 13px;
+}
+
+.pcw-report-bars article {
+  display: grid;
+  grid-template-columns: minmax(0, 190px) minmax(0, 1fr) 52px;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #fff, #f8feff);
+}
+
+.pcw-report-bars span {
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e2e8f0;
+}
+
+.pcw-report-bars i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #0891b2, #22c55e);
+}
+
+.pcw-report-bars b {
+  justify-self: end;
+  color: #0891b2;
+  font-size: 13px;
+}
+
+.pcw-report-risk-card p.warn b {
+  color: #c2410c;
+}
+
+.pcw-report-risk-card p.green b {
+  color: #15803d;
+}
+
+.pcw-filter {
+  gap: 8px 10px;
+  min-height: 0;
+  padding: 8px 10px;
+}
+
+.pcw-filter button {
+  height: 34px;
+  padding-inline: 11px;
+  font-size: 12px;
+}
+
+.pcw-kpis {
+  gap: 10px;
+}
+
+.pcw-kpis article {
+  min-height: 82px;
+  padding: 12px 16px;
+}
+
+.pcw-kpis strong {
+  font-size: 22px;
+}
+
+.pcw-kpis small {
+  line-height: 1.3;
+}
+
+.pcw-trend-chart-card {
+  min-height: 0;
+}
+
+.pcw-big-chart {
+  height: 236px;
+  padding: 4px 14px 8px;
+}
+
 @media (max-width: 1100px) {
+  .pcw-summary-action-grid,
+  .pcw-purchase-runbook-grid,
+  .pcw-purchase-empty-path {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .pcw-purchase-runbook-feed,
+  .pcw-purchase-empty-feed {
+    grid-template-columns: 1fr;
+  }
+
+  .pcw-quotes-empty-grid,
+  .pcw-quotes-empty-feed,
+  .pcw-settings-quick-grid,
+  .pcw-market-health-board,
+  .pcw-report-workbench,
+  .pcw-report-bars article {
+    grid-template-columns: 1fr;
+  }
+
   .pcw-location {
     max-width: 100%;
     flex-basis: 100%;
@@ -31840,6 +33035,14 @@ th{height:36px;background:#f8fafc;color:#64748b;font-size:12px;font-weight:600}t
 }
 
 @media (max-width: 720px) {
+  .pcw-bottom,
+  .pcw-summary-action-grid,
+  .pcw-purchase-runbook-grid,
+  .pcw-purchase-empty-path,
+  .pcw-trend-point-rail {
+    grid-template-columns: 1fr;
+  }
+
   .pcw-location-menu,
   .pcw-filter-menu {
     width: min(320px, calc(100vw - 24px));
@@ -31854,4 +33057,103 @@ th{height:36px;background:#f8fafc;color:#64748b;font-size:12px;font-weight:600}t
   }
 }
 
+.pcw-build-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 10px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #e8f1ff;
+  color: #1d4ed8;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  vertical-align: middle;
+}
+
+
+/* Alert response board: expose triage, advice, rules and records instead of a single table-only page. */
+.pcw-alert-page {
+  grid-template-columns: minmax(0, 1fr) 360px !important;
+  grid-template-areas:
+    "command command"
+    "tasks side"
+    "advice rules"
+    "records records" !important;
+  align-items: start;
+}
+
+.pcw-alert-command {
+  grid-area: command !important;
+}
+
+.pcw-alert-table-card {
+  grid-area: tasks !important;
+}
+
+.pcw-alert-side {
+  grid-area: side !important;
+  display: grid !important;
+  gap: 14px;
+  min-width: 0;
+}
+
+.pcw-alert-advice {
+  grid-area: advice !important;
+}
+
+.pcw-rule-card {
+  grid-area: rules !important;
+}
+
+.pcw-alert-records {
+  grid-area: records !important;
+}
+
+.pcw-priority-alerts,
+.pcw-alert-ops,
+.pcw-alert-advice,
+.pcw-rule-card,
+.pcw-alert-records {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.pcw-alert-advice ul {
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px 16px !important;
+}
+
+.pcw-alert-advice li {
+  margin: 0 !important;
+  padding: 12px 14px 12px 34px !important;
+  border: 1px solid #fee2e2;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #fff, #fff7ed);
+  color: #24344d;
+}
+
+.pcw-alert-advice li::before {
+  left: 16px !important;
+  top: 18px !important;
+  background: #ef4444 !important;
+}
+
+.pcw-rule-card p {
+  min-height: 54px;
+}
+
+@media (max-width: 1180px) {
+  .pcw-alert-page {
+    grid-template-columns: 1fr !important;
+    grid-template-areas:
+      "command"
+      "tasks"
+      "side"
+      "advice"
+      "rules"
+      "records" !important;
+  }
+}
 </style>

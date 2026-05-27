@@ -17,6 +17,11 @@ export interface MarketSummaryItem {
   lowest_price_site?: string | null
   highest_price?: number | null
   highest_price_site?: string | null
+  current_lowest_price?: number | null
+  current_highest_price?: number | null
+  current_lowest_site?: string | null
+  current_highest_site?: string | null
+  price_span?: number | null
   average_price?: number | null
   region_label?: string | null
   source_names?: string | null
@@ -187,9 +192,13 @@ export interface AuthUserItem {
   role: AuthUserRole
   display_name?: string | null
   is_active?: boolean | null
+  is_deleted?: boolean | null
   supplier_id?: number | null
   supplier_profile?: AuthSupplierProfile | null
   last_login_at?: string | null
+  deleted_at?: string | null
+  deleted_by?: string | null
+  deleted_username?: string | null
   created_at?: string | null
   updated_at?: string | null
 }
@@ -208,6 +217,33 @@ export interface AuthLoginResponse {
 
 export interface AuthMeResponse {
   user: AuthUserItem
+}
+
+export interface AuthUserListResponse {
+  items: AuthUserItem[]
+}
+
+export interface AuthUserCreatePayload {
+  username: string
+  password: string
+  role: AuthUserRole
+  supplier_id?: number | null
+  display_name?: string
+  is_active: boolean
+}
+
+export interface AuthUserUpdatePayload {
+  username: string
+  password?: string
+  role: AuthUserRole
+  supplier_id?: number | null
+  display_name?: string
+  is_active: boolean
+}
+
+export interface AuthUserDeleteResponse {
+  deleted: boolean
+  user_id: number
 }
 
 export interface SupplierCategorySummaryItem {
@@ -661,6 +697,8 @@ export interface CrawlStatusItem {
   target_source_name?: string | null
   next_run_at?: string | null
   schedule_enabled: boolean
+  schedule_mode?: 'interval' | 'daily_time' | null
+  schedule_daily_run_time?: string | null
   schedule_interval_seconds: number
   schedule_fetch_mode?: 'requests' | 'playwright' | null
 }

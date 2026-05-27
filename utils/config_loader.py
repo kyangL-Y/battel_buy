@@ -62,6 +62,8 @@ DEFAULT_RUNTIME_CONFIG: dict[str, Any] = {
     },
     "schedule": {
         "enabled": False,
+        "mode": "interval",
+        "daily_run_time": "03:30",
         "interval_seconds": 3600,
         "fetch_mode": "requests",
         "target_scope": "all_saved",

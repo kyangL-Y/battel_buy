@@ -662,7 +662,7 @@
               </label>
               <label class="supplier-form-field">
                 <span>{{ selectedSupplier?.account_username ? '重置密码' : '初始密码' }}</span>
-                <el-input v-model="supplierAccountForm.account_password" type="password" show-password placeholder="留空则保持原密码；新建时留空默认 12345678" />
+                <el-input v-model="supplierAccountForm.account_password" type="password" show-password placeholder="新建账号必须填写；编辑时留空保持原密码" />
               </label>
               <label class="supplier-form-field" data-testid="supplier-account-active-field">
                 <span>账号状态</span>
@@ -2091,6 +2091,8 @@ const emit = defineEmits<{
 
 type QuoteActionTypeFilter = 'all' | 'copy_as_new' | 'invalidate' | 'update_invalidation_reason' | 'import_quotes' | 'export_quotes' | 'export_settlements' | 'create_settlement' | 'update_settlement' | 'cancel_settlement' | 'build_settlement_from_quotes'
 type QuoteImportPreviewFilter = 'all' | 'append' | 'skip_duplicate' | 'override_latest' | 'invalid' | 'abnormal'
+const ACCOUNT_USERNAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.@-]{2,63}$/
+const MIN_ACCOUNT_PASSWORD_LENGTH = 8
 type QuoteImportHeaderKey =
   | 'price_identity_key'
   | 'product_name'
@@ -3412,6 +3414,29 @@ function normalizeSupplierAccountUsernameForSave() {
     return original
   }
   return current || undefined
+}
+
+function validateSupplierAccountFormBeforeSave() {
+  const username = normalizeSupplierAccountUsernameForSave() || ''
+  const password = supplierAccountForm.account_password.trim()
+  const hasExistingAccount = Boolean(selectedSupplier.value?.account_username)
+  if (!username && password) {
+    ElMessage.warning('请先填写登录账号，再设置账号密码')
+    return false
+  }
+  if (username && !ACCOUNT_USERNAME_PATTERN.test(username)) {
+    ElMessage.warning('登录账号需为 3-64 位，只能包含字母、数字、下划线、中划线、点或 @')
+    return false
+  }
+  if (username && !hasExistingAccount && !password) {
+    ElMessage.warning('新建供应商账号必须填写初始密码')
+    return false
+  }
+  if (password && password.length < MIN_ACCOUNT_PASSWORD_LENGTH) {
+    ElMessage.warning(`账号密码至少 ${MIN_ACCOUNT_PASSWORD_LENGTH} 位`)
+    return false
+  }
+  return true
 }
 
 function toDateTimestamp(value?: string | null, boundary: 'start' | 'end' | 'exact' = 'exact') {
@@ -5431,6 +5456,9 @@ async function saveSupplier() {
   }
   if (!supplierForm.supplier_name.trim()) {
     ElMessage.warning('请填写供应商名称')
+    return
+  }
+  if (!validateSupplierAccountFormBeforeSave()) {
     return
   }
   supplierSaving.value = true

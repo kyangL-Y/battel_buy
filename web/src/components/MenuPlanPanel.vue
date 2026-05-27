@@ -6,7 +6,7 @@
           <p class="panel-kicker">菜单录入</p>
           <h2>菜单采购</h2>
           <p class="panel-hint">
-            {{ isMobileViewport ? '先录菜单，再生成采购建议。' : '录菜单、补食材、直接出采购建议。' }}
+            {{ isMobileViewport ? '先录菜单，再生成采购建议。' : '录菜单、补食材、直接出采购建议（按总人数口径）。' }}
           </p>
         </div>
         <div v-if="!isMobileViewport" class="content-panel-meta">
@@ -43,6 +43,14 @@
             <strong>{{ pendingPlanCount }} 项</strong>
           </article>
         </div>
+        <button
+          v-if="pendingRows.length > 0"
+          type="button"
+          class="menu-pending-copy-button"
+          @click="copyPendingRows"
+        >
+          复制待确认食材
+        </button>
       </section>
       <div class="menu-grid">
         <div class="menu-form">
@@ -61,8 +69,8 @@
               <el-input-number aria-label="桌数" :model-value="tables" :min="1" @update:model-value="emit('update:tables', Number($event) || 1)" />
             </div>
             <div class="menu-action-field">
-              <span class="menu-action-label">人数</span>
-              <el-input-number aria-label="人数" :model-value="diners" :min="1" @update:model-value="emit('update:diners', Number($event) || 1)" />
+              <span class="menu-action-label">总人数</span>
+              <el-input-number aria-label="总人数" :model-value="diners" :min="1" @update:model-value="emit('update:diners', Number($event) || 1)" />
             </div>
             <div class="menu-action-field menu-location-field">
               <span class="menu-action-label">优先地区</span>
@@ -83,6 +91,7 @@
               </el-select>
             </div>
           </div>
+          <p class="menu-action-helper">{{ guestSizingHint }}</p>
           <div class="menu-submit-bar">
             <el-button aria-label="生成采购方案" type="primary" :loading="loading" :disabled="!hasMenuInput" @click="emit('submit')">生成采购方案</el-button>
             <p v-if="!hasMenuInput" class="menu-input-required" role="status" aria-live="polite">请先输入至少 1 个菜名</p>
@@ -161,6 +170,7 @@
           <em v-for="row in pendingPreviewRows" :key="`${row.ingredient_name}-${row.menu_name}`">{{ row.ingredient_name || row.menu_name }}</em>
           <em v-if="pendingOverflowCount > 0" class="overflow-tag">+{{ pendingOverflowCount }}</em>
         </div>
+        <button type="button" class="menu-pending-copy-button desktop" @click="copyPendingRows">复制待确认食材</button>
       </div>
     </div>
     <section v-if="isMobileViewport && ingredientParseRows.length" class="menu-ai-parse-panel" data-testid="menu-ai-parse-panel">
@@ -190,12 +200,25 @@
             <h2>{{ isMobileViewport ? '再决定去哪买' : '采购建议' }}</h2>
             <p class="panel-hint">{{ isMobileViewport ? '只看食材、成本、推荐市场和下一步动作。' : '默认只看食材、推荐、报价和状态；长说明收进单元格次级信息。' }}</p>
           </div>
-          <span>{{ planRows.length }} 条</span>
+          <span>{{ filteredPlanRows.length }} / {{ planRows.length }} 条</span>
+        </div>
+        <div v-if="planRows.length" class="menu-plan-filter-row" aria-label="采购建议筛选">
+          <button
+            v-for="item in planFilterOptions"
+            :key="item.key"
+            type="button"
+            class="menu-plan-filter"
+            :class="{ active: activePlanQueueFilter === item.key }"
+            @click="activePlanQueueFilter = item.key"
+          >
+            <strong>{{ item.label }}</strong>
+            <small>{{ item.count }}</small>
+          </button>
         </div>
         <el-skeleton :loading="showPlanSkeleton" animated :rows="6">
           <div v-if="isMobileViewport" class="menu-mobile-card-list" data-testid="menu-plan-mobile-list">
             <article
-              v-for="row in planRows"
+              v-for="row in filteredPlanRows"
               :key="`${row.ingredient_name}-${row.menu_name}-${row.recommended_market}`"
               class="menu-mobile-card"
               data-testid="menu-plan-mobile-card"
@@ -252,13 +275,13 @@
                 <el-button size="small" type="success" plain :disabled="isRowConfirmed(row)" @click="emit('confirm-row', row)">{{ isRowConfirmed(row) ? '已确认' : '标记确认' }}</el-button>
               </div>
             </article>
-            <div v-if="!planRows.length" class="table-empty-state menu-mobile-empty-state">
+            <div v-if="!filteredPlanRows.length" class="table-empty-state menu-mobile-empty-state">
               <strong>{{ planEmptyTitle }}</strong>
               <p>{{ planEmptyDetail }}</p>
               <el-button type="primary" size="small" :loading="loading && !isPlanTakingLong" :disabled="planEmptyActionDisabled" @click="handlePlanEmptyAction">{{ planEmptyActionLabel }}</el-button>
             </div>
           </div>
-          <el-table v-else :data="planRows" :height="planRows.length ? 410 : 146" size="small">
+          <el-table v-else :data="filteredPlanRows" :height="planTableHeight" size="small">
             <el-table-column label="食材 / 菜品" min-width="172" show-overflow-tooltip>
               <template #default="{ row }">
                 <div class="plan-ingredient-cell">
@@ -349,7 +372,7 @@
               <p>生成采购方案后，这里会按手机端卡片展示菜品与食材数量。</p>
             </div>
           </div>
-          <el-table v-else :data="ingredientRows" :height="ingredientRows.length ? 410 : 146" size="small">
+          <el-table v-else :data="ingredientRows" :height="ingredientTableHeight" size="small">
             <el-table-column prop="menu_name" label="菜品" min-width="144" show-overflow-tooltip />
             <el-table-column prop="ingredient_name" label="食材" min-width="132" show-overflow-tooltip />
             <el-table-column label="数量" width="112">
@@ -373,6 +396,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { ElMessage } from 'element-plus/es/components/message/index.mjs'
 import type { MenuPlanRow } from '../types'
 import { useViewport } from '../composables/useViewport'
 
@@ -405,6 +429,7 @@ const emit = defineEmits<{
 
 const { isMobileViewport } = useViewport()
 const isPlanTakingLong = ref(false)
+const activePlanQueueFilter = ref<'all' | 'pending' | 'matched' | 'confirmed'>('all')
 let planLoadingTimer: ReturnType<typeof setTimeout> | undefined
 
 watch(
@@ -425,6 +450,12 @@ watch(
 )
 
 const hasMenuInput = computed(() => props.menuText.split(/\r?\n/).some((line) => line.trim()))
+const guestSizingHint = computed(() => {
+  const totalTables = Math.max(1, Number(props.tables) || 1)
+  const totalDiners = Math.max(1, Number(props.diners) || 1)
+  const dinersPerTable = (totalDiners / totalTables).toFixed(1)
+  return `按${totalTables}桌共${totalDiners}人测算（约 ${dinersPerTable} 人/桌）`
+})
 const mobileHeroSummary = computed(() => {
   if (!hasMenuInput.value) return '输入菜单后，系统会先拆食材，再匹配今日报价。'
   if (props.loading && !isPlanTakingLong.value) return '正在拆分食材并匹配报价，稍后会直接给出采购建议。'
@@ -438,28 +469,78 @@ const showMobileHeroSummary = computed(() => (
   || props.loading
   || props.pendingPlanCount > 0
 ))
+const filteredPlanRows = computed(() => {
+  if (activePlanQueueFilter.value === 'pending') {
+    return props.planRows.filter((item) => item.price_status !== '已匹配报价' && !isRowConfirmed(item))
+  }
+  if (activePlanQueueFilter.value === 'matched') {
+    return props.planRows.filter((item) => item.price_status === '已匹配报价' && !isRowConfirmed(item))
+  }
+  if (activePlanQueueFilter.value === 'confirmed') {
+    return props.planRows.filter((item) => isRowConfirmed(item))
+  }
+  return props.planRows
+})
+const planFilterOptions = computed(() => ([
+  { key: 'all' as const, label: '全部', count: props.planRows.length },
+  { key: 'pending' as const, label: '待确认', count: props.planRows.filter((item) => item.price_status !== '已匹配报价' && !isRowConfirmed(item)).length },
+  { key: 'matched' as const, label: '可直采', count: props.planRows.filter((item) => item.price_status === '已匹配报价' && !isRowConfirmed(item)).length },
+  { key: 'confirmed' as const, label: '已确认', count: props.planRows.filter((item) => isRowConfirmed(item)).length },
+]))
+const hasPlanFilterResult = computed(() => filteredPlanRows.value.length > 0)
 const planEmptyTitle = computed(() => {
+  if (props.planRows.length > 0 && !hasPlanFilterResult.value) return '当前筛选下没有记录'
   if (isPlanTakingLong.value) return '匹配时间较长'
   if (!hasMenuInput.value) return '先录菜单，再生成采购建议'
   if (props.ingredientRows.length > 0) return '已拆出食材但暂无报价匹配'
   return '暂未生成采购建议'
 })
 const planEmptyDetail = computed(() => {
+  if (props.planRows.length > 0 && !hasPlanFilterResult.value) return '切换上方队列筛选，查看待确认、可直采或已确认记录。'
   if (isPlanTakingLong.value) return '接口仍在处理或网络较慢，可稍后重试；如果已拆出食材，会先展示拆分结果供你复核。'
   if (!hasMenuInput.value) return '请先输入至少 1 个菜名，再生成采购方案。'
   if (props.ingredientRows.length > 0) return '已完成食材拆分，但当前报价库未匹配到可用报价；可补录供应商报价后重新匹配。'
   return '当前没有返回采购建议，请检查菜名是否清晰，或重新生成采购方案。'
 })
 const hasMissingQuoteEmptyState = computed(() => hasMenuInput.value && props.ingredientRows.length > 0 && !props.planRows.length)
-const planEmptyActionLabel = computed(() => (isPlanTakingLong.value ? '重新尝试' : hasMissingQuoteEmptyState.value ? '去补录供应商报价' : '重新生成方案'))
-const planEmptyActionDisabled = computed(() => !hasMenuInput.value && !hasMissingQuoteEmptyState.value && !isPlanTakingLong.value)
+const planEmptyActionLabel = computed(() => {
+  if (props.planRows.length > 0 && !hasPlanFilterResult.value) return '查看全部'
+  return isPlanTakingLong.value ? '重新尝试' : hasMissingQuoteEmptyState.value ? '去补录供应商报价' : '重新生成方案'
+})
+const planEmptyActionDisabled = computed(() => !hasMenuInput.value && !hasMissingQuoteEmptyState.value && !isPlanTakingLong.value && !(props.planRows.length > 0 && !hasPlanFilterResult.value))
 
 function handlePlanEmptyAction() {
+  if (props.planRows.length > 0 && !hasPlanFilterResult.value) {
+    activePlanQueueFilter.value = 'all'
+    return
+  }
   if (hasMissingQuoteEmptyState.value) {
     emit('fill-missing-quotes')
     return
   }
   emit('submit')
+}
+
+async function copyPendingRows() {
+  if (!pendingRows.value.length) {
+    ElMessage.warning('当前没有待确认食材')
+    return
+  }
+  const content = pendingRows.value
+    .map((item, index) => {
+      const ingredient = item.ingredient_name || item.menu_name || '未命名食材'
+      const quantity = formatQuantity(item.estimated_quantity, item.quantity_unit)
+      const market = item.recommended_market || item.recommended_site || '待定市场'
+      return `${index + 1}. ${ingredient} | ${quantity} | ${market}`
+    })
+    .join('\n')
+  try {
+    if (!navigator.clipboard?.writeText) throw new Error('clipboard unavailable')
+    await navigator.clipboard.writeText(content)
+    ElMessage.success(`已复制 ${pendingRows.value.length} 条待确认食材`)
+  } catch {
+    ElMessage.warning('浏览器未允许复制，请手动复制')
+  }
 }
 
 function isRowConfirmed(row: MenuPlanRow) {
@@ -478,6 +559,11 @@ function formatQuantity(value: number | null | undefined, unit?: string | null) 
     return unit ? `- ${unit}` : '-'
   }
   return `${Number(value).toFixed(2)} ${unit || ''}`.trim()
+}
+
+function calculatePanelTableHeight(rowCount: number, rowHeight: number) {
+  if (!rowCount) return 160
+  return Math.min(Math.max(118 + rowCount * rowHeight, 220), 420)
 }
 
 const pendingRows = computed(() => props.planRows.filter((item) => item.price_status !== '已匹配报价' && !isRowConfirmed(item)))
@@ -508,13 +594,51 @@ const ingredientParseRows = computed(() => {
 const showIngredientPanel = computed(() => (
   isMobileViewport.value
     ? props.ingredientRows.length > 0
-    : props.loading || props.planRows.length > 0 || props.ingredientRows.length > 0
+    : true
 ))
 const showPlanSkeleton = computed(() => props.loading && !isPlanTakingLong.value && !props.planRows.length)
 const showIngredientSkeleton = computed(() => props.loading && !isPlanTakingLong.value && !props.ingredientRows.length)
+const planTableHeight = computed(() => calculatePanelTableHeight(filteredPlanRows.value.length, 48))
+const ingredientTableHeight = computed(() => calculatePanelTableHeight(props.ingredientRows.length, 46))
 </script>
 
 <style scoped>
+.menu-plan-filter-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.menu-plan-filter {
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid rgba(203, 213, 225, 0.9);
+  border-radius: 14px;
+  background: #fff;
+  text-align: left;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
+}
+
+.menu-plan-filter.active {
+  border-color: #bfdbfe;
+  background: #eef6ff;
+  box-shadow: 0 0 0 3px rgba(191, 219, 254, 0.28);
+  transform: translateY(-1px);
+}
+
+.menu-plan-filter strong {
+  color: #0f172a;
+  font-size: 13px;
+}
+
+.menu-plan-filter small {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 700;
+}
+
 .menu-mobile-tag-row,
 .plan-source-tags {
   display: flex;
@@ -632,6 +756,23 @@ const showIngredientSkeleton = computed(() => props.loading && !isPlanTakingLong
   line-height: 1.2;
 }
 
+.menu-pending-copy-button {
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid rgba(37, 99, 235, 0.22);
+  border-radius: 999px;
+  background: #ffffff;
+  color: #1d4ed8;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.menu-pending-copy-button.desktop {
+  align-self: start;
+}
+
 .menu-plan-row-actions {
   display: flex;
   flex-wrap: wrap;
@@ -641,6 +782,13 @@ const showIngredientSkeleton = computed(() => props.loading && !isPlanTakingLong
 
 .menu-plan-row-actions.mobile {
   margin-top: 4px;
+}
+
+.menu-action-helper {
+  margin: 8px 0 0;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.35;
 }
 
 .menu-ai-status {
@@ -679,6 +827,10 @@ const showIngredientSkeleton = computed(() => props.loading && !isPlanTakingLong
 }
 
 @media (max-width: 720px) {
+  .menu-plan-filter-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .menu-workspace {
     display: grid;
     gap: 14px;

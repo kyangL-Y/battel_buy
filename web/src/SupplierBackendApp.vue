@@ -284,8 +284,12 @@
           </template>
 
           <template v-else>
+            <AccountAdminPanel
+              v-if="resolvedBackendSection === 'accounts'"
+              :current-user-id="currentUser?.id"
+            />
             <SupplierRegistrationAdminPanel
-              v-if="resolvedBackendSection === 'applications'"
+              v-else-if="resolvedBackendSection === 'applications'"
             />
             <SupplierAdminPanel
               v-else
@@ -328,6 +332,7 @@ import {
   writeAuthSession,
 } from './api'
 import { useViewport } from './composables/useViewport'
+import AccountAdminPanel from './components/AccountAdminPanel.vue'
 import SupplierAdminPanel from './components/SupplierAdminPanel.vue'
 import SupplierRegistrationAdminPanel from './components/SupplierRegistrationAdminPanel.vue'
 import type {
@@ -337,7 +342,7 @@ import type {
 } from './types'
 
 const MAIN_APP_PATH = '/'
-type BackendSection = 'suppliers' | 'applications' | 'quote' | 'settlement' | 'logs'
+type BackendSection = 'suppliers' | 'applications' | 'accounts' | 'quote' | 'settlement' | 'logs'
 const { isMobileViewport } = useViewport()
 const searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : new URLSearchParams()
 const initialProductIdentityKey = searchParams.get('identity_key') || searchParams.get('product') || searchParams.get('price_identity_key') || ''
@@ -417,6 +422,7 @@ const procurementSourceLabel = computed(() => {
 const backendTabs: Array<{ key: BackendSection; label: string; detail: string; code: string; adminOnly?: boolean }> = [
   { key: 'suppliers', label: '供应商管理', detail: '档案与账号', code: 'SUP', adminOnly: true },
   { key: 'applications', label: '注册审核', detail: '申请与开通', code: 'APP', adminOnly: true },
+  { key: 'accounts', label: '账号管理', detail: '用户与权限', code: 'ACC', adminOnly: true },
   { key: 'quote', label: '报价管理', detail: '报价与商品', code: 'QTE' },
   { key: 'settlement', label: '结算台账', detail: '账期与付款', code: 'SET' },
   { key: 'logs', label: '操作日志', detail: '导入导出与留痕', code: 'LOG' },
@@ -435,7 +441,7 @@ const backendTabEntries = computed(() =>
       if (currentAuthRole.value === 'supplier') {
         return item.key === 'quote' || item.key === 'settlement'
       }
-      return item.key === 'suppliers' || item.key === 'quote' || item.key === 'settlement'
+      return item.key === 'suppliers' || item.key === 'accounts' || item.key === 'quote' || item.key === 'settlement'
     })
     .map((item) => ({
       ...item,
@@ -445,6 +451,7 @@ const backendTabEntries = computed(() =>
         : (
           item.key === 'suppliers' ? '创建供应商、启停和账号绑定'
             : item.key === 'applications' ? '审核注册申请和开通'
+              : item.key === 'accounts' ? '维护管理员、供应商账号和启停状态'
               : item.key === 'quote' ? '录价、代录和报价历史'
                 : item.key === 'settlement' ? '账期、付款和结算明细'
                   : '导入导出和操作留痕'
@@ -455,6 +462,11 @@ const backendTabEntries = computed(() =>
 const backendSecondaryEntries = computed(() => {
   if (currentAuthRole.value === 'supplier') return []
   return [
+    {
+      key: 'accounts' as const,
+      label: '账号管理',
+      detail: '管理用户、角色和权限',
+    },
     {
       key: 'applications' as const,
       label: '注册审核',
@@ -478,6 +490,12 @@ const activeBackendTabMeta = computed(() => {
     return {
       title: '注册审核',
       description: '集中处理供应商注册申请、审核意见与正式开通。',
+    }
+  }
+  if (resolvedBackendSection.value === 'accounts') {
+    return {
+      title: '账号管理',
+      description: '集中维护管理员、供应商账号、绑定范围、启停和密码重置。',
     }
   }
   if (resolvedBackendSection.value === 'settlement') {
@@ -639,7 +657,9 @@ const backendCommandCards = computed(() => [
           ? '账期与付款'
           : resolvedBackendSection.value === 'logs'
             ? '操作留痕'
-            : '供应商管理',
+            : resolvedBackendSection.value === 'accounts'
+              ? '账号与权限'
+              : '供应商管理',
     detail: activeBackendTabMeta.value.description,
   },
 ])

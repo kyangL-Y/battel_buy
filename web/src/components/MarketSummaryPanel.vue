@@ -1,6 +1,6 @@
 <template>
   <section
-    v-loading="loading"
+    v-loading="loading && !isMobileViewport"
     element-loading-text="正在更新右侧报价..."
     element-loading-background="rgba(247, 248, 250, 0.72)"
     class="panel market-panel content-shell-panel"
@@ -23,13 +23,65 @@
           @update:model-value="emit('keyword-change', $event || '')"
         />
         <div class="table-stat-chip">{{ sortedRows.length }} 条</div>
+        <button type="button" class="market-copy-visible-button" :disabled="!pagedRows.length" @click="copyVisibleProducts">
+          复制本页商品
+        </button>
       </div>
     </div>
+    <section v-if="!isMobileViewport" class="market-command-strip">
+      <div class="market-command-main">
+        <div class="market-quick-filter-row" aria-label="汇总快捷筛选">
+          <button
+            v-for="item in quickFilterOptions"
+            :key="item.key"
+            type="button"
+            class="market-quick-filter"
+            :class="{ active: activeQuickFilter === item.key }"
+            @click="activeQuickFilter = item.key"
+          >
+            <strong>{{ item.label }}</strong>
+            <small>{{ quickFilterDescription(item.key) }}</small>
+          </button>
+        </div>
+        <div class="market-kpi-grid">
+          <article v-for="item in summaryKpis" :key="item.label" class="market-kpi-card" :class="item.tone">
+            <span>{{ item.label }}</span>
+            <strong>{{ item.value }}</strong>
+            <small>{{ item.detail }}</small>
+          </article>
+        </div>
+      </div>
+      <aside v-if="marketFocusRows.length" class="market-focus-board">
+        <div class="market-focus-head">
+          <div>
+            <p class="panel-kicker">重点商品</p>
+            <strong>先看这几项</strong>
+          </div>
+          <span>{{ marketFocusRows.length }} 项</span>
+        </div>
+        <button
+          v-for="row in marketFocusRows"
+          :key="`${row.price_identity_key || row.product_name}-focus`"
+          type="button"
+          class="market-focus-card"
+          @click="handleRowClick(row)"
+        >
+          <div>
+            <strong>{{ row.product_name }}</strong>
+            <small>{{ row.lowest_price_site || row.region_label || locationLabel || '本地市场' }}</small>
+          </div>
+          <div class="market-focus-metrics">
+            <b>{{ formatPrice(row.average_price) }}</b>
+            <span>{{ formatSpreadLabel(row.lowest_price, row.highest_price) }}</span>
+          </div>
+        </button>
+      </aside>
+    </section>
     <div v-if="isMobileViewport" class="market-mobile-workbench market-mobile-feed-v2" data-testid="market-mobile-list">
       <section class="market-mobile-feed-hero">
         <div>
           <p>今日行情</p>
-          <h2>{{ currentCategory === '全部' ? '先看常采商品' : currentCategory }}</h2>
+          <h2>{{ currentCategory === '全部' ? '全部商品' : currentCategory }}</h2>
           <small>{{ sortedRows.length }} 个商品可比价 · {{ locationLabel || '本地市场' }}</small>
         </div>
         <button type="button" @click="resetMobileFilters">重置</button>
@@ -38,14 +90,15 @@
       <div class="market-mobile-feed-toolbar">
         <div class="market-mobile-feed-search">
           <el-input
-            :model-value="keyword"
+            :model-value="keywordDraft"
             type="search"
             inputmode="search"
             enterkeyhint="search"
             aria-label="移动端搜索商品"
-            placeholder="搜索商品、市场、分类"
+            placeholder="搜索商品名称"
             clearable
-            @update:model-value="emit('keyword-change', $event || '')"
+            @update:model-value="handleKeywordInput"
+            @keyup.enter="flushKeywordInput"
           />
         </div>
         <button
@@ -71,8 +124,16 @@
       </div>
 
       <div class="market-mobile-feed-list">
+        <div v-if="loading && !pagedRows.length" class="market-mobile-feed-skeleton-list" aria-hidden="true">
+          <div v-for="index in 3" :key="`market-mobile-skeleton-${index}`" class="market-mobile-feed-skeleton-card">
+            <span class="skeleton-line short"></span>
+            <span class="skeleton-line"></span>
+            <span class="skeleton-line"></span>
+          </div>
+        </div>
         <button
-          v-for="row in pagedRows.slice(0, 8)"
+          v-else
+          v-for="row in pagedRows"
           :key="`${row.price_identity_key || row.product_name}-${row.lowest_price_site || ''}`"
           type="button"
           class="market-mobile-feed-card"
@@ -107,11 +168,27 @@
           </div>
           <p>{{ buildActionLabel(row) }}</p>
         </button>
-        <div v-if="!pagedRows.length" class="table-empty-state market-summary-empty-state" data-testid="market-summary-empty-state">
+        <div v-if="!loading && !pagedRows.length" class="table-empty-state market-summary-empty-state" data-testid="market-summary-empty-state">
           <strong>当前没有可展示的商品报价</strong>
           <p>可先清空筛选条件、刷新报价，或切换到其他地区查看。</p>
-          <el-button v-if="keyword" type="primary" plain @click="emit('keyword-change', '')">清空搜索</el-button>
+          <el-button v-if="keyword" type="primary" plain @click="clearKeyword">清空搜索</el-button>
         </div>
+      </div>
+      <div v-if="sortedRows.length > pageSize" class="table-pagination-bar mobile">
+        <span>共 {{ sortedRows.length }} 条，当前第 {{ currentPage }} / {{ pageCount }} 页</span>
+        <label class="page-size-select">
+          <span>每页</span>
+          <select v-model.number="pageSizeSetting">
+            <option v-for="size in pageSizeOptions" :key="`mobile-page-size-${size}`" :value="size">{{ size }}</option>
+          </select>
+        </label>
+        <el-pagination
+          v-model:current-page="currentPage"
+          :page-size="pageSize"
+          :layout="paginationLayout"
+          :total="sortedRows.length"
+          size="small"
+        />
       </div>
     </div>
     <template v-else>
@@ -176,13 +253,19 @@
         <div class="table-empty-state market-summary-empty-state">
           <strong>当前没有可展示的商品报价</strong>
           <p>可先清空筛选条件、刷新报价，或切换到其他地区查看。</p>
-          <el-button v-if="keyword" type="primary" plain @click="emit('keyword-change', '')">清空搜索</el-button>
+          <el-button v-if="keyword" type="primary" plain @click="clearKeyword">清空搜索</el-button>
         </div>
       </template>
       </el-table>
     </template>
-    <div v-if="sortedRows.length > pageSize" class="table-pagination-bar">
+    <div v-if="!isMobileViewport && sortedRows.length > pageSize" class="table-pagination-bar">
       <span>共 {{ sortedRows.length }} 条，当前第 {{ currentPage }} / {{ pageCount }} 页</span>
+      <label class="page-size-select">
+        <span>每页</span>
+        <select v-model.number="pageSizeSetting">
+          <option v-for="size in pageSizeOptions" :key="`desktop-page-size-${size}`" :value="size">{{ size }}</option>
+        </select>
+      </label>
       <el-pagination
         v-model:current-page="currentPage"
         :page-size="pageSize"
@@ -331,6 +414,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { ElMessage } from 'element-plus/es/components/message/index.mjs'
 import type { MarketSummaryItem, SourceCoverageItem } from '../types'
 import { useViewport } from '../composables/useViewport'
 import { buildMarketCategoryTabs, resolveMarketCategory, resolveMarketCategoryMeta } from '../utils/marketCategories'
@@ -353,6 +437,8 @@ const emit = defineEmits<{
 const imagePreviewVisible = ref(false)
 const imagePreviewUrl = ref('')
 const imagePreviewTitle = ref('')
+const keywordDraft = ref(props.keyword)
+let keywordCommitTimer: number | undefined
 
 const { isMobileViewport, isNarrowViewport } = useViewport()
 const activeQuickFilter = ref<'all' | 'local' | 'cheap' | 'wide' | 'volatile'>('all')
@@ -383,7 +469,7 @@ const SOURCE_TIER_META: Record<Exclude<SourceTierFilterKey, 'all'>, SourceTierMe
     key: 'primary',
     label: '主价格源',
     shortLabel: '主源',
-    description: '优先看这层，通常直接承担主比价口径。',
+    description: '该层通常直接承担主比价口径。',
     rank: 0,
     tone: 'primary',
   },
@@ -446,9 +532,56 @@ function handleRowClick(row: MarketSummaryItem) {
 }
 
 function resetMobileFilters() {
-  emit('keyword-change', '')
+  keywordDraft.value = ''
+  flushKeywordInput()
   if (currentCategory.value !== '全部') {
     emit('update:active-category', '全部')
+  }
+}
+
+function handleKeywordInput(value: string | number) {
+  const nextKeyword = String(value || '')
+  keywordDraft.value = nextKeyword
+  if (!isMobileViewport.value) {
+    emit('keyword-change', nextKeyword)
+    return
+  }
+  if (keywordCommitTimer) {
+    window.clearTimeout(keywordCommitTimer)
+  }
+  keywordCommitTimer = window.setTimeout(() => {
+    emit('keyword-change', keywordDraft.value)
+    keywordCommitTimer = undefined
+  }, 180)
+}
+
+function flushKeywordInput() {
+  if (keywordCommitTimer) {
+    window.clearTimeout(keywordCommitTimer)
+    keywordCommitTimer = undefined
+  }
+  emit('keyword-change', keywordDraft.value)
+}
+
+function clearKeyword() {
+  keywordDraft.value = ''
+  flushKeywordInput()
+}
+
+async function copyVisibleProducts() {
+  if (!pagedRows.value.length) {
+    ElMessage.warning('当前页没有可复制商品')
+    return
+  }
+  const content = pagedRows.value
+    .map((row, index) => `${index + 1}. ${row.product_name || row.price_identity_key || '未命名商品'}`)
+    .join('\n')
+  try {
+    if (!navigator.clipboard?.writeText) throw new Error('clipboard unavailable')
+    await navigator.clipboard.writeText(content)
+    ElMessage.success(`已复制当前页 ${pagedRows.value.length} 个商品`)
+  } catch {
+    ElMessage.warning('浏览器未允许复制，请手动复制')
   }
 }
 
@@ -509,6 +642,55 @@ const mobileSummaryKpis = computed(() => {
   ]
 })
 
+const summaryKpis = computed(() => {
+  const pricedRows = sortedRows.value.filter((row) => row.average_price != null && !Number.isNaN(Number(row.average_price)))
+  const averagePrice = pricedRows.length
+    ? pricedRows.reduce((sum, row) => sum + Number(row.average_price || 0), 0) / pricedRows.length
+    : null
+  const localRows = props.locationLabel
+    ? sortedRows.value.filter((row) => isLocalRow(row)).length
+    : 0
+  const wideCoverageCount = sortedRows.value.filter((row) => Number(row.market_count || 0) >= 3).length
+  const highSpreadCount = sortedRows.value.filter((row) => buildSpread(row.lowest_price, row.highest_price) >= 1).length
+
+  return [
+    {
+      label: '当前均价',
+      value: averagePrice == null ? '-' : averagePrice.toFixed(2),
+      detail: pricedRows.length ? `${pricedRows.length} 个商品有有效报价` : '等待有效报价',
+      tone: 'blue',
+    },
+    {
+      label: '本地优先',
+      value: props.locationLabel ? String(localRows) : '-',
+      detail: props.locationLabel ? `${props.locationLabel} 命中商品` : '未设置优先地区',
+      tone: 'green',
+    },
+    {
+      label: '覆盖充足',
+      value: String(wideCoverageCount),
+      detail: '至少 3 个市场参与比价',
+      tone: 'blue',
+    },
+    {
+      label: '价差偏大',
+      value: String(highSpreadCount),
+      detail: '优先点进去看趋势',
+      tone: highSpreadCount ? 'warn' : 'green',
+    },
+  ]
+})
+
+const marketFocusRows = computed(() => sortedRows.value.slice(0, 4))
+
+function quickFilterDescription(filterKey: typeof quickFilterOptions[number]['key']) {
+  if (filterKey === 'local') return props.locationLabel ? `优先 ${props.locationLabel}` : '按当前地区排序'
+  if (filterKey === 'cheap') return '均价从低到高'
+  if (filterKey === 'wide') return '先看覆盖更多市场'
+  if (filterKey === 'volatile') return '优先看价差大的'
+  return '当前筛选结果'
+}
+
 const sortedRows = computed(() => {
   const keyword = props.keyword.trim().toLowerCase()
   const categoryFilteredRows = productRows.value.filter((row) => {
@@ -519,7 +701,7 @@ const sortedRows = computed(() => {
   })
   const keywordFilteredRows = keyword
     ? categoryFilteredRows.filter((row) =>
-        [row.product_name, row.region_label, row.lowest_price_site, row.highest_price_site, resolveMarketCategoryMeta(row).primary, resolveMarketCategoryMeta(row).secondary]
+        [row.product_name, row.price_identity_key, row.group_name, row.liancai_keyword, row.liancai_brand_name]
           .filter(Boolean)
           .some((value) => String(value).toLowerCase().includes(keyword)),
       )
@@ -567,7 +749,7 @@ const sourceTierFilterOptions = computed(() => {
       label: '全部层级',
       shortLabel: '全部',
       count: sourceCoverageViewRows.value.length,
-      description: '默认已按层级优先级排序，先看主价格源，再看参考层。',
+      description: '默认已按层级优先级排序：主价格源在前，参考层在后。',
       tone: 'neutral' as SourceTierTone,
     },
   ]
@@ -609,9 +791,15 @@ const activeSourceTierSummary = computed(() => {
 const activeSourceTierDescription = computed(() => activeSourceTierOption.value.description)
 const currentPage = ref(1)
 const viewportHeight = ref(typeof window !== 'undefined' ? window.innerHeight : 960)
+const pageSizeSetting = ref(0)
+const pageSizeOptions = computed(() => (
+  isMobileViewport.value ? [8, 12, 16, 24] : [20, 40, 60, 80]
+))
+const defaultPageSize = computed(() => (
+  isMobileViewport.value ? 8 : (isNarrowViewport.value ? 60 : 80)
+))
 const pageSize = computed(() => {
-  if (isMobileViewport.value) return 8
-  return isNarrowViewport.value ? 60 : 80
+  return pageSizeOptions.value.includes(pageSizeSetting.value) ? pageSizeSetting.value : defaultPageSize.value
 })
 const pageCount = computed(() => Math.max(1, Math.ceil(sortedRows.value.length / pageSize.value)))
 const paginationLayout = computed(() => (isMobileViewport.value ? 'prev, next' : 'prev, pager, next'))
@@ -665,12 +853,10 @@ const mobileActivityRows = computed(() =>
 )
 
 const tableHeight = computed(() => {
-  const minimumHeight = isNarrowViewport.value ? 460 : 520
-  const targetHeight = Math.max(minimumHeight, viewportHeight.value - (isNarrowViewport.value ? 266 : 246))
-  if (!pagedRows.value.length) return isNarrowViewport.value ? 320 : 360
-  if (pagedRows.value.length <= 8) return Math.max(targetHeight, 580)
-  if (pagedRows.value.length <= 18) return Math.max(targetHeight, 680)
-  return Math.max(targetHeight, 760)
+  if (!pagedRows.value.length) return 188
+  const preferredHeight = 116 + pagedRows.value.length * 46
+  const viewportCap = Math.max(360, viewportHeight.value - (isNarrowViewport.value ? 360 : 330))
+  return Math.min(Math.max(preferredHeight, 280), viewportCap)
 })
 
 function formatPrice(value?: number | null) {
@@ -718,7 +904,7 @@ function isLocalRow(row: MarketSummaryItem) {
 
 function buildActionLabel(row: MarketSummaryItem) {
   if (row.lowest_price_site) {
-    return `看 ${row.lowest_price_site} 走势`
+    return `查看 ${row.lowest_price_site} 走势`
   }
   if (Number(row.market_count || 0) > 1) {
     return '去比各市场走势'
@@ -751,6 +937,11 @@ function resolveMobileFoodThumb(row: MarketSummaryItem) {
 
 function formatCategoryPath(row: MarketSummaryItem) {
   const categoryMeta = resolveMarketCategoryMeta(row)
+  const productName = String(row.product_name || '').trim()
+  if (/牛/.test(productName)) return '肉禽蛋类 / 牛肉类'
+  if (/羊/.test(productName)) return '肉禽蛋类 / 羊肉类'
+  if (/猪/.test(productName)) return '肉禽蛋类 / 猪肉类'
+  if (/鸡|鸭|鹅/.test(productName)) return '肉禽蛋类 / 禽肉类'
   return categoryMeta.secondary ? `${categoryMeta.primary} / ${categoryMeta.secondary}` : categoryMeta.primary
 }
 
@@ -832,17 +1023,32 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', syncViewportHeight)
+  if (keywordCommitTimer) {
+    window.clearTimeout(keywordCommitTimer)
+  }
+})
+
+watch(() => props.keyword, (value) => {
+  if (value !== keywordDraft.value) {
+    keywordDraft.value = value
+  }
 })
 
 watch(sortedRows, () => {
   if (currentPage.value > pageCount.value) {
     currentPage.value = 1
   }
-}, { deep: true })
+})
 
 watch(pageSize, () => {
   currentPage.value = 1
 })
+
+watch(pageSizeOptions, (options) => {
+  if (!options.includes(pageSizeSetting.value)) {
+    pageSizeSetting.value = options[0]
+  }
+}, { immediate: true })
 
 watch(sourceTierFilterOptions, (options) => {
   if (!options.some((item) => item.key === activeSourceTierFilter.value)) {
@@ -852,6 +1058,160 @@ watch(sourceTierFilterOptions, (options) => {
 </script>
 
 <style scoped>
+.market-command-strip {
+  display: grid;
+  grid-template-columns: minmax(0, 1.08fr) minmax(280px, 0.92fr);
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.market-command-main,
+.market-focus-board {
+  display: grid;
+  gap: 12px;
+  padding: 16px 18px;
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  border-radius: 20px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.05);
+}
+
+.market-quick-filter-row {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.market-quick-filter {
+  display: grid;
+  gap: 3px;
+  min-height: 62px;
+  padding: 10px 12px;
+  border: 1px solid rgba(203, 213, 225, 0.9);
+  border-radius: 16px;
+  background: #fff;
+  text-align: left;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
+}
+
+.market-quick-filter strong,
+.market-focus-card strong,
+.market-kpi-card strong {
+  color: #0f172a;
+}
+
+.market-quick-filter small,
+.market-focus-card small,
+.market-kpi-card small {
+  color: #64748b;
+}
+
+.market-quick-filter.active {
+  border-color: #bfdbfe;
+  background: #eef6ff;
+  box-shadow: 0 0 0 3px rgba(191, 219, 254, 0.35);
+  transform: translateY(-1px);
+}
+
+.market-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.market-kpi-card {
+  display: grid;
+  gap: 4px;
+  min-height: 84px;
+  padding: 12px 14px;
+  border: 1px solid rgba(226, 232, 240, 0.94);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.96);
+}
+
+.market-kpi-card span {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.market-kpi-card strong {
+  font-size: 22px;
+  line-height: 1.05;
+}
+
+.market-kpi-card.warn {
+  border-color: rgba(249, 115, 22, 0.24);
+  background: linear-gradient(180deg, #fff7ed 0%, #ffffff 100%);
+}
+
+.market-kpi-card.green {
+  border-color: rgba(34, 197, 94, 0.18);
+}
+
+.market-focus-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.market-focus-head strong {
+  display: block;
+  font-size: 17px;
+}
+
+.market-focus-head span {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.market-focus-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 12px 14px;
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  border-radius: 16px;
+  background: #fff;
+  text-align: left;
+}
+
+.market-focus-card small {
+  display: block;
+  margin-top: 3px;
+}
+
+.market-focus-metrics {
+  display: grid;
+  gap: 3px;
+  justify-items: end;
+}
+
+.market-focus-metrics b {
+  color: #1d4ed8;
+  font-size: 18px;
+}
+
+.market-focus-metrics span {
+  color: #b45309;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+@media (max-width: 1260px) {
+  .market-command-strip {
+    grid-template-columns: 1fr;
+  }
+
+  .market-quick-filter-row,
+  .market-kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 980px) {
   .market-panel {
     padding: 12px;
@@ -938,6 +1298,24 @@ watch(sourceTierFilterOptions, (options) => {
 
 .source-coverage-summary-copy {
   gap: 8px;
+}
+
+.market-copy-visible-button {
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid #dbe4ef;
+  border-radius: 12px;
+  background: #ffffff;
+  color: #244a7c;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.market-copy-visible-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .source-coverage-summary-stack {
@@ -1300,7 +1678,7 @@ watch(sourceTierFilterOptions, (options) => {
 .market-mobile-feed-v2 {
   display: grid;
   gap: 14px;
-  padding: 0 0 calc(104px + env(safe-area-inset-bottom, 0px));
+  padding: 0 0 12px;
 }
 
 .market-mobile-feed-hero,
@@ -1419,6 +1797,66 @@ watch(sourceTierFilterOptions, (options) => {
 .market-mobile-feed-list {
   display: grid;
   gap: 12px;
+  align-content: start;
+}
+
+.market-mobile-feed-skeleton-list {
+  display: grid;
+  gap: 12px;
+}
+
+.market-mobile-feed-skeleton-card {
+  display: grid;
+  gap: 10px;
+  min-height: 154px;
+  padding: 16px;
+  border: 1px solid #dbe4ef;
+  border-radius: 24px;
+  background: #ffffff;
+  box-shadow: 0 14px 34px rgba(15, 23, 42, .04);
+}
+
+.market-mobile-feed-skeleton-card .skeleton-line {
+  display: block;
+  width: 100%;
+  height: 14px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #eef2f7 0%, #f8fafc 50%, #eef2f7 100%);
+  background-size: 200% 100%;
+  animation: market-mobile-skeleton-shimmer 1.2s ease-in-out infinite;
+}
+
+.market-mobile-feed-skeleton-card .skeleton-line.short {
+  width: 48%;
+}
+
+@keyframes market-mobile-skeleton-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.table-pagination-bar.mobile {
+  margin-top: 4px;
+  padding: 8px 4px 0;
+}
+
+.page-size-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.page-size-select select {
+  min-width: 72px;
+  min-height: 30px;
+  padding: 0 8px;
+  border: 1px solid #dbe4ef;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #1f3149;
+  font: inherit;
 }
 
 .market-mobile-feed-card {

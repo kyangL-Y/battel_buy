@@ -78,6 +78,41 @@ body {
     linear-gradient(180deg, #f7f9fc 0%, #eef3f8 48%, #e7edf5 100%);
 }
 
+.app-root-loader {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 10px;
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding: 24px;
+  color: var(--ink-700);
+  text-align: center;
+}
+
+.app-root-loader-ring {
+  width: 34px;
+  height: 34px;
+  border: 3px solid var(--brand-primary-soft);
+  border-top-color: var(--brand-primary);
+  border-radius: 999px;
+  animation: app-root-loader-spin 0.72s linear infinite;
+}
+
+.app-root-loader strong {
+  color: var(--ink-900);
+  font-size: 16px;
+}
+
+.app-root-loader small {
+  color: var(--ink-500);
+  font-size: 12px;
+}
+
+@keyframes app-root-loader-spin {
+  to { transform: rotate(360deg); }
+}
+
 body::before,
 body::after {
   content: "";
@@ -4279,6 +4314,13 @@ body::after {
     position: relative;
     overflow-x: hidden;
     background: var(--surface-page);
+    padding-bottom: calc(92px + env(safe-area-inset-bottom));
+  }
+
+  .market-mobile-shell-content,
+  .mobile-redesign-main {
+    padding-bottom: calc(92px + env(safe-area-inset-bottom));
+    scroll-padding-bottom: calc(110px + env(safe-area-inset-bottom));
   }
 
   .market-mobile-home-hero,
@@ -4473,6 +4515,10 @@ body::after {
   }
 
   .market-mobile-bottom-nav {
+    position: fixed;
+    z-index: 1200;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     left: 12px;
     right: 12px;
     bottom: max(12px, env(safe-area-inset-bottom));
@@ -4786,7 +4832,7 @@ body::after {
   }
 
   .market-mobile-bottom-nav {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
   .market-mobile-bottom-item {

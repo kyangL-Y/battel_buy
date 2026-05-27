@@ -90,6 +90,19 @@ def get_product_history_identity_df(identity_key: str) -> pd.DataFrame:
 
     matched_product_keys = get_product_keys_for_identity(normalized_identity_key)
     if not matched_product_keys:
+        history_identity_df = get_history_identity_df()
+        if history_identity_df.empty:
+            return pd.DataFrame()
+        normalized_identity_lookup = normalized_identity_key.casefold()
+        compact_identity_lookup = re.sub(r"[\s*·•/]+", "", normalized_identity_key).casefold()
+        identity_series = history_identity_df["price_identity_key"].fillna("").astype(str).str.strip()
+        compact_identity_series = identity_series.str.replace(r"[\s*·•/]+", "", regex=True).str.casefold()
+        fallback_matches = history_identity_df.loc[
+            (identity_series.str.casefold() == normalized_identity_lookup)
+            | (compact_identity_series == compact_identity_lookup)
+        ].copy()
+        if not fallback_matches.empty:
+            return fallback_matches.reset_index(drop=True)
         return pd.DataFrame()
 
     return _get_cached_dataframe(
@@ -233,9 +246,13 @@ def _normalize_auth_user_row(row: dict | None) -> dict | None:
         "role": str(row.get("role") or "").strip() or "supplier",
         "display_name": row.get("display_name"),
         "is_active": bool(row.get("is_active")) if row.get("is_active") is not None else True,
+        "is_deleted": bool(row.get("is_deleted")) if row.get("is_deleted") is not None else False,
         "supplier_id": normalized_supplier_id,
         "supplier_profile": supplier_profile,
         "last_login_at": row.get("last_login_at"),
+        "deleted_at": row.get("deleted_at"),
+        "deleted_by": row.get("deleted_by"),
+        "deleted_username": row.get("deleted_username"),
         "created_at": row.get("created_at"),
         "updated_at": row.get("updated_at"),
     }

@@ -46,25 +46,25 @@ export function resolveMarketCategory(rowOrProductName?: MarketSummaryItem | str
     const liancaiSubcategory = String(rowOrProductName.liancai_subcategory || '').trim()
     if (liancaiSubcategory && liancaiSubcategory !== '全部') return liancaiSubcategory
     const normalizedName = String(rowOrProductName.product_name || '').trim()
-    if (!normalizedName) return '精选'
+    if (!normalizedName) return '默认分类'
     const matchedRule = MARKET_CATEGORY_RULES.find((rule) => rule.keywords.test(normalizedName))
-    return matchedRule?.label || '精选'
+    return matchedRule?.label || '默认分类'
   }
 
   const normalizedName = String(rowOrProductName || '').trim()
   if (!normalizedName) {
-    return '精选'
+    return '默认分类'
   }
 
   const matchedRule = MARKET_CATEGORY_RULES.find((rule) => rule.keywords.test(normalizedName))
-  return matchedRule?.label || '精选'
+  return matchedRule?.label || '默认分类'
 }
 
 export function resolveMarketCategoryMeta(row?: MarketSummaryItem | null) {
   const liancaiSubcategory = String(row?.liancai_subcategory || '').trim()
   const liancaiTopCategory = String(row?.liancai_top_category || '').trim()
   if (liancaiSubcategory || liancaiTopCategory) {
-    const primary = liancaiTopCategory || (liancaiSubcategory !== '全部' ? liancaiSubcategory : '') || '精选'
+    const primary = liancaiTopCategory || (liancaiSubcategory !== '全部' ? liancaiSubcategory : '') || '默认分类'
     const secondary = liancaiSubcategory && liancaiSubcategory !== '全部' && liancaiSubcategory !== primary
       ? liancaiSubcategory
       : ''

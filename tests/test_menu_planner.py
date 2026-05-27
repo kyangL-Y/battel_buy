@@ -753,3 +753,134 @@ def test_build_procurement_plan_marks_same_province_meat_reference_label():
     )
 
     assert plan_df.iloc[0]["source_priority_label"] == "同省肉禽蛋参考价优先"
+
+
+def test_build_procurement_plan_applies_beef_processing_yield_for_purchase_quantity():
+    latest_df = pd.DataFrame(
+        [
+            {
+                "product_name": "牛肉",
+                "group_name": "牛肉",
+                "category": "肉禽蛋",
+                "site_name": "PFSC | 北京新发地",
+                "market_name": "北京新发地",
+                "province": "北京市",
+                "city": "北京市",
+                "current_price": 42.0,
+            }
+        ]
+    )
+
+    ingredient_df, plan_df = build_procurement_plan(
+        [{"menu_name": "土豆炖牛肉", "ingredient_name": "牛肉"}],
+        latest_df,
+        diners=100,
+        tables=10,
+        preferred_province="北京市",
+        preferred_city="北京市",
+    )
+
+    assert ingredient_df.iloc[0]["net_quantity"] == 17.0
+    assert ingredient_df.iloc[0]["estimated_quantity"] == 24.22
+    assert ingredient_df.iloc[0]["purchase_yield_ratio"] == 0.702
+    assert plan_df.iloc[0]["processing_profile"] == "牛肉修切+炖煮损耗"
+    assert plan_df.iloc[0]["guest_context"] == "10桌共100人"
+
+
+def test_build_procurement_plan_applies_cucumber_peeling_yield_for_purchase_quantity():
+    latest_df = pd.DataFrame(
+        [
+            {
+                "product_name": "黄瓜",
+                "group_name": "黄瓜",
+                "category": "蔬菜类",
+                "site_name": "PFSC | 北京新发地",
+                "market_name": "北京新发地",
+                "province": "北京市",
+                "city": "北京市",
+                "current_price": 5.0,
+            }
+        ]
+    )
+
+    ingredient_df, plan_df = build_procurement_plan(
+        [{"menu_name": "凉拌黄瓜", "ingredient_name": "黄瓜"}],
+        latest_df,
+        diners=100,
+        tables=10,
+        preferred_province="北京市",
+        preferred_city="北京市",
+    )
+
+    assert ingredient_df.iloc[0]["net_quantity"] == 11.0
+    assert ingredient_df.iloc[0]["estimated_quantity"] == 12.79
+    assert ingredient_df.iloc[0]["purchase_yield_ratio"] == 0.86
+    assert plan_df.iloc[0]["processing_profile"] == "黄瓜去皮损耗"
+
+
+def test_build_procurement_plan_prefers_lower_price_when_fresh_and_frozen_both_match():
+    latest_df = pd.DataFrame(
+        [
+            {
+                "product_name": "冻牛肉",
+                "group_name": "牛肉",
+                "category": "肉禽蛋",
+                "site_name": "PFSC | 冻品市场",
+                "market_name": "冻品市场",
+                "province": "北京市",
+                "city": "北京市",
+                "current_price": 3.2,
+            },
+            {
+                "product_name": "鲜牛肉",
+                "group_name": "牛肉",
+                "category": "肉禽蛋",
+                "site_name": "PFSC | 牛羊肉交易区",
+                "market_name": "牛羊肉交易区",
+                "province": "北京市",
+                "city": "北京市",
+                "current_price": 38.0,
+            },
+        ]
+    )
+
+    _, plan_df = build_procurement_plan(
+        [{"menu_name": "大刀牛肉", "ingredient_name": "牛肉"}],
+        latest_df,
+        diners=80,
+        tables=8,
+        preferred_province="北京市",
+        preferred_city="北京市",
+    )
+
+    assert plan_df.iloc[0]["reference_price"] == 3.2
+    assert "冻品市场" in str(plan_df.iloc[0]["recommended_market"])
+
+
+def test_build_procurement_plan_falls_back_to_frozen_when_no_fresh_candidate_exists():
+    latest_df = pd.DataFrame(
+        [
+            {
+                "product_name": "冻牛肉",
+                "group_name": "牛肉",
+                "category": "肉禽蛋",
+                "site_name": "PFSC | 冻品市场",
+                "market_name": "冻品市场",
+                "province": "北京市",
+                "city": "北京市",
+                "current_price": 3.2,
+            },
+        ]
+    )
+
+    _, plan_df = build_procurement_plan(
+        [{"menu_name": "大刀牛肉", "ingredient_name": "牛肉"}],
+        latest_df,
+        diners=80,
+        tables=8,
+        preferred_province="北京市",
+        preferred_city="北京市",
+    )
+
+    assert plan_df.iloc[0]["reference_price"] == 3.2
+    assert "冻品市场" in str(plan_df.iloc[0]["recommended_market"])

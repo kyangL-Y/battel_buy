@@ -20,6 +20,7 @@ nul
 data/*.db
 data/*.sqlite
 data/*.sqlite3
+data/market_summary_cache/
 web/artifacts/
 web/*.log
 web/*.png
@@ -31,6 +32,7 @@ web/*.png
 .streamlit/
 .tmp/
 .tmp_research/
+.local-secrets/
 experiments/
 tmp/
 web/.tmp/

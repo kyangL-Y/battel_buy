@@ -25,6 +25,8 @@ def _clear_database_env(monkeypatch):
 def test_load_runtime_config_returns_defaults_for_missing_file(tmp_path: Path):
     config = load_runtime_config(tmp_path / "missing-runtime.json")
     assert config["schedule"]["interval_seconds"] == 3600
+    assert config["schedule"]["mode"] == "interval"
+    assert config["schedule"]["daily_run_time"] == "03:30"
     assert config["crawler"]["default_timeout"] == 15
     assert config["crawler"]["blocked_status_codes"] == [403, 429]
     assert config["crawler"]["fallback_to_playwright"] is False

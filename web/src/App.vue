@@ -11,7 +11,7 @@
           </div>
         </div>
         <div class="mobile-redesign-top-actions">
-          <button type="button" class="mobile-redesign-location" @click="enterWorkspace('summary')">
+          <button type="button" class="mobile-redesign-location" @click="toggleMobileLocationPanel()">
             <i></i>
             {{ selectedLocationLabel }}
           </button>
@@ -21,24 +21,35 @@
         </div>
       </div>
 
-      <div class="mobile-redesign-hero-copy">
-        <p>本地采购工作台</p>
-        <h1>先看预警，再找低价，最后下采购单</h1>
-        <small>{{ latestSyncLabel === '等待同步' ? '真实行情同步后会更新今日商品和预警。' : `最近同步 ${latestSyncLabel}` }}</small>
+      <div v-if="showMobileLocationPanel" class="mobile-redesign-location-panel">
+        <small v-if="locationLoading" class="mobile-redesign-location-loading">正在同步地区列表</small>
+        <button
+          v-for="item in mobileLocationOptions"
+          :key="item"
+          type="button"
+          :class="{ active: item === selectedLocationLabel }"
+          @click="selectMobileLocation(item)"
+        >
+          {{ item }}
+        </button>
       </div>
 
-      <div class="mobile-redesign-search">
+      <div class="mobile-redesign-hero-copy">
+        <small>{{ latestSyncLabel === '等待同步' ? '行情数据同步后将更新商品与价格提醒。' : `最近同步 ${latestSyncLabel}` }}</small>
+      </div>
+
+      <div class="mobile-redesign-search" :class="{ loading: summaryLoading || locationLoading }">
         <el-input
           v-model="filters.keyword"
           type="search"
           inputmode="search"
           enterkeyhint="search"
           aria-label="搜索食材关键词"
-          placeholder="搜商品、市场、供应商"
+          placeholder="搜商品"
           clearable
           @keyup.enter="enterWorkspace('summary')"
         />
-        <button type="button" data-testid="enter-workspace-button" @click="enterWorkspace('summary')">查价</button>
+        <button type="button" data-testid="enter-workspace-button" @click="enterWorkspace('summary')"><span>查看行情</span></button>
       </div>
 
       <div class="mobile-redesign-stat-strip" aria-label="今日关键动作">
@@ -47,7 +58,7 @@
           <strong>{{ mobileAlertBadge }}</strong>
         </button>
         <button type="button" class="primary" @click="enterWorkspace('summary')">
-          <span>低价</span>
+          <span>参考</span>
           <strong>{{ mobileSpotlightRows.length }}</strong>
         </button>
         <button type="button" class="success" @click="enterWorkspace('menu')">
@@ -57,24 +68,25 @@
       </div>
     </header>
 
-    <main class="mobile-redesign-main">
+    <main v-if="mobileHomePanel === 'home'" class="mobile-redesign-main">
       <section class="mobile-redesign-section mobile-redesign-priority-grid">
         <div class="mobile-redesign-workbench-head">
-          <p>工作台</p>
-          <h2>市场价格工作台</h2>
+          <p>业务总览</p>
+          <h2>市场价格总览</h2>
         </div>
         <button type="button" class="mobile-redesign-priority-card is-main" @click="mobileAlertBadge ? enterWorkspace('alerts') : enterWorkspace('menu')">
-          <p>{{ mobileAlertBadge ? '先处理' : '继续采购' }}</p>
-          <strong>{{ mobileAlertBadge ? `${mobileAlertBadge} 条价格预警待处理` : '把菜单直接变成采购建议' }}</strong>
-          <small>{{ mobileAlertBadge ? '先确认影响今日采购成本的商品，再去看低价和生成方案。' : (matchedPlanCount ? `${matchedPlanCount} 项已匹配报价，可以直接继续采购。` : '录菜单后自动拆食材、匹配行情和供应商报价。') }}</small>
+          <p>{{ mobileAlertBadge ? '预警处理' : '采购执行' }}</p>
+          <strong>{{ mobileAlertBadge ? `${mobileAlertBadge} 条价格提醒待处理` : '生成采购建议' }}</strong>
+          <small>{{ mobileAlertBadge ? '请优先核对影响采购成本的商品。' : (matchedPlanCount ? `${matchedPlanCount} 项已完成报价匹配，可继续处理。` : '录入菜单后可生成采购建议并匹配报价。') }}</small>
         </button>
       </section>
 
       <section class="mobile-redesign-section mobile-redesign-products" data-testid="mobile-spotlight-feed-section">
         <div class="mobile-redesign-section-head">
           <div>
-            <p>今日低价</p>
-            <h2>重点商品行情</h2>
+            <p>价格参考</p>
+            <h2>价格参考商品</h2>
+            <small class="mobile-redesign-section-note">各展示 1 个：全场最低、低于均价最多、当日价差最大。</small>
           </div>
           <div class="mobile-redesign-head-actions">
             <button type="button" class="mobile-trend-shortcut market-mobile-bottom-item" @click="enterWorkspace('trend')">单品</button>
@@ -91,7 +103,7 @@
           >
             <div class="mobile-redesign-product-copy">
               <strong>{{ item.title }}</strong>
-              <span>{{ item.category }}</span>
+              <span>{{ item.strategy }} · {{ item.category }}</span>
             </div>
             <footer>
               <b>{{ item.price }} <small>{{ item.unit }}</small></b>
@@ -99,8 +111,8 @@
             </footer>
           </button>
           <div v-if="!mobileSpotlightRows.length" class="mobile-redesign-empty-card">
-            <strong>等待真实行情同步</strong>
-            <small>同步后这里会优先展示低价和价差明显的商品。</small>
+            <strong>待行情同步</strong>
+            <small>同步完成后展示可比价商品。</small>
           </div>
         </div>
       </section>
@@ -108,16 +120,15 @@
       <section class="mobile-redesign-section mobile-redesign-sources">
         <div class="mobile-redesign-section-head">
           <div>
-            <p>常采分类</p>
-            <h2>按分类快速进入</h2>
+            <p>商品分类</p>
           </div>
-          <button type="button" @click="showMobileHomeMore = !showMobileHomeMore">
-            {{ showMobileHomeMore ? '收起' : '更多' }}
+          <button type="button" @click="openMobileCategoryDirectory()">
+            查看全部
           </button>
         </div>
         <div class="mobile-redesign-source-grid" data-testid="mobile-source-groups">
           <button
-            v-for="item in displayedMobileCategoryTableRows.slice(0, showMobileHomeMore ? 6 : 4)"
+            v-for="item in displayedMobileCategoryTableRows.slice(0, 4)"
             :key="item.key"
             type="button"
             @click="openCategoryMarket(item.category)"
@@ -137,9 +148,9 @@
         <div class="mobile-redesign-section-head">
           <div>
             <p>最新预警</p>
-            <h2>需要马上看的商品</h2>
+            <h2>价格提醒</h2>
           </div>
-          <button type="button" @click="enterWorkspace('alerts')">处理</button>
+          <button type="button" @click="enterWorkspace('alerts')">查看全部</button>
         </div>
         <div class="mobile-redesign-alert-list">
           <button
@@ -154,7 +165,7 @@
           </button>
           <div v-if="!mobileAlertRows.length" class="mobile-redesign-empty-card compact">
             <strong>暂无触发预警</strong>
-            <small>超过阈值后会直接进入待处理。</small>
+            <small>触发阈值后将在此显示。</small>
           </div>
         </div>
       </section>
@@ -163,20 +174,50 @@
         <div class="mobile-redesign-section-head">
           <div>
             <p>协同入口</p>
-            <h2>采购与供应一起处理</h2>
+            <h2>采购与供应协同</h2>
           </div>
         </div>
         <div class="mobile-redesign-entry-grid">
           <button type="button" data-testid="mobile-buyer-entry-button" @click="enterWorkspace()">
-            <span>采购工作台</span>
-            <strong>继续采购</strong>
-            <small>行情、预警、菜单采购</small>
+            <span>采购业务</span>
+            <strong>进入采购</strong>
+            <small>行情、预警、采购建议</small>
           </button>
           <button type="button" data-testid="mobile-supplier-nav-button" @click="openSupplierPortal(false)">
             <span>供应商报价</span>
-            <strong>去录价</strong>
-            <small>录价、草稿、历史</small>
+            <strong>报价录入</strong>
+            <small>报价、草稿、历史</small>
           </button>
+        </div>
+      </section>
+    </main>
+
+    <main v-else class="mobile-redesign-main mobile-redesign-directory-page">
+      <section class="mobile-redesign-section mobile-redesign-directory-section">
+        <div class="mobile-redesign-section-head">
+          <div>
+            <p>商品分类</p>
+            <h2>全部分类</h2>
+            <small class="mobile-redesign-section-note">展示当前可比价的全部分类，点分类直接进入行情页。</small>
+          </div>
+          <button type="button" @click="mobileHomePanel = 'home'">返回</button>
+        </div>
+        <div class="mobile-redesign-directory-grid">
+          <button
+            v-for="item in mobileCategoryTableRows"
+            :key="item.key"
+            type="button"
+            class="mobile-redesign-directory-card"
+            @click="openCategoryMarket(item.category)"
+          >
+            <span>{{ item.category }}</span>
+            <strong>{{ item.subcategory }}</strong>
+            <small>{{ item.count }} 款可比价</small>
+          </button>
+          <div v-if="!mobileCategoryTableRows.length" class="mobile-redesign-empty-card compact">
+            <strong>暂无商品分类</strong>
+            <small>{{ selectedCategorySourceLabel }} 当前没有可展示分类。</small>
+          </div>
         </div>
       </section>
     </main>
@@ -207,7 +248,7 @@
 
     <header class="market-mobile-shell-head">
 
-      <button type="button" class="market-mobile-back-button market-mobile-back-icon" aria-label="返回首页" @click="goToLanding()">‹</button>
+      <button type="button" class="market-mobile-back-button market-mobile-back-icon" :aria-label="mobileBackAriaLabel" @click="handleMobileBack()">‹</button>
 
       <div class="market-mobile-shell-copy">
 
@@ -247,6 +288,14 @@
 
     <main class="market-mobile-shell-content">
 
+      <div v-if="mobileRouteFeedbackTab" class="market-mobile-route-progress" role="status" aria-live="polite">
+        <span class="market-mobile-route-progress-ring"></span>
+        <div>
+          <strong>{{ mobileRouteFeedbackLabel }}</strong>
+          <small>正在切换，请稍候</small>
+        </div>
+      </div>
+
       <MarketSummaryPanel
 
         v-if="mobileActiveTab === 'summary'"
@@ -278,6 +327,8 @@
         v-else-if="mobileActiveTab === 'trend'"
 
         :product-options="productOptions"
+        :search-product-options="mobileTrendSearchOptions"
+        :product-search-loading="mobileTrendSearchLoading"
 
         :selected-identity-key="selectedIdentityKey"
 
@@ -294,6 +345,7 @@
         :selected-site-name="selectedSiteName"
 
         @select-product="handleSelectProduct"
+        @search-product-options="searchMobileTrendProducts"
 
         @update:trend-mode="trendMode = $event"
 
@@ -313,7 +365,7 @@
         <header class="market-mobile-alert-hero">
           <div>
             <p class="market-mobile-kicker">价格预警</p>
-            <h2>先处理异常</h2>
+            <h2>异常价格处理</h2>
             <span>{{ mobileAlertHeroText }}</span>
           </div>
           <strong>{{ mobileAlertBadge }}</strong>
@@ -388,7 +440,7 @@
           </div>
 
           <p v-if="!showMobileAlertRuleForm" class="market-mobile-rule-summary">
-            先处理上面的异常；需要盯某个商品最高/最低价时，再新建规则。
+            如需持续监控某个商品的最高价或最低价，可在此新增规则。
           </p>
 
           <div v-else class="market-mobile-rule-form">
@@ -556,23 +608,23 @@
       </button>
       <div class="platform-choice-nav-links" aria-label="能力导航">
         <button type="button" @click="enterWorkspace('summary')">行情洞察</button>
-        <button type="button" @click="enterWorkspace('suppliers')">供应商协同</button>
+        <button type="button" @click="enterWorkspace('suppliers')">供应商档案</button>
         <button type="button" @click="enterWorkspace('plan')">采购计划</button>
       </div>
       <div class="platform-choice-nav-actions">
         <button type="button" class="platform-choice-pill ghost" @click="openSupplierPortal(false)">供应商入口</button>
-        <button type="button" class="platform-choice-pill solid" @click="enterWorkspace()">客户进入</button>
+        <button type="button" class="platform-choice-pill solid" @click="enterWorkspace()">进入系统</button>
       </div>
     </nav>
 
     <section class="platform-choice-hero-banner" data-testid="platform-choice-hero">
       <div class="platform-choice-hero-banner-copy">
         <div class="platform-choice-update-badge" data-testid="homepage-local-change-badge">
-          <span>采购平台</span>
-          <strong>行情、报价、计划在一个工作台里闭环</strong>
+          <span>采购业务</span>
+          <strong>整合行情、报价与计划数据</strong>
         </div>
-        <h1>让餐饮采购<br><em>更简单。</em></h1>
-        <p>把市场行情、供应商报价、菜单采购和结算协同放进同一张决策桌。少看复杂数据，多做正确决策。</p>
+        <h1>餐饮采购<br><em>业务系统</em></h1>
+        <p>支持行情查询、供应商报价、采购计划与结算处理。</p>
         <div class="platform-choice-hero-tags" aria-label="平台能力">
           <span>实时行情</span>
           <span>报价比价</span>
@@ -581,10 +633,10 @@
         </div>
         <div class="platform-choice-hero-banner-actions" aria-label="主要入口">
           <button type="button" class="platform-choice-pill solid large" data-testid="enter-workspace-button" @click="enterWorkspace()">
-            进入采购平台
+            进入系统
           </button>
           <button type="button" class="platform-choice-pill ghost large" data-testid="supplier-choice-button" @click="openSupplierPortal(false)">
-            我是供应商
+            供应商入口
           </button>
         </div>
       </div>
@@ -597,22 +649,22 @@
           <article>
             <span class="signal-dot green"></span>
             <div>
-              <strong>低价窗口</strong>
-              <small>自动聚合多个市场，优先标出可下单品类。</small>
+              <strong>价格对比</strong>
+              <small>汇总展示可比价商品与价格差异。</small>
             </div>
           </article>
           <article>
             <span class="signal-dot amber"></span>
             <div>
-              <strong>异常波动</strong>
-              <small>高波动商品提前预警，避免临采被动。</small>
+              <strong>异常价格</strong>
+              <small>异常价格变化统一进入提醒列表。</small>
             </div>
           </article>
           <article>
             <span class="signal-dot blue"></span>
             <div>
               <strong>供应商报价</strong>
-              <small>报价、作废、结算台账留痕可追溯。</small>
+              <small>报价与结算记录可统一追踪。</small>
             </div>
           </article>
         </div>
@@ -763,7 +815,7 @@
 
 <script setup lang="ts">
 
-import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, defineComponent, h, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus/es/components/message/index.mjs'
 
 import {
@@ -797,6 +849,7 @@ import {
   fetchSourceCoverage,
 
   fetchSupplierOverview,
+  getAccessToken,
   generateMenuPlan,
   readAuthSession,
   triggerCrawlRun,
@@ -846,10 +899,46 @@ import {
   writeProductAlertRules,
 } from './utils/alertRules'
 
-const MarketSummaryPanel = defineAsyncComponent(() => import('./components/MarketSummaryPanel.vue'))
-const MenuPlanPanel = defineAsyncComponent(() => import('./components/MenuPlanPanel.vue'))
-const PcPriceWorkbench = defineAsyncComponent(() => import('./components/PcPriceWorkbench.vue'))
-const ProductTrendPanel = defineAsyncComponent(() => import('./components/ProductTrendPanel.vue'))
+const AsyncPanelLoader = defineComponent({
+  name: 'AsyncPanelLoader',
+  setup() {
+    return () => h('section', { class: 'market-mobile-route-loader', role: 'status', 'aria-live': 'polite' }, [
+      h('span', { class: 'market-mobile-route-loader-ring' }),
+      h('strong', '正在打开页面'),
+      h('p', '行情和业务数据正在准备。'),
+    ])
+  },
+})
+
+const loadMarketSummaryPanel = () => import('./components/MarketSummaryPanel.vue')
+const loadMenuPlanPanel = () => import('./components/MenuPlanPanel.vue')
+const loadPcPriceWorkbench = () => import('./components/PcPriceWorkbench.vue')
+const loadProductTrendPanel = () => import('./components/ProductTrendPanel.vue')
+
+const MarketSummaryPanel = defineAsyncComponent({
+  loader: loadMarketSummaryPanel,
+  loadingComponent: AsyncPanelLoader,
+  delay: 0,
+  suspensible: false,
+})
+const MenuPlanPanel = defineAsyncComponent({
+  loader: loadMenuPlanPanel,
+  loadingComponent: AsyncPanelLoader,
+  delay: 0,
+  suspensible: false,
+})
+const PcPriceWorkbench = defineAsyncComponent({
+  loader: loadPcPriceWorkbench,
+  loadingComponent: AsyncPanelLoader,
+  delay: 0,
+  suspensible: false,
+})
+const ProductTrendPanel = defineAsyncComponent({
+  loader: loadProductTrendPanel,
+  loadingComponent: AsyncPanelLoader,
+  delay: 0,
+  suspensible: false,
+})
 
 
 const { isMobileViewport } = useViewport()
@@ -866,9 +955,10 @@ const SUPPLIER_PLATFORM_PATH = '/supplier-backend'
 const SUPPLIER_PORTAL_PATH = '/supplier-portal'
 const MARKET_SUMMARY_INITIAL_LIMIT = 200
 const MARKET_SUMMARY_BACKGROUND_LIMIT = 1000
+const MOBILE_PRODUCT_OPTIONS_LIMIT = 240
 
 const tabs = [
-  { key: 'signals', label: '老板驾驶舱', code: 'SIG' },
+  { key: 'signals', label: '经营总览', code: 'SIG' },
   { key: 'summary', label: '汇总行情', code: 'SUM' },
   { key: 'trend', label: '单品趋势', code: 'TRD' },
   { key: 'alerts', label: '价格预警', code: 'ALT' },
@@ -958,21 +1048,31 @@ const coverageLoading = ref(false)
 const liancaiCategorySummaryLoading = ref(false)
 
 const productOptionsLoading = ref(false)
+const mobileTrendSearchLoading = ref(false)
 const workbenchRefreshing = ref(false)
 const productOptionsContextKey = ref('')
+const mobileTrendSearchOptions = ref<ProductOptionItem[]>([])
 const authSession = ref<AuthLoginResponse | null>(readAuthSession())
 const imagePreviewVisible = ref(false)
 const imagePreviewUrl = ref('')
 const imagePreviewTitle = ref('')
 const showMobileHomeMore = ref(false)
+const mobileHomePanel = ref<'home' | 'categories'>('home')
+const showMobileLocationPanel = ref(false)
+const mobileLocationPreset = ref<'henan' | 'all' | ''>('')
 
 const selectedProductTouched = ref(false)
 
 let crawlStatusTimer: number | undefined
 let productOptionsPromise: Promise<void> | null = null
+let productOptionsPromiseContextKey = ''
+let productOptionsLoadSequence = 0
 let trendRequestSequence = 0
 let summaryRequestSequence = 0
 let suppressNextTrendWatch = false
+let workspaceTabActivationToken = 0
+let mobileTrendSearchRequestSequence = 0
+let locationFilterReloadSequence = 0
 let trendPrefetchContextKey = ''
 const trendPrefetchPromises = new Map<string, Promise<void>>()
 const SETTINGS_CHANGE_LOG_STORAGE_KEY = 'battel.settings-change-log.v1'
@@ -1145,7 +1245,26 @@ const mobileAlertSourceOptions = computed(() => {
   if (fallback) options.add(fallback)
   return Array.from(options)
 })
-const selectedLocationLabel = computed(() => filters.city || filters.province || '河南本地市场')
+const selectedLocationLabel = computed(() => {
+  if (mobileLocationPreset.value === 'all') return '全国'
+  if (mobileLocationPreset.value === 'henan') return '河南本地市场'
+  if (filters.city) return filters.city
+  if (filters.province === '河南省') return '河南本地市场'
+  return filters.province || '河南本地市场'
+})
+const mobileLocationFallbackOptions = ['河南本地市场', '郑州市', '河南省', '北京', '上海市', '全国']
+const mobileLocationOptions = computed(() => {
+  const options = new Set<string>()
+  mobileLocationFallbackOptions.forEach((item) => options.add(item))
+  if (filters.province) {
+    options.add(filters.province)
+    ;(provinceCityMap.value[filters.province] || []).forEach((item) => options.add(item))
+  }
+  cities.value.slice(0, 12).forEach((item) => options.add(item))
+  provinces.value.slice(0, 12).forEach((item) => options.add(item))
+  const result = Array.from(options).filter(Boolean)
+  return result.length ? result : mobileLocationFallbackOptions
+})
 const latestSyncLabel = computed(() => {
   const latestSourceCapture = sourceCoverageRows.value
     .map((item) => item.latest_capture)
@@ -1165,6 +1284,90 @@ const mobileActiveTab = computed(() => {
 
   return 'summary'
 })
+const mobileRouteFeedbackTab = ref<(typeof tabs)[number]['key'] | ''>('')
+const mobileRouteFeedbackLabel = computed(() => {
+  const target = tabs.find((item) => item.key === mobileRouteFeedbackTab.value)
+  return target ? `打开${target.label}` : '打开页面'
+})
+const mobilePreviousWorkspaceTab = ref<(typeof tabs)[number]['key'] | ''>('')
+const mobileBackAriaLabel = computed(() => {
+  if (mobileActiveTab.value === 'trend' && mobilePreviousWorkspaceTab.value && mobilePreviousWorkspaceTab.value !== 'trend') {
+    const target = tabs.find((item) => item.key === mobilePreviousWorkspaceTab.value)
+    return `返回${target?.label || '上一页'}`
+  }
+  return '返回首页'
+})
+let mobileRouteFeedbackTimer: number | undefined
+
+function startMobileRouteFeedback(tabKey: (typeof tabs)[number]['key']) {
+  if (!isMobileViewport.value) return
+  if (mobileRouteFeedbackTimer) {
+    window.clearTimeout(mobileRouteFeedbackTimer)
+    mobileRouteFeedbackTimer = undefined
+  }
+  mobileRouteFeedbackTab.value = tabKey
+}
+
+function finishMobileRouteFeedback(tabKey?: (typeof tabs)[number]['key']) {
+  if (!isMobileViewport.value || !mobileRouteFeedbackTab.value) return
+  if (tabKey && mobileRouteFeedbackTab.value !== tabKey) return
+  if (mobileRouteFeedbackTimer) {
+    window.clearTimeout(mobileRouteFeedbackTimer)
+  }
+  mobileRouteFeedbackTimer = window.setTimeout(() => {
+    if (!tabKey || mobileRouteFeedbackTab.value === tabKey) {
+      mobileRouteFeedbackTab.value = ''
+    }
+    mobileRouteFeedbackTimer = undefined
+  }, 180)
+}
+
+function waitForNextFrame() {
+  if (typeof window === 'undefined') return Promise.resolve()
+  return new Promise<void>((resolve) => {
+    window.requestAnimationFrame(() => resolve())
+  })
+}
+
+function scrollMobileViewportTop() {
+  if (!isMobileViewport.value || typeof window === 'undefined') return
+  window.requestAnimationFrame(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  })
+}
+
+function rememberMobileTrendSource() {
+  if (!isMobileViewport.value || activeTab.value === 'trend') return
+  if (viewMode.value !== 'workspace') {
+    mobilePreviousWorkspaceTab.value = ''
+    return
+  }
+  mobilePreviousWorkspaceTab.value = activeTab.value
+}
+
+function handleRepeatedMobileTab(tabKey: (typeof tabs)[number]['key']) {
+  if (!isMobileViewport.value) return
+  showMobileLocationPanel.value = false
+  if (tabKey === 'trend' && (!selectedIdentityKey.value || (!trendLoading.value && !trendRows.value.length))) {
+    startMobileRouteFeedback('trend')
+    void activateTab('trend')
+    return
+  }
+  if (tabKey !== 'trend') {
+    finishMobileRouteFeedback(tabKey)
+  }
+  scrollMobileViewportTop()
+}
+
+function handleMobileBack() {
+  if (mobileActiveTab.value === 'trend' && mobilePreviousWorkspaceTab.value && mobilePreviousWorkspaceTab.value !== 'trend') {
+    const targetTab = mobilePreviousWorkspaceTab.value
+    mobilePreviousWorkspaceTab.value = ''
+    enterWorkspace(targetTab, { preserveSummaryFilters: true })
+    return
+  }
+  goToLanding()
+}
 
 function syncMobileAlertDraftFromSelection() {
   const identityKey = mobileAlertRuleDraft.value.identityKey || selectedIdentityKey.value
@@ -1214,13 +1417,24 @@ function resolveMobileAlertIdentityKey(item: MobileAlertActionRow) {
 
 function openMobileAlertTrend(item: MobileAlertActionRow) {
   const identityKey = resolveMobileAlertIdentityKey(item)
-  if (identityKey) handleSelectProduct(identityKey)
+  if (identityKey) {
+    handleSelectProduct(identityKey)
+    return
+  }
   enterWorkspace('trend')
 }
 
 function openMobileAlertSupplier(item: MobileAlertActionRow) {
   const identityKey = resolveMobileAlertIdentityKey(item)
-  if (identityKey) handleSelectProduct(identityKey)
+  if (identityKey) {
+    selectedProductTouched.value = true
+    selectedIdentityKey.value = resolveCanonicalIdentityKey(identityKey)
+    selectedProductFallbackLabel.value = item.name || selectedProductFallbackLabel.value
+    writeMobileRecentState({
+      productIdentityKey: identityKey,
+      productTitle: item.name,
+    })
+  }
   ElMessage.success(`已带上 ${item.name}，去采购页找供应商报价`)
   enterWorkspace('menu')
 }
@@ -1236,7 +1450,7 @@ const mobileTabMeta = computed(() => {
 
       title: '单品趋势',
 
-      description: '先看当前价格区间，再判断跨市场还是单市场跟踪。',
+      description: '查看当前价格区间，并在跨市场与单市场之间切换分析。',
 
     }
 
@@ -1248,7 +1462,7 @@ const mobileTabMeta = computed(() => {
 
       title: '价格预警',
 
-      description: '处理异常波动，并给常采商品设置触发阈值。',
+      description: '处理异常波动，并为重点商品设置触发阈值。',
 
     }
 
@@ -1292,11 +1506,11 @@ const showBlockingError = computed(() => dataSourceState.mode === 'error' && !ha
 const demoHero = computed(() => ({
   eyebrow: demoContent.value?.hero?.eyebrow || 'REAL MARKET SIGNALS',
 
-  title: demoContent.value?.hero?.title || '真实行情经营信号',
+    title: demoContent.value?.hero?.title || '行情数据分析',
 
-  description: demoContent.value?.hero?.description || '先看真实价格、风险和机会，再进入报价与采购承接。',
+  description: demoContent.value?.hero?.description || '展示价格、风险与报价信息，支持采购业务处理。',
 
-  primaryCta: demoContent.value?.hero?.primary_cta || '进入老板驾驶舱',
+  primaryCta: demoContent.value?.hero?.primary_cta || '进入经营总览',
 }))
 
 
@@ -1326,13 +1540,13 @@ const homeHeroStats = computed(() => [
 
     value: `${mobileAlertBadge.value || 0}`,
 
-    detail: mobileAlertBadge.value ? '建议先看异常价格' : '当前没有紧急项',
+    detail: mobileAlertBadge.value ? '建议核对异常价格' : '当前没有紧急项',
 
   },
 
   {
 
-    label: '低价机会',
+    label: '价格参考',
 
     value: `${signalOverview.value?.top_opportunities?.length || mobileSpotlightRows.value.length || 0}`,
 
@@ -1354,7 +1568,7 @@ const homeHeroStats = computed(() => [
 
 const mobileDecisionMetrics = computed(() => [
   { label: '待处理', value: String(mobileAlertBadge.value || 0) },
-  { label: '机会', value: String(signalOverview.value?.top_opportunities?.length || 0) },
+  { label: '信号', value: String(signalOverview.value?.top_opportunities?.length || 0) },
   { label: '来源', value: String(sourceCoverageRows.value.length || 0) },
 ])
 
@@ -1388,7 +1602,7 @@ const homePriorityItems = computed(() => {
 
     summary: item.reason_summary,
 
-    meta: item.recommended_market || item.recommended_site || '机会信号',
+    meta: item.recommended_market || item.recommended_site || '价格信号',
 
     tone: 'good',
 
@@ -1420,13 +1634,13 @@ const homePriorityItems = computed(() => {
 
     {
 
-      title: '等待数据同步',
+      title: '待数据同步',
 
-      badge: '先获取数据',
+      badge: '待同步',
 
-      summary: '当前还没有形成可执行的优先级，请先拉取最新市场报价。',
+      summary: '当前尚未形成可执行处理项，请先同步最新市场报价。',
 
-      meta: '进入工作区后可手动获取',
+      meta: '进入业务页面后可手动同步',
 
       tone: 'default',
 
@@ -1442,25 +1656,25 @@ const landingTodayCards = computed(() => [
     value: mobileAlertBadge.value ? `${mobileAlertBadge.value} 条待处理` : '当前无紧急异常',
   },
   {
-    label: '今日机会',
+    label: '价格参考',
     value: signalOverview.value?.top_opportunities?.length
-      ? `${signalOverview.value.top_opportunities.length} 条值得先看`
-      : '等待系统识别机会',
+      ? `${signalOverview.value.top_opportunities.length} 条价格信号`
+      : '等待系统识别价格信号',
   },
   {
     label: '待办动作',
     value: procurementRecommendations.value.length || planRows.value.length
       ? `${procurementRecommendations.value.length || planRows.value.length} 条可执行`
-      : '先同步后再生成动作',
+      : '同步后生成处理项',
   },
 ])
 
 const landingPriorityCards = computed(() => homePriorityItems.value.map((item, index) => ({
-  kicker: index === 0 ? '今日机会' : item.tone === 'warn' ? '今日异常' : '待办动作',
+  kicker: index === 0 ? '价格信号' : item.tone === 'warn' ? '异常项' : '处理项',
   title: item.title,
   detail: item.summary,
   meta: item.meta,
-  action: item.tone === 'warn' ? '去处理' : item.tone === 'good' ? '去看机会' : '去查看',
+  action: '查看详情',
   code: item.tone === 'warn' ? 'ALERT' : item.tone === 'good' ? 'OPP' : 'TODO',
   tone: item.tone === 'warn' ? 'suite-backend' : 'suite-buyer',
   target: item.tone === 'warn' ? 'alerts' : item.tone === 'good' ? 'signals' : 'summary',
@@ -1480,7 +1694,7 @@ const landingTrustCards = computed(() => [
   {
     label: '建议依据',
     value: signalOverview.value?.headline || '真实行情 + 供应报价',
-    detail: '异常、机会和建议均来自现有接口返回',
+    detail: '异常、信号和建议均来自现有接口返回',
   },
 ])
 
@@ -1491,11 +1705,11 @@ const homeEntryCards = computed(() => [
 
     key: 'signals',
 
-    kicker: '经营信号',
+    kicker: '行情分析',
 
-    title: '老板驾驶舱',
+    title: '行情总览',
 
-    detail: `${signalOverview.value?.top_opportunities?.length || 0} 条机会，先看结论与动作`,
+    detail: `${signalOverview.value?.top_opportunities?.length || 0} 条价格信号，可查看结论与动作`,
 
   },
 
@@ -1564,12 +1778,12 @@ const homeSuiteCards = computed<Array<{
 
   {
     key: 'buyer',
-    kicker: '采购平台',
+    kicker: '采购业务',
     code: 'BUYER',
     title: '我是采购',
     detail: '查看市场行情、单品趋势、价格预警和采购建议。',
     features: ['行情总览', '价格预警', '采购建议'],
-    action: '进入采购平台',
+    action: '进入采购业务',
     tone: 'suite-buyer',
   },
   {
@@ -1577,8 +1791,8 @@ const homeSuiteCards = computed<Array<{
     kicker: '供应平台',
     code: 'SUPPLIER',
     title: '我是供应',
-    detail: '维护供应商管理、商品报价、批量导入、历史和结算。',
-    features: ['供应商管理', '报价录入', '结算对账'],
+    detail: '维护供应商档案、商品报价、批量导入、历史和结算。',
+    features: ['供应商档案', '报价录入', '结算对账'],
     action: '进入供应平台',
     tone: 'suite-backend',
   },
@@ -1660,6 +1874,11 @@ const mobileCategoryTableRows = computed(() => {
   if (liancaiCategorySummaryItems.value.length) {
 
     return liancaiCategorySummaryItems.value
+      .filter((item) => {
+        const top = String(item.liancai_top_category || '').trim()
+        const sub = String(item.liancai_subcategory || '').trim()
+        return top && top !== '未映射' && top !== '未归类' && sub !== '未映射' && sub !== '未归类'
+      })
 
       .map((item, index) => ({
 
@@ -1776,7 +1995,7 @@ const mobileLocalShortcuts = computed(() => {
 
           ? `${primaryCategory.count} 款可直接比价`
 
-          : '先进入行情页同步本地分类',
+          : '进入行情页后可查看本地分类',
 
     },
 
@@ -1788,7 +2007,7 @@ const mobileLocalShortcuts = computed(() => {
 
       title: primaryMarket?.title || selectedLocationLabel.value,
 
-      detail: primaryMarket?.detail || '先看今天已接入的本地市场来源',
+      detail: primaryMarket?.detail || '查看今天已接入的本地市场来源',
 
     },
 
@@ -1921,30 +2140,49 @@ const preferredMobileMarketRows = computed(() => {
 })
 
 const mobileSpotlightRows = computed(() => {
+  const candidates = preferredMobileMarketRows.value.filter((item) => Number(item.lowest_price) > 0)
+  const pickedKeys = new Set<string>()
+  const pickFirst = (
+    rows: MarketSummaryItem[],
+    strategy: string,
+  ) => {
+    const match = rows.find((item) => {
+      const key = String(item.price_identity_key || item.product_name || '').trim()
+      return key && !pickedKeys.has(key)
+    })
+    if (!match) return null
+    const key = String(match.price_identity_key || match.product_name || '').trim()
+    pickedKeys.add(key)
+    return {
+      identityKey: match.price_identity_key || match.product_name,
+      title: match.product_name,
+      strategy,
+      category: resolveMobileDisplayCategory(match),
+      market: match.lowest_price_site || match.region_label || '本地市场',
+      thumb: resolveMobileThumbClass(match.product_name, resolveMarketCategory(match)),
+      price: formatMetricValue(match.average_price),
+      unit: match.price_unit_basis || '元/公斤',
+      lowest: formatMetricValue(match.lowest_price),
+      spread: formatMetricSpread(match),
+      changeLabel: buildMobileChangeLabel(match),
+    }
+  }
 
-  const rows = preferredMobileMarketRows.value.slice(0, 4).map((item) => ({
+  const lowestFirst = [...candidates].sort((left, right) =>
+    Number(left.lowest_price || Number.POSITIVE_INFINITY) - Number(right.lowest_price || Number.POSITIVE_INFINITY),
+  )
+  const averageGapFirst = [...candidates].sort((left, right) =>
+    (Number(right.average_price || 0) - Number(right.lowest_price || 0)) - (Number(left.average_price || 0) - Number(left.lowest_price || 0)),
+  )
+  const spreadFirst = [...candidates].sort((left, right) =>
+    (Number(right.highest_price || 0) - Number(right.lowest_price || 0)) - (Number(left.highest_price || 0) - Number(left.lowest_price || 0)),
+  )
 
-    identityKey: item.price_identity_key || item.product_name,
-
-    title: item.product_name,
-
-    category: resolveMarketCategory(item),
-
-    market: item.lowest_price_site || item.region_label || '本地市场',
-
-    thumb: resolveMobileThumbClass(item.product_name, resolveMarketCategory(item)),
-
-    price: formatMetricValue(item.average_price),
-
-    unit: item.price_unit_basis || '元/公斤',
-
-    lowest: formatMetricValue(item.lowest_price),
-
-    spread: formatMetricSpread(item.lowest_price, item.highest_price),
-
-    changeLabel: buildMobileChangeLabel(item),
-
-  }))
+  const rows = [
+    pickFirst(lowestFirst, '全场最低'),
+    pickFirst(averageGapFirst, '低于均价最多'),
+    pickFirst(spreadFirst, '当日价差最大'),
+  ].filter((item): item is NonNullable<typeof item> => Boolean(item))
 
   if (rows.length) {
 
@@ -1960,7 +2198,9 @@ const mobileSpotlightRows = computed(() => {
 
       title: '等待行情接入',
 
-      category: '精选',
+      strategy: '价格参考',
+
+      category: '默认分类',
 
       market: '本地市场',
 
@@ -2025,7 +2265,9 @@ const mobileAlertRows = computed(() => {
 
         current: `${formatMetricValue(item.average_price)} ${item.price_unit_basis || '元/公斤'}`,
 
-        rule: spreadRatio >= 0.12 ? `价差 ${(spreadRatio * 100).toFixed(1)}%，超过预警阈值` : '价格接近常规阈值，建议继续观察',
+        rule: spreadRatio >= 0.12
+          ? `当前均价 ${formatMetricValue(item.average_price)}，最低 ${formatMetricValue(item.lowest_price)}，最高 ${formatMetricValue(item.highest_price)}，价差 ${(highValue - lowValue).toFixed(2)}`
+          : `当前均价 ${formatMetricValue(item.average_price)}，与最低价相差 ${(Number(item.average_price || 0) - lowValue).toFixed(2)}`,
 
         state: spreadRatio >= 0.12 ? '待处理' : index % 2 ? '已确认' : '观察中',
 
@@ -2111,9 +2353,9 @@ const mobileAlertKpis = computed(() => {
 
 const mobileAlertHeroText = computed(() => {
   const pending = mobileAlertRows.value.filter((item) => item.state === '待处理').length
-  if (pending > 0) return `先处理 ${pending} 个待处理商品，再决定是否下单。`
-  if (mobileAlertRows.value.length > 0) return '暂无急单，先观察波动明显的商品。'
-  return '还没有触发异常，系统会继续盯价格线。'
+  if (pending > 0) return `当前有 ${pending} 个待处理商品，请优先核对价格提醒。`
+  if (mobileAlertRows.value.length > 0) return '当前无待处理项，可继续关注波动较大的商品。'
+  return '当前未触发异常，系统将继续监控价格阈值。'
 })
 
 const mobileAlertSummaryPills = computed(() => {
@@ -2159,7 +2401,7 @@ const primaryMobileSpotlight = computed(() => {
 
     title: '选择一个热门食材',
 
-    detail: '先看跨市场走势，再决定今天是否锁价。',
+    detail: '可查看跨市场走势并评估当前采购价位。',
 
   }
 
@@ -2206,6 +2448,15 @@ const BEIJING_DATETIME_FORMATTER = new Intl.DateTimeFormat('zh-CN', {
 })
 
 
+
+function formatDateFilterValue(value?: string | null) {
+  const text = String(value || '').trim()
+  if (!text) return ''
+  const dateMatch = text.match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (dateMatch) return `${dateMatch[2]}-${dateMatch[3]}`
+  const shortMatch = text.match(/^(\d{2})-(\d{2})/)
+  return shortMatch ? `${shortMatch[1]}-${shortMatch[2]}` : text.slice(0, 10)
+}
 
 function buildFilterParams() {
   return {
@@ -2255,11 +2506,23 @@ function formatRecommendedAction(value?: string | null, fallback = '先复核价
 
 
 
-function formatMetricSpread(lowest?: number | string | null, highest?: number | string | null) {
+function resolveMobileDisplayCategory(item: MarketSummaryItem) {
+  const productName = String(item.product_name || '').trim()
+  const topCategory = String(item.liancai_top_category || '').trim()
+  const subCategory = String(item.liancai_subcategory || '').trim()
+  const rawCategory = [topCategory, subCategory].filter(Boolean).join(' / ')
+  if (/牛/.test(productName)) return '牛肉类'
+  if (/羊/.test(productName)) return '羊肉类'
+  if (/猪/.test(productName)) return '猪肉类'
+  if (/鸡|鸭|鹅/.test(productName)) return '禽肉类'
+  return rawCategory || resolveMarketCategory(item)
+}
 
-  const lowValue = Number(lowest)
+function formatMetricSpread(item: Pick<MarketSummaryItem, 'lowest_price' | 'highest_price' | 'latest_captured_at' | 'captured_dates'>) {
 
-  const highValue = Number(highest)
+  const lowValue = Number(item.lowest_price)
+
+  const highValue = Number(item.highest_price)
 
   if (Number.isNaN(lowValue) || Number.isNaN(highValue)) {
 
@@ -2267,7 +2530,8 @@ function formatMetricSpread(lowest?: number | string | null, highest?: number | 
 
   }
 
-  return `价差 ${Math.max(highValue - lowValue, 0).toFixed(2)}`
+  const compareDate = formatDateFilterValue(item.latest_captured_at || item.captured_dates || '') || '当日'
+  return `${compareDate} 当日价差 ${Math.max(highValue - lowValue, 0).toFixed(2)}`
 
 }
 
@@ -2278,6 +2542,7 @@ function buildMobileChangeLabel(item: MarketSummaryItem) {
   const lowValue = Number(item.lowest_price)
 
   const highValue = Number(item.highest_price)
+  const averageValue = Number(item.average_price)
 
   if (Number.isNaN(lowValue) || Number.isNaN(highValue) || lowValue <= 0) {
 
@@ -2285,13 +2550,11 @@ function buildMobileChangeLabel(item: MarketSummaryItem) {
 
   }
 
-  const spreadRatio = (highValue - lowValue) / lowValue
-
-  if (spreadRatio >= 0.18) return '波动大'
-
-  if (spreadRatio >= 0.08) return '需关注'
-
-  return '较稳定'
+  const averageGap = Number.isNaN(averageValue) ? 0 : Math.max(averageValue - lowValue, 0)
+  if (averageGap > 0) {
+    return `较均价低 ${averageGap.toFixed(2)}`
+  }
+  return `最高差 ${Math.max(highValue - lowValue, 0).toFixed(2)}`
 
 }
 
@@ -2932,6 +3195,11 @@ function pickPreferredSummaryTrendRow() {
   )
 }
 
+function shouldAutoSelectProductOption() {
+  // 移动端行情页只需要列表，不应提前选中商品触发趋势/供应商报价请求。
+  return !isMobileViewport.value || activeTab.value === 'trend' || Boolean(trendDeepLinkTarget || trendDeepLinkLabel)
+}
+
 function resolveInitialTrendTarget() {
   const preferredOption = pickPreferredProductOption(productOptions.value)
   const fallbackRow = pickPreferredSummaryTrendRow()
@@ -2956,6 +3224,11 @@ function setTrendSelection(identityKey: string, label?: string | null) {
 
 function handleSelectProduct(identityKey: string) {
   selectedProductTouched.value = true
+  const shouldNavigateToTrend = activeTab.value !== 'trend'
+  if (shouldNavigateToTrend) {
+    rememberMobileTrendSource()
+    startMobileRouteFeedback('trend')
+  }
   const selectedRow = marketRows.value.find((item) => item.price_identity_key === identityKey)
   selectedProductFallbackLabel.value = selectedRow?.product_name || selectedProductFallbackLabel.value
   const isSwitchingProduct = selectedIdentityKey.value !== identityKey
@@ -2976,7 +3249,7 @@ function handleSelectProduct(identityKey: string) {
   })
   selectedIdentityKey.value = resolveCanonicalIdentityKey(identityKey)
   syncWorkspaceTrendUrl(identityKey, matchedProduct)
-  if (activeTab.value !== 'trend') {
+  if (shouldNavigateToTrend) {
     void activateTab('trend')
   }
 }
@@ -3062,6 +3335,14 @@ async function handleWorkbenchSummaryLiancaiFilter(payload: { source_name?: stri
 
 function goToLanding() {
   viewMode.value = 'landing'
+  mobileHomePanel.value = 'home'
+  showMobileLocationPanel.value = false
+  mobileRouteFeedbackTab.value = ''
+  mobilePreviousWorkspaceTab.value = ''
+  if (mobileRouteFeedbackTimer) {
+    window.clearTimeout(mobileRouteFeedbackTimer)
+    mobileRouteFeedbackTimer = undefined
+  }
   if (typeof window !== 'undefined') {
     const params = new URLSearchParams(window.location.search)
 
@@ -3085,6 +3366,16 @@ function goToLanding() {
 
   }
 
+}
+
+
+function warmMobileWorkspacePanels() {
+  if (!isMobileViewport.value) return
+  void loadMarketSummaryPanel()
+  window.setTimeout(() => {
+    void loadProductTrendPanel()
+    void loadMenuPlanPanel()
+  }, 120)
 }
 
 
@@ -3179,7 +3470,8 @@ function openLandingPriorityEntry(target: 'alerts' | 'signals' | 'summary') {
     enterWorkspace('signals')
     return
   }
-  enterWorkspace('summary')
+  mobileHomePanel.value = 'home'
+  enterWorkspace('summary', { preserveSummaryFilters: true })
 }
 
 
@@ -3197,7 +3489,7 @@ function openCategoryMarket(categoryKey: string) {
 
   })
 
-  enterWorkspace('summary')
+  enterWorkspace('summary', { preserveSummaryFilters: true })
 
 }
 
@@ -3222,6 +3514,7 @@ function openProductDetail(identityKey: string) {
     primaryMobileSpotlight.value.title
 
   viewMode.value = 'workspace'
+  rememberMobileTrendSource()
 
   writeMobileRecentState({
 
@@ -3234,8 +3527,6 @@ function openProductDetail(identityKey: string) {
   })
 
   handleSelectProduct(identityKey)
-
-  syncWorkspaceTrendUrl(identityKey, matchedProduct)
 
 }
 
@@ -3369,11 +3660,23 @@ async function restoreAuthSession() {
 
 
 
-function enterWorkspace(targetTab: (typeof tabs)[number]['key'] = 'summary') {
-  if (targetTab === 'summary' && activeTab.value !== 'summary') {
+function enterWorkspace(targetTab: (typeof tabs)[number]['key'] = 'summary', options: { preserveSummaryFilters?: boolean } = {}) {
+  if (targetTab === 'summary' && activeTab.value !== 'summary' && !options.preserveSummaryFilters) {
     resetSummaryFilters()
   }
+  const sameWorkspaceTab = viewMode.value === 'workspace' && activeTab.value === targetTab
+  if (sameWorkspaceTab) {
+    handleRepeatedMobileTab(targetTab)
+  } else {
+    startMobileRouteFeedback(targetTab)
+  }
+  if (targetTab === 'trend') {
+    rememberMobileTrendSource()
+  } else if (!sameWorkspaceTab) {
+    mobilePreviousWorkspaceTab.value = ''
+  }
   viewMode.value = 'workspace'
+  showMobileLocationPanel.value = false
   const urlTab = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('tab') : ''
   const launchedDirectlyToTrend = targetTab === 'trend' && activeTab.value !== 'trend' && urlTab === 'trend' && !selectedProductTouched.value
   if (launchedDirectlyToTrend) {
@@ -3386,7 +3689,9 @@ function enterWorkspace(targetTab: (typeof tabs)[number]['key'] = 'summary') {
   if (targetTab === 'summary' || targetTab === 'trend') {
     writeMobileRecentState({ workspaceTab: targetTab })
   }
-  void activateTab(targetTab)
+  if (!sameWorkspaceTab) {
+    void activateTab(targetTab)
+  }
   if (typeof window !== 'undefined') {
     const params = new URLSearchParams(window.location.search)
     params.set('mode', 'workspace')
@@ -3404,48 +3709,137 @@ function enterWorkspace(targetTab: (typeof tabs)[number]['key'] = 'summary') {
 
 
 async function activateTab(tabKey: (typeof tabs)[number]['key']) {
+  const activationToken = ++workspaceTabActivationToken
   const wasTrendTab = activeTab.value === 'trend'
   activeTab.value = tabKey
-  if (tabKey !== 'trend') return
-  if (!selectedIdentityKey.value) {
-    trendLoading.value = true
-  }
-  const initialTarget = resolveInitialTrendTarget()
-  if (initialTarget.identityKey) {
-    if (!selectedIdentityKey.value) {
-      setTrendSelection(initialTarget.identityKey, initialTarget.label)
+  try {
+    await nextTick()
+    if (isMobileViewport.value) {
+      await waitForNextFrame()
     }
-    syncWorkspaceTrendUrl(initialTarget.identityKey, initialTarget.label)
-    if (wasTrendTab && selectedIdentityKey.value === initialTarget.identityKey && trendRows.value.length) {
+    if (activationToken !== workspaceTabActivationToken) {
+      return
+    }
+    if (tabKey !== 'trend') return
+    if (!selectedIdentityKey.value) {
+      trendLoading.value = true
+    }
+    if (isMobileViewport.value && !selectedIdentityKey.value) {
+      void (async () => {
+        let mobileTarget = resolveInitialTrendTarget()
+        if (!mobileTarget.identityKey && !marketRows.value.length) {
+          await reloadSummary()
+          if (activationToken !== workspaceTabActivationToken) {
+            return
+          }
+          mobileTarget = resolveInitialTrendTarget()
+        }
+        if (!mobileTarget.identityKey) {
+          await ensureProductOptionsLoaded()
+          if (activationToken !== workspaceTabActivationToken) {
+            return
+          }
+          mobileTarget = resolveInitialTrendTarget()
+        }
+        if (!mobileTarget.identityKey) {
+          if (activationToken === workspaceTabActivationToken) {
+            trendLoading.value = false
+          }
+          return
+        }
+        if (!selectedIdentityKey.value) {
+          setTrendSelection(mobileTarget.identityKey, mobileTarget.label)
+        }
+        syncWorkspaceTrendUrl(mobileTarget.identityKey, mobileTarget.label)
+        await reloadTrend(mobileTarget.identityKey)
+      })()
+      return
+    }
+    const initialTarget = resolveInitialTrendTarget()
+    if (initialTarget.identityKey) {
+      if (!selectedIdentityKey.value) {
+        setTrendSelection(initialTarget.identityKey, initialTarget.label)
+      }
+      syncWorkspaceTrendUrl(initialTarget.identityKey, initialTarget.label)
+      if (wasTrendTab && selectedIdentityKey.value === initialTarget.identityKey && trendRows.value.length) {
+        trendLoading.value = false
+        return
+      }
+      await reloadTrend(initialTarget.identityKey)
+      if (activationToken !== workspaceTabActivationToken) {
+        return
+      }
+      void ensureProductOptionsLoaded()
+      return
+    }
+
+    if (!marketRows.value.length) {
+      await reloadSummary()
+      if (activationToken !== workspaceTabActivationToken) {
+        return
+      }
+    }
+    let loadedTarget = resolveInitialTrendTarget()
+    if (!loadedTarget.identityKey) {
+      await ensureProductOptionsLoaded()
+      if (activationToken !== workspaceTabActivationToken) {
+        return
+      }
+      loadedTarget = resolveInitialTrendTarget()
+    }
+    if (!loadedTarget.identityKey) {
       trendLoading.value = false
       return
     }
-    await reloadTrend(initialTarget.identityKey)
-    void ensureProductOptionsLoaded()
-    return
+    if (!selectedIdentityKey.value) {
+      setTrendSelection(loadedTarget.identityKey, loadedTarget.label)
+    }
+    syncWorkspaceTrendUrl(loadedTarget.identityKey, loadedTarget.label)
+    if (wasTrendTab && selectedIdentityKey.value === loadedTarget.identityKey && trendRows.value.length) {
+      trendLoading.value = false
+      return
+    }
+    await reloadTrend(loadedTarget.identityKey)
+  } finally {
+    if (activationToken === workspaceTabActivationToken) {
+      finishMobileRouteFeedback(tabKey)
+    }
   }
+}
 
-  if (!marketRows.value.length) {
-    await reloadSummary()
+function openMobileCategoryDirectory() {
+  mobileHomePanel.value = 'categories'
+}
+
+function toggleMobileLocationPanel() {
+  showMobileLocationPanel.value = !showMobileLocationPanel.value
+  if (showMobileLocationPanel.value && !locationLoading.value && !provinces.value.length && !cities.value.length) {
+    void reloadLocations(true)
   }
-  let loadedTarget = resolveInitialTrendTarget()
-  if (!loadedTarget.identityKey) {
-    await ensureProductOptionsLoaded()
-    loadedTarget = resolveInitialTrendTarget()
-  }
-  if (!loadedTarget.identityKey) {
-    trendLoading.value = false
+}
+
+function selectMobileLocation(value: string) {
+  const normalized = String(value || '').trim()
+  if (!normalized) return
+  if (normalized === '河南本地市场' || normalized === '全国') {
+    mobileLocationPreset.value = normalized === '全国' ? 'all' : 'henan'
+    filters.province = normalized === '全国' ? '' : '河南省'
+    filters.city = ''
+    showMobileLocationPanel.value = false
     return
   }
-  if (!selectedIdentityKey.value) {
-    setTrendSelection(loadedTarget.identityKey, loadedTarget.label)
+  mobileLocationPreset.value = ''
+  if (provinces.value.includes(normalized)) {
+    filters.province = normalized
+    if (!(provinceCityMap.value[normalized] || []).includes(filters.city)) {
+      filters.city = ''
+    }
+  } else {
+    const matchedProvince = Object.entries(provinceCityMap.value).find(([, cityList]) => cityList.includes(normalized))?.[0] || filters.province
+    filters.province = matchedProvince || filters.province
+    filters.city = normalized
   }
-  syncWorkspaceTrendUrl(loadedTarget.identityKey, loadedTarget.label)
-  if (wasTrendTab && selectedIdentityKey.value === loadedTarget.identityKey && trendRows.value.length) {
-    trendLoading.value = false
-    return
-  }
-  await reloadTrend(loadedTarget.identityKey)
+  showMobileLocationPanel.value = false
 }
 
 async function ensureWorkbenchTrend() {
@@ -3469,6 +3863,9 @@ async function ensureWorkbenchTrend() {
   // 用户或测试显式选择了商品时，不再自动跳到“趋势更丰富”的其它商品。
   if (trendMode.value === 'cross_market' && loadedRows.length < 2 && !selectedProductTouched.value) {
     await ensureProductOptionsLoaded()
+    if (isMobileViewport.value) {
+      return
+    }
     const trendReadyOption = await findTrendReadyProductOption(identityKey)
     if (trendReadyOption && trendReadyOption.price_identity_key !== selectedIdentityKey.value) {
       setTrendSelection(trendReadyOption.price_identity_key, trendReadyOption.price_identity_label)
@@ -3485,7 +3882,7 @@ async function reloadSummary() {
   summaryBackfillLoading.value = false
   try {
     pageError.value = ''
-    if (selectedIdentityKey.value) {
+    if (selectedIdentityKey.value && getAccessToken()) {
       const canonicalIdentityKey = resolveCanonicalIdentityKey(selectedIdentityKey.value)
       fetchProductSupplierQuotes(canonicalIdentityKey)
         .then((response) => {
@@ -3498,6 +3895,8 @@ async function reloadSummary() {
             productSupplierQuotes.value = []
           }
         })
+    } else {
+      productSupplierQuotes.value = []
     }
     const params = buildFilterParams()
     // Start the lightweight product catalog request before the heavier summary request.
@@ -3931,14 +4330,19 @@ async function handleWorkbenchRunSourceCrawl(payload: { source_url?: string; sou
 
 async function handleWorkbenchUpdateCrawlSchedule(payload: {
   enabled: boolean
+  mode?: 'interval' | 'daily_time'
+  daily_run_time?: string | null
   interval_seconds: number
   fetch_mode?: 'requests' | 'playwright'
 }) {
   try {
     const data = await updateCrawlSchedule(payload)
     crawlStatus.value = data.item ?? null
-    appendSettingsChangeLog('schedule', '系统同步设置', `${payload.enabled ? '开启' : '关闭'}自动同步，频率 ${payload.interval_seconds} 秒，模式 ${payload.fetch_mode || 'requests'}`)
-    ElMessage.success(payload.enabled ? '已开启每日自动同步' : '已关闭每日自动同步')
+    const scheduleText = payload.mode === 'daily_time'
+      ? `每天 ${payload.daily_run_time || '03:30'}`
+      : `频率 ${payload.interval_seconds} 秒`
+    appendSettingsChangeLog('schedule', '系统同步设置', `${payload.enabled ? '开启' : '关闭'}自动同步，${scheduleText}，模式 ${payload.fetch_mode || 'requests'}`)
+    ElMessage.success(payload.enabled ? '已更新自动同步设置' : '已关闭自动同步')
   } catch {
     ElMessage.error('更新系统同步设置失败')
   }
@@ -4133,6 +4537,58 @@ async function syncSupplierSummaryRow(identityKey: string) {
   }
 }
 
+async function searchMobileTrendProducts(query = '') {
+  if (!isMobileViewport.value) return
+  const normalizedQuery = String(query || '').trim()
+  const normalizedSearchText = normalizedQuery.replace(/\s+/g, '').toLowerCase()
+  const requestId = ++mobileTrendSearchRequestSequence
+  const contextKey = buildContextKey(buildFilterParams())
+  if (!normalizedQuery) {
+    mobileTrendSearchLoading.value = false
+    const selectedOption = selectedIdentityKey.value
+      ? productOptions.value.find((item) => item.price_identity_key === selectedIdentityKey.value) || null
+      : null
+    const baseOptions = productOptions.value.slice(0, 24)
+    mobileTrendSearchOptions.value = selectedOption
+      ? [selectedOption, ...baseOptions.filter((item) => item.price_identity_key !== selectedOption.price_identity_key)]
+      : baseOptions
+    return
+  }
+  mobileTrendSearchLoading.value = true
+  try {
+    const data = await fetchProductOptions({
+      ...buildFilterParams(),
+      keyword: normalizedQuery,
+      limit: 40,
+      offset: 0,
+    })
+    if (requestId !== mobileTrendSearchRequestSequence) return
+    if (contextKey !== buildContextKey(buildFilterParams())) return
+    const incomingOptions = filterSelectableProductOptions(data.items ?? [])
+    const selectedOption = selectedIdentityKey.value
+      ? productOptions.value.find((item) => item.price_identity_key === selectedIdentityKey.value)
+        || incomingOptions.find((item) => item.price_identity_key === selectedIdentityKey.value)
+        || null
+      : null
+    const selectedOptionMatchesQuery = selectedOption && normalizedSearchText
+      ? `${selectedOption.price_identity_label} ${selectedOption.price_identity_key} ${selectedOption.source_name || ''} ${selectedOption.source_category || ''} ${selectedOption.liancai_subcategory || ''}`
+          .replace(/\s+/g, '')
+          .toLowerCase()
+          .includes(normalizedSearchText)
+      : Boolean(selectedOption)
+    mobileTrendSearchOptions.value = selectedOptionMatchesQuery && selectedOption
+      ? [selectedOption, ...incomingOptions.filter((item) => item.price_identity_key !== selectedOption.price_identity_key)]
+      : incomingOptions
+  } catch {
+    if (requestId !== mobileTrendSearchRequestSequence) return
+    mobileTrendSearchOptions.value = []
+  } finally {
+    if (requestId === mobileTrendSearchRequestSequence) {
+      mobileTrendSearchLoading.value = false
+    }
+  }
+}
+
 async function ensureProductOptionsLoaded(force = false) {
   const params = buildFilterParams()
   const contextKey = buildContextKey(params)
@@ -4163,7 +4619,7 @@ async function ensureProductOptionsLoaded(force = false) {
           selectedProductFallbackLabel.value = matchedLabel.price_identity_label || selectedProductFallbackLabel.value
         }
       }
-      if (!selectedIdentityKey.value) {
+      if (!selectedIdentityKey.value && shouldAutoSelectProductOption()) {
         const preferredOption = pickPreferredProductOption(selectableCachedOptions)
         selectedIdentityKey.value = preferredOption?.price_identity_key || ''
         selectedProductFallbackLabel.value = preferredOption?.price_identity_label || ''
@@ -4176,7 +4632,7 @@ async function ensureProductOptionsLoaded(force = false) {
     void prefetchTopTrendSnapshots(contextKey)
     return
   }
-  if (productOptionsPromise && productOptionsLoading.value) {
+  if (productOptionsPromise && productOptionsLoading.value && productOptionsPromiseContextKey === contextKey) {
     await productOptionsPromise
 
     void prefetchTopTrendSnapshots(contextKey)
@@ -4185,13 +4641,18 @@ async function ensureProductOptionsLoaded(force = false) {
 
   }
 
-  productOptionsPromise = (async () => {
+  const requestId = ++productOptionsLoadSequence
+  productOptionsPromiseContextKey = contextKey
+  const loadPromise = (async () => {
 
     productOptionsLoading.value = true
 
     try {
 
-      const optionsData = await fetchProductOptions({ ...params, limit: 1000 })
+      const optionsData = await fetchProductOptions({ ...params, limit: isMobileViewport.value ? MOBILE_PRODUCT_OPTIONS_LIMIT : 1000 })
+      if (requestId !== productOptionsLoadSequence || contextKey !== buildContextKey(buildFilterParams())) {
+        return
+      }
       const incomingOptions = filterSelectableProductOptions(optionsData.items ?? [])
       const preservedSelectedOption = selectedIdentityKey.value
         ? filterSelectableProductOptions(productOptions.value).find((item) => item.price_identity_key === selectedIdentityKey.value)
@@ -4207,7 +4668,7 @@ async function ensureProductOptionsLoaded(force = false) {
       }
       productOptionsContextKey.value = contextKey
       writeLocalCache(PRODUCT_OPTIONS_CACHE_KEY, contextKey, productOptions.value)
-      if (!selectedIdentityKey.value && productOptions.value.length) {
+      if (!selectedIdentityKey.value && shouldAutoSelectProductOption() && productOptions.value.length) {
         const preferredOption = pickPreferredProductOption(productOptions.value)
         selectedIdentityKey.value = preferredOption?.price_identity_key || ''
         selectedProductFallbackLabel.value = preferredOption?.price_identity_label || ''
@@ -4218,6 +4679,9 @@ async function ensureProductOptionsLoaded(force = false) {
         selectedSiteName.value = ''
       }
     } catch (error) {
+      if (requestId !== productOptionsLoadSequence) {
+        return
+      }
 
       if (!productOptions.value.length) {
 
@@ -4231,17 +4695,24 @@ async function ensureProductOptionsLoaded(force = false) {
 
     } finally {
 
-      productOptionsLoading.value = false
+      if (requestId === productOptionsLoadSequence) {
+        productOptionsLoading.value = false
 
-      productOptionsPromise = null
+        productOptionsPromise = null
+        productOptionsPromiseContextKey = ''
+      }
 
     }
 
   })()
 
-  await productOptionsPromise
+  productOptionsPromise = loadPromise
 
-  void prefetchTopTrendSnapshots(contextKey)
+  await loadPromise
+
+  if (requestId === productOptionsLoadSequence && contextKey === buildContextKey(buildFilterParams())) {
+    void prefetchTopTrendSnapshots(contextKey)
+  }
 
 }
 
@@ -4466,17 +4937,21 @@ async function reloadTrend(identityKeyOverride?: string) {
 
     const filterParams = buildFilterParams()
 
-    fetchProductSupplierQuotes(identityKey)
-      .then((response) => {
-        if (identityKey === resolveCanonicalIdentityKey(selectedIdentityKey.value)) {
-          productSupplierQuotes.value = response.items ?? []
-        }
-      })
-      .catch(() => {
-        if (identityKey === resolveCanonicalIdentityKey(selectedIdentityKey.value)) {
-          productSupplierQuotes.value = []
-        }
-      })
+    if (getAccessToken()) {
+      fetchProductSupplierQuotes(identityKey)
+        .then((response) => {
+          if (identityKey === resolveCanonicalIdentityKey(selectedIdentityKey.value)) {
+            productSupplierQuotes.value = response.items ?? []
+          }
+        })
+        .catch(() => {
+          if (identityKey === resolveCanonicalIdentityKey(selectedIdentityKey.value)) {
+            productSupplierQuotes.value = []
+          }
+        })
+    } else {
+      productSupplierQuotes.value = []
+    }
 
     const summaryRequest = fetchProductSummary(identityKey, filterParams)
       .then((summary) => {
@@ -4768,6 +5243,7 @@ async function findTrendReadyProductOption(currentIdentityKey: string) {
 
 
 async function prefetchTopTrendSnapshots(contextKey: string) {
+  if (isMobileViewport.value) return
   if (!productOptions.value.length) return
   if (activeTab.value !== 'trend' || selectedIdentityKey.value) return
   trendPrefetchContextKey = contextKey
@@ -4784,6 +5260,7 @@ async function prefetchTopTrendSnapshots(contextKey: string) {
 
 
 async function prefetchNearbyTrendSnapshots(identityKey: string) {
+  if (isMobileViewport.value) return
   if (!identityKey || !productOptions.value.length) return
   if (trendLoading.value) return
   const contextKey = buildContextKey(buildFilterParams())
@@ -4955,6 +5432,7 @@ async function submitMenuPlan() {
 
 
 watch([() => filters.province, () => filters.city], async () => {
+  const reloadId = ++locationFilterReloadSequence
 
   activeMarketCategory.value = '全部'
 
@@ -4974,6 +5452,21 @@ watch([() => filters.province, () => filters.city], async () => {
 
   trendPrefetchContextKey = ''
 
+  await nextTick()
+  if (reloadId !== locationFilterReloadSequence) return
+
+  if (isMobileViewport.value) {
+    await reloadSummary()
+    if (reloadId !== locationFilterReloadSequence) return
+    void Promise.allSettled([
+      ensureProductOptionsLoaded(true),
+      reloadSalesAssets(),
+      reloadLiancaiCategorySummary(),
+      reloadCrawlStatus(),
+    ])
+    return
+  }
+
   await reloadAll()
 
 })
@@ -4991,6 +5484,11 @@ watch(() => selectedCategorySourceName.value, () => {
 
 
 watch(() => filters.province, async (province) => {
+  if (province !== '河南省' && mobileLocationPreset.value !== 'all') {
+    mobileLocationPreset.value = ''
+  } else if (!filters.city && mobileLocationPreset.value !== 'all') {
+    mobileLocationPreset.value = 'henan'
+  }
 
   if (province && !(provinceCityMap.value[province] || []).length) {
 
@@ -5040,12 +5538,14 @@ watch(selectedIdentityKey, async (identityKey, prevIdentityKey) => {
 
 
 onMounted(async () => {
+  warmMobileWorkspacePanels()
   if (shouldRedirectToStandaloneSupplier) {
     openSupplierBackend()
     return
   }
   const isMobileLanding = isMobileViewport.value && viewMode.value === 'landing'
   void restoreAuthSession()
+  const eagerLocationLoad = reloadLocations()
   if (activeTab.value === 'trend') {
     if (trendDeepLinkLabel || trendDeepLinkTarget) {
       await ensureProductOptionsLoaded()
@@ -5056,7 +5556,7 @@ onMounted(async () => {
     await activateTab('trend')
     await Promise.all([
       marketRows.value.length ? Promise.resolve() : reloadSummary(),
-      reloadLocations(),
+      eagerLocationLoad,
       reloadSalesAssets(),
       reloadSupplierOverview(),
       reloadSourceCoverage(),
@@ -5064,16 +5564,22 @@ onMounted(async () => {
       reloadCrawlStatus(),
     ])
   } else {
-    await reloadSummary()
+    const initialSummaryLoad = reloadSummary()
+    if (!isMobileViewport.value) {
+      await initialSummaryLoad
+    }
     void Promise.allSettled([
       ensureProductOptionsLoaded(),
-      reloadLocations(),
+      eagerLocationLoad,
       ...(isMobileLanding ? [] : [reloadSalesAssets()]),
       reloadSupplierOverview(),
       reloadSourceCoverage(),
       reloadLiancaiCategorySummary(),
       reloadCrawlStatus(),
     ]).then(() => {
+      if (crawlStatus.value?.is_running) {
+        startCrawlPolling()
+      }
       if (isMobileLanding) return
       const identityKey = selectedIdentityKey.value || pickPreferredProductOption(productOptions.value)?.price_identity_key || ''
       if (identityKey && activeTab.value !== 'trend') {
@@ -5091,6 +5597,10 @@ onMounted(async () => {
 onBeforeUnmount(() => {
 
   stopCrawlPolling()
+  if (mobileRouteFeedbackTimer) {
+    window.clearTimeout(mobileRouteFeedbackTimer)
+    mobileRouteFeedbackTimer = undefined
+  }
 
 })
 
@@ -9580,11 +10090,11 @@ onBeforeUnmount(() => {
 
 /* Mobile price-alert guard: bottom nav clearance and two-line source truncation. */
 .market-mobile-shell-content:has(.market-mobile-alert-page) {
-  padding-bottom: calc(188px + env(safe-area-inset-bottom, 0px));
+  padding-bottom: calc(112px + env(safe-area-inset-bottom, 0px));
 }
 
 .market-mobile-alert-page {
-  padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+  padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
 }
 
 .market-mobile-alert-row div {
@@ -9611,7 +10121,7 @@ onBeforeUnmount(() => {
 /* Mobile touch/safe-area guard: fixed bottom nav should not steal final content,
    and header actions keep a thumb-friendly hit target. */
 .market-mobile-shell-content {
-  padding-bottom: calc(244px + env(safe-area-inset-bottom, 0px));
+  padding-bottom: calc(104px + env(safe-area-inset-bottom, 0px));
 }
 
 .market-mobile-home {
@@ -9634,6 +10144,86 @@ onBeforeUnmount(() => {
 .market-mobile-appbar,
 .market-mobile-home .market-mobile-appbar {
   grid-template-columns: minmax(0, 1fr) auto 44px;
+}
+
+.market-mobile-route-loader {
+  display: grid;
+  place-items: center;
+  gap: 8px;
+  min-height: min(320px, 46dvh);
+  padding: 28px 16px;
+  border: 1px solid #dbe4ef;
+  border-radius: 18px;
+  background: #ffffff;
+  color: #334155;
+  text-align: center;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
+}
+
+.market-mobile-route-loader-ring {
+  width: 34px;
+  height: 34px;
+  border: 3px solid #dbeafe;
+  border-top-color: #2563eb;
+  border-radius: 999px;
+  animation: mobile-route-loader-spin 0.72s linear infinite;
+}
+
+.market-mobile-route-loader strong {
+  color: #0f172a;
+  font-size: 15px;
+}
+
+.market-mobile-route-loader p {
+  margin: 0;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.market-mobile-route-progress {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 54px;
+  padding: 10px 12px;
+  border: 1px solid #dbeafe;
+  border-radius: 16px;
+  background: rgba(239, 246, 255, 0.96);
+  color: #1e3a8a;
+  box-shadow: 0 10px 24px rgba(37, 99, 235, 0.08);
+}
+
+.market-mobile-route-progress-ring {
+  width: 22px;
+  height: 22px;
+  border: 3px solid #bfdbfe;
+  border-top-color: #2563eb;
+  border-radius: 999px;
+  animation: mobile-route-loader-spin 0.72s linear infinite;
+}
+
+.market-mobile-route-progress div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.market-mobile-route-progress strong {
+  color: #172554;
+  font-size: 14px;
+  line-height: 1.2;
+}
+
+.market-mobile-route-progress small {
+  color: #3b5ba9;
+  font-size: 12px;
+}
+
+@keyframes mobile-route-loader-spin {
+  to { transform: rotate(360deg); }
 }
 
 /* Mobile Experience v2: rebuild the phone flow as a procurement-first app. */
@@ -9685,6 +10275,63 @@ onBeforeUnmount(() => {
   gap: 8px;
 }
 
+.mobile-redesign-location-panel {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid #dbe4ef;
+  border-radius: 14px;
+  background: #ffffff;
+}
+
+.mobile-redesign-location-loading {
+  grid-column: 1 / -1;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.mobile-redesign-location-panel-empty {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.mobile-redesign-location-panel-empty small {
+  grid-column: 1 / -1;
+  color: #64748b;
+  font-size: 11px;
+  text-align: center;
+}
+
+.mobile-redesign-location-panel-empty .skeleton-pill {
+  display: block;
+  min-height: 38px;
+  border-radius: 12px;
+  background: linear-gradient(90deg, #eef2f7 0%, #f8fafc 50%, #eef2f7 100%);
+  background-size: 200% 100%;
+  animation: mobile-redesign-search-shimmer 1.2s linear infinite;
+}
+
+.mobile-redesign-location-panel button {
+  min-height: 38px;
+  border: 1px solid #dbe4ef;
+  border-radius: 12px;
+  background: #f8fafc;
+  color: #334155;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.mobile-redesign-location-panel button.active {
+  border-color: #2563eb;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
 .mobile-redesign-brand > span {
   display: grid;
   place-items: center;
@@ -9711,6 +10358,14 @@ onBeforeUnmount(() => {
   display: block;
   font-size: 16px;
   line-height: 1.1;
+}
+
+.mobile-redesign-section-note {
+  display: block;
+  margin-top: 4px;
+  color: #64748b;
+  font-size: 11px;
+  line-height: 1.45;
 }
 
 .mobile-redesign-brand small,
@@ -9807,12 +10462,45 @@ onBeforeUnmount(() => {
 }
 
 .mobile-redesign-search button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
   padding: 0 18px;
   min-width: 76px;
   border-color: #2563eb;
   background: #2563eb;
   color: #fff;
+  line-height: 1;
   white-space: nowrap;
+  text-align: center;
+}
+
+.mobile-redesign-search button span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+}
+
+.mobile-redesign-search.loading {
+  position: relative;
+  overflow: hidden;
+}
+
+.mobile-redesign-search.loading::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(37,99,235,0.08) 50%, rgba(255,255,255,0) 100%);
+  background-size: 200% 100%;
+  animation: mobile-redesign-search-shimmer 1.2s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes mobile-redesign-search-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
 }
 
 .mobile-redesign-hero-copy {
@@ -10123,6 +10811,7 @@ onBeforeUnmount(() => {
 
 .mobile-redesign-alert-list,
 .mobile-redesign-source-grid,
+.mobile-redesign-directory-grid,
 .mobile-redesign-entry-grid {
   display: grid;
   gap: 10px;
@@ -10140,11 +10829,13 @@ onBeforeUnmount(() => {
 }
 
 .mobile-redesign-source-grid,
+.mobile-redesign-directory-grid,
 .mobile-redesign-entry-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .mobile-redesign-source-grid button,
+.mobile-redesign-directory-card,
 .mobile-redesign-entry-grid button {
   display: grid;
   gap: 6px;
@@ -10157,6 +10848,7 @@ onBeforeUnmount(() => {
 }
 
 .mobile-redesign-source-grid span,
+.mobile-redesign-directory-card span,
 .mobile-redesign-entry-grid span {
   color: #2563eb;
   font-size: 12px;
@@ -10164,6 +10856,7 @@ onBeforeUnmount(() => {
 }
 
 .mobile-redesign-source-grid strong,
+.mobile-redesign-directory-card strong,
 .mobile-redesign-entry-grid strong {
   display: -webkit-box;
   overflow: hidden;
@@ -10171,6 +10864,11 @@ onBeforeUnmount(() => {
   line-height: 1.24;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
+}
+
+.mobile-redesign-directory-card small {
+  color: #64748b;
+  font-size: 12px;
 }
 
 .mobile-redesign-empty-card {

@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from storage.database import Database
 from utils.auth import hash_password, verify_password
 
@@ -183,7 +185,7 @@ def test_default_admin_account_is_seeded_and_password_is_hashed(tmp_path: Path):
     assert verify_password("admin123", row["password_hash"]) is True
 
 
-def test_default_admin_account_is_refreshed_on_existing_database(tmp_path: Path):
+def test_default_admin_account_is_not_reset_on_existing_database(tmp_path: Path):
     db = Database(tmp_path / "test_price_tracker.db")
     db.init_db()
     db.upsert_auth_user(
@@ -200,9 +202,9 @@ def test_default_admin_account_is_refreshed_on_existing_database(tmp_path: Path)
     assert len(auth_rows) == 1
     row = auth_rows.iloc[0]
     assert row["role"] == "admin"
-    assert row["display_name"] == "系统管理员"
-    assert bool(row["is_active"]) is True
-    assert verify_password("admin123", row["password_hash"]) is True
+    assert row["display_name"] == "旧管理员"
+    assert bool(row["is_active"]) is False
+    assert verify_password("admin123456", row["password_hash"]) is True
 
 
 def test_supplier_auth_user_can_be_created_and_loaded_by_supplier_id(tmp_path: Path):
@@ -231,6 +233,82 @@ def test_supplier_auth_user_can_be_created_and_loaded_by_supplier_id(tmp_path: P
     assert supplier_auth_rows.iloc[0]["id"] == user_id
     assert supplier_auth_rows.iloc[0]["username"] == "lencai-a"
     assert supplier_auth_rows.iloc[0]["supplier_name"] == "莲菜档口A"
+
+
+def test_supplier_auth_user_rejects_username_owned_by_another_supplier(tmp_path: Path):
+    db = Database(tmp_path / "test_price_tracker.db")
+    db.init_db()
+
+    first_supplier_id = db.upsert_supplier(supplier_name="莲菜档口A")
+    second_supplier_id = db.upsert_supplier(supplier_name="莲菜档口B")
+    first_user_id = db.upsert_auth_user(
+        username="lencai-a",
+        password_hash=hash_password("first12345"),
+        role="supplier",
+        supplier_id=first_supplier_id,
+        display_name="莲菜档口A",
+        is_active=True,
+    )
+
+    with pytest.raises(ValueError, match="username already exists"):
+        db.upsert_auth_user(
+            username="lencai-a",
+            password_hash=hash_password("second12345"),
+            role="supplier",
+            supplier_id=second_supplier_id,
+            display_name="莲菜档口B",
+            is_active=True,
+        )
+
+    first_auth_rows = db.get_auth_user_by_supplier_id(first_supplier_id)
+    second_auth_rows = db.get_auth_user_by_supplier_id(second_supplier_id)
+
+    assert first_auth_rows.iloc[0]["id"] == first_user_id
+    assert first_auth_rows.iloc[0]["username"] == "lencai-a"
+    assert second_auth_rows.empty
+
+
+def test_deleted_auth_user_is_archived_and_releases_username_and_supplier_binding(tmp_path: Path):
+    db = Database(tmp_path / "test_price_tracker.db")
+    db.init_db()
+
+    supplier_id = db.upsert_supplier(supplier_name="莲菜档口A")
+    user_id = db.upsert_auth_user(
+        username="lencai-a",
+        password_hash=hash_password("first12345"),
+        role="supplier",
+        supplier_id=supplier_id,
+        display_name="莲菜档口A",
+        is_active=True,
+    )
+
+    assert db.delete_auth_user(user_id, deleted_by="tester") is True
+    assert db.get_auth_user_by_id(user_id).empty
+    assert db.get_auth_user_by_username("lencai-a").empty
+    assert db.get_auth_user_by_supplier_id(supplier_id).empty
+
+    archived_rows = db.get_auth_user_by_id(user_id, include_deleted=True)
+    assert len(archived_rows) == 1
+    archived_row = archived_rows.iloc[0]
+    assert bool(archived_row["is_deleted"]) is True
+    assert bool(archived_row["is_active"]) is False
+    assert archived_row["username"] == f"__deleted_{user_id}"
+    assert archived_row["deleted_username"] == "lencai-a"
+    assert archived_row["deleted_by"] == "tester"
+
+    recreated_user_id = db.upsert_auth_user(
+        username="lencai-a",
+        password_hash=hash_password("second12345"),
+        role="supplier",
+        supplier_id=supplier_id,
+        display_name="莲菜档口A-新账号",
+        is_active=True,
+    )
+
+    recreated_rows = db.get_auth_user_by_supplier_id(supplier_id)
+    assert len(recreated_rows) == 1
+    assert recreated_rows.iloc[0]["id"] == recreated_user_id
+    assert recreated_rows.iloc[0]["username"] == "lencai-a"
 
 
 def test_local_compare_records_are_persisted_and_queryable(tmp_path: Path):

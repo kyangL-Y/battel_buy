@@ -791,7 +791,13 @@ async function handleManualCrawl() {
 async function handleScheduleToggle(value: boolean) {
   scheduleActionLoading.value = true
   try {
-    const data = await updateCrawlSchedule({ enabled: value, interval_seconds: 86400, fetch_mode: crawlStatus.value?.schedule_fetch_mode || 'requests' })
+    const data = await updateCrawlSchedule({
+      enabled: value,
+      mode: crawlStatus.value?.schedule_mode === 'interval' ? 'interval' : 'daily_time',
+      daily_run_time: crawlStatus.value?.schedule_daily_run_time || '03:30',
+      interval_seconds: crawlStatus.value?.schedule_interval_seconds || 86400,
+      fetch_mode: crawlStatus.value?.schedule_fetch_mode || 'requests',
+    })
     crawlStatus.value = data.item ?? null
     dailyScheduleEnabled.value = Boolean(data.item?.schedule_enabled)
     ElMessage.success(value ? '已开启每日自动获取' : '已关闭每日自动获取')

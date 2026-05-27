@@ -1157,6 +1157,163 @@ def test_cross_site_summary_normalizes_gram_spec_to_kg_basis():
     assert result.iloc[0]["highest_price"] == 5.5
 
 
+def test_cross_site_summary_excludes_zhengzhou_monitor_without_henan_scope():
+    df = pd.DataFrame(
+        [
+            {
+                "product_key": "zzny-cabbage",
+                "group_name": "郑州菜篮子监测",
+                "product_name": "白菜",
+                "site_name": "郑州菜篮子监测",
+                "source_url": "https://zzny.zhengzhou.gov.cn/clzxx/index.jhtml",
+                "market_name": "郑州监测",
+                "province": "河南省",
+                "city": "郑州市",
+                "spec_text": "元/公斤",
+                "current_price": 3.2,
+                "captured_at": "2026-04-12T08:00:00",
+            },
+            {
+                "product_key": "pfsc-tomato",
+                "group_name": "PFSC",
+                "product_name": "番茄",
+                "site_name": "PFSC | 北京新发地",
+                "source_url": "https://pfsc.agri.cn",
+                "market_name": "北京新发地",
+                "province": "北京市",
+                "city": "北京市",
+                "spec_text": "公斤",
+                "current_price": 6.4,
+                "captured_at": "2026-04-12T08:05:00",
+            },
+        ]
+    )
+
+    result = compute_cross_site_price_summary(df)
+
+    product_labels = [str(value) for value in result["product_name"].tolist()]
+    assert all("白菜" not in label for label in product_labels)
+
+
+def test_cross_site_summary_keeps_zhengzhou_monitor_in_henan_scope():
+    df = pd.DataFrame(
+        [
+            {
+                "product_key": "zzny-cabbage",
+                "group_name": "郑州菜篮子监测",
+                "product_name": "白菜",
+                "site_name": "郑州菜篮子监测",
+                "source_url": "https://zzny.zhengzhou.gov.cn/clzxx/index.jhtml",
+                "market_name": "郑州监测",
+                "province": "河南省",
+                "city": "郑州市",
+                "spec_text": "元/公斤",
+                "current_price": 3.2,
+                "captured_at": "2026-04-12T08:00:00",
+            },
+            {
+                "product_key": "pfsc-tomato",
+                "group_name": "PFSC",
+                "product_name": "番茄",
+                "site_name": "PFSC | 北京新发地",
+                "source_url": "https://pfsc.agri.cn",
+                "market_name": "北京新发地",
+                "province": "北京市",
+                "city": "北京市",
+                "spec_text": "公斤",
+                "current_price": 6.4,
+                "captured_at": "2026-04-12T08:05:00",
+            },
+        ]
+    )
+
+    result = compute_cross_site_price_summary(df, selected_province="河南省")
+
+    product_labels = [str(value) for value in result["product_name"].tolist()]
+    assert any("白菜" in label for label in product_labels)
+
+
+def test_single_product_summary_keeps_liancai_prices_raw_without_pack_split():
+    df = pd.DataFrame(
+        [
+            {
+                "group_name": "鲜活水产",
+                "product_name": "活虾两斤",
+                "price_identity_key": "鲜虾|鲜活水产|斤",
+                "price_identity_label": "鲜虾",
+                "site_name": "莲菜网H5 | 鲜活水产",
+                "source_url": "https://m.liancaiwang.cn/list/index/id/6.html",
+                "market_name": "测试市场A",
+                "province": "河南省",
+                "city": "郑州市",
+                "spec_text": "斤",
+                "current_price": 38.0,
+                "captured_at": "2026-04-12T08:00:00",
+            },
+            {
+                "group_name": "冻品类",
+                "product_name": "冻虾五斤",
+                "price_identity_key": "鲜虾|鲜活水产|斤",
+                "price_identity_label": "鲜虾",
+                "site_name": "莲菜网App | 冻品类",
+                "source_url": "https://lcwgetway.liancaiwang.cn",
+                "market_name": "测试市场B",
+                "province": "河南省",
+                "city": "郑州市",
+                "spec_text": "斤",
+                "current_price": 138.0,
+                "captured_at": "2026-04-12T08:05:00",
+            },
+        ]
+    )
+
+    summary = compute_single_product_summary(df, "鲜虾|鲜活水产|斤")
+
+    assert summary["current_lowest_price"] == 38.0
+    assert summary["current_highest_price"] == 138.0
+    assert summary["average_price"] == 88.0
+
+
+def test_cross_market_trend_keeps_liancai_prices_raw_without_pack_split():
+    df = pd.DataFrame(
+        [
+            {
+                "group_name": "鲜活水产",
+                "product_name": "活虾两斤",
+                "price_identity_key": "鲜虾|鲜活水产|斤",
+                "price_identity_label": "鲜虾",
+                "site_name": "莲菜网H5 | 鲜活水产",
+                "source_url": "https://m.liancaiwang.cn/list/index/id/6.html",
+                "market_name": "测试市场A",
+                "province": "河南省",
+                "city": "郑州市",
+                "spec_text": "斤",
+                "current_price": 38.0,
+                "captured_at": "2026-04-12T08:00:00",
+            },
+            {
+                "group_name": "冻品类",
+                "product_name": "冻虾五斤",
+                "price_identity_key": "鲜虾|鲜活水产|斤",
+                "price_identity_label": "鲜虾",
+                "site_name": "莲菜网App | 冻品类",
+                "source_url": "https://lcwgetway.liancaiwang.cn",
+                "market_name": "测试市场B",
+                "province": "河南省",
+                "city": "郑州市",
+                "spec_text": "斤",
+                "current_price": 138.0,
+                "captured_at": "2026-04-12T08:05:00",
+            },
+        ]
+    )
+
+    trend_df = build_cross_market_product_trend(df, "鲜虾|鲜活水产|斤")
+
+    assert sorted(trend_df["current_price"].tolist()) == [38.0, 138.0]
+    assert set(trend_df["price_unit_basis"].tolist()) == {"元/斤"}
+
+
 def test_build_cross_market_product_trend_prefers_primary_chinaprice_channel_and_cleans_labels():
     df = pd.DataFrame(
         [

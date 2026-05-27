@@ -364,6 +364,169 @@ def test_inactive_supplier_token_cannot_access_protected_endpoint(tmp_path, monk
 
 
 
+def test_auth_user_management_endpoints_cover_create_update_and_self_guard(tmp_path, monkeypatch):
+
+    db = Database(tmp_path / "auth_user_management.db")
+
+    db.init_db()
+
+    supplier_id = db.upsert_supplier(
+
+        supplier_name="莲菜档口A",
+
+        contact_name="老王",
+
+        market_scope="本地市场",
+
+        market_category="蔬菜类",
+
+        channel="门店直报",
+
+    )
+
+    client = _create_authenticated_client(monkeypatch, db=db, username="admin", display_name="系统管理员")
+
+
+
+    list_response = client.get("/api/auth/users")
+
+
+
+    assert list_response.status_code == 200
+
+    assert list_response.json()["items"][0]["username"] == "admin"
+
+    assert "password_hash" not in list_response.json()["items"][0]
+
+
+
+    create_response = client.post(
+
+        "/api/auth/users",
+
+        json={
+
+            "username": "lencai-a",
+
+            "password": "supplier123",
+
+            "role": "supplier",
+
+            "supplier_id": supplier_id,
+
+            "display_name": "莲菜档口A",
+
+            "is_active": True,
+
+        },
+
+    )
+
+
+
+    assert create_response.status_code == 200
+
+    created_payload = create_response.json()
+
+    assert created_payload["role"] == "supplier"
+
+    assert created_payload["supplier_profile"]["supplier_name"] == "莲菜档口A"
+
+
+
+    update_response = client.put(
+
+        f"/api/auth/users/{created_payload['id']}",
+
+        json={
+
+            "username": "lencai-a",
+
+            "role": "supplier",
+
+            "supplier_id": supplier_id,
+
+            "display_name": "莲菜档口A-停用",
+
+            "is_active": False,
+
+        },
+
+    )
+
+
+
+    assert update_response.status_code == 200
+
+    assert update_response.json()["display_name"] == "莲菜档口A-停用"
+
+    assert update_response.json()["is_active"] is False
+
+
+
+    self_disable_response = client.put(
+
+        "/api/auth/users/1",
+
+        json={
+
+            "username": "admin",
+
+            "role": "admin",
+
+            "display_name": "系统管理员",
+
+            "is_active": False,
+
+        },
+
+    )
+
+
+
+    assert self_disable_response.status_code == 400
+
+    assert self_disable_response.json()["detail"] == "不能删除或停用当前登录账号"
+
+
+
+    self_delete_response = client.delete("/api/auth/users/1")
+
+
+
+    assert self_delete_response.status_code == 400
+
+    assert self_delete_response.json()["detail"] == "不能删除或停用当前登录账号"
+
+
+
+    delete_response = client.delete(f"/api/auth/users/{created_payload['id']}")
+
+
+
+    assert delete_response.status_code == 200
+
+    assert delete_response.json() == {"deleted": True, "user_id": created_payload["id"]}
+
+    assert db.get_auth_user_by_id(created_payload["id"]).empty
+
+    archived_rows = db.get_auth_user_by_id(created_payload["id"], include_deleted=True)
+
+    assert len(archived_rows) == 1
+
+    archived_row = archived_rows.iloc[0]
+
+    assert bool(archived_row["is_deleted"]) is True
+
+    assert bool(archived_row["is_active"]) is False
+
+    assert archived_row["deleted_username"] == "lencai-a"
+
+    assert archived_row["deleted_by"] == "系统管理员"
+
+
+
+
 def test_supplier_role_cannot_access_other_supplier_quotes(monkeypatch):
 
     client = _create_authenticated_client(monkeypatch, role="supplier", supplier_id=5)
@@ -440,6 +603,10 @@ class _FakeCrawlManager:
 
             "schedule_enabled": self.schedule_enabled,
 
+            "schedule_mode": "interval",
+
+            "schedule_daily_run_time": "03:30",
+
             "schedule_interval_seconds": 86400,
 
             "schedule_fetch_mode": "requests",
@@ -460,7 +627,7 @@ class _FakeCrawlManager:
 
 
 
-    def trigger_run(self, source: str = "manual", *, target_scope: str | None = None, target_province: str | None = None, target_city: str | None = None) -> tuple[bool, dict]:
+    def trigger_run(self, source: str = "manual", *, target_scope: str | None = None, target_province: str | None = None, target_city: str | None = None, source_url: str | None = None, source_name: str | None = None) -> tuple[bool, dict]:
 
         item = self.get_status()
 
@@ -474,11 +641,15 @@ class _FakeCrawlManager:
 
         item["target_city"] = target_city
 
+        item["source_url"] = source_url
+
+        item["source_name"] = source_name
+
         return True, item
 
 
 
-    def update_schedule(self, *, enabled: bool | None = None, interval_seconds: int | None = None, fetch_mode: str | None = None, target_scope: str | None = None, target_province: str | None = None, target_city: str | None = None) -> dict:
+    def update_schedule(self, *, enabled: bool | None = None, mode: str | None = None, daily_run_time: str | None = None, interval_seconds: int | None = None, fetch_mode: str | None = None, target_scope: str | None = None, target_province: str | None = None, target_city: str | None = None) -> dict:
 
         self.schedule_enabled = bool(enabled)
 
@@ -489,6 +660,14 @@ class _FakeCrawlManager:
         if interval_seconds is not None:
 
             item["schedule_interval_seconds"] = interval_seconds
+
+        if mode is not None:
+
+            item["schedule_mode"] = mode
+
+        if daily_run_time is not None:
+
+            item["schedule_daily_run_time"] = daily_run_time
 
         if fetch_mode is not None:
 
@@ -596,7 +775,7 @@ def test_crawl_schedule_endpoint(monkeypatch):
 
         "/api/crawl/schedule",
 
-        json={"enabled": True, "interval_seconds": 86400, "fetch_mode": "requests"},
+        json={"enabled": True, "mode": "daily_time", "daily_run_time": "03:30", "interval_seconds": 86400, "fetch_mode": "requests"},
 
     )
 
@@ -607,6 +786,10 @@ def test_crawl_schedule_endpoint(monkeypatch):
     assert response.json()["item"]["schedule_enabled"] is True
 
     assert response.json()["item"]["schedule_interval_seconds"] == 86400
+
+    assert response.json()["item"]["schedule_mode"] == "daily_time"
+
+    assert response.json()["item"]["schedule_daily_run_time"] == "03:30"
 
 
 def test_crawl_schedule_endpoint_persists_region_scope(monkeypatch):
@@ -2055,6 +2238,67 @@ def test_supplier_registration_request_endpoints_cover_submit_and_review(tmp_pat
 
     assert supplier_rows.iloc[0]["supplier_name"] == "郑州鲜采档口"
 
+
+
+
+
+def test_create_supplier_rejects_duplicate_account_username(tmp_path, monkeypatch):
+
+    db = Database(tmp_path / "duplicate_supplier_account.db")
+
+    db.init_db()
+
+    existing_supplier_id = db.upsert_supplier(supplier_name="莲菜档口A")
+
+    existing_user_id = db.upsert_auth_user(
+
+        username="lencai-a",
+
+        password_hash=hash_password("supplier123"),
+
+        role="supplier",
+
+        supplier_id=existing_supplier_id,
+
+        display_name="莲菜档口A",
+
+        is_active=True,
+
+    )
+
+    client = _create_authenticated_client(monkeypatch, db=db)
+
+
+
+    response = client.post(
+
+        "/api/suppliers",
+
+        json={
+
+            "supplier_name": "莲菜档口B",
+
+            "is_active": True,
+
+            "account_username": "lencai-a",
+
+            "account_password": "newpass123",
+
+        },
+
+    )
+
+
+
+    assert response.status_code == 400
+
+    assert response.json()["detail"] == "登录账号已被其他供应商使用"
+
+    first_auth_rows = db.get_auth_user_by_supplier_id(existing_supplier_id)
+
+    assert first_auth_rows.iloc[0]["id"] == existing_user_id
+
+    assert int(first_auth_rows.iloc[0]["supplier_id"]) == existing_supplier_id
 
 
 
@@ -5692,6 +5936,37 @@ def test_update_supplier_endpoint_can_disable_supplier_account(monkeypatch):
         def get_auth_user_by_supplier_id(self, supplier_id):
 
             assert supplier_id == 5
+
+            return pd.DataFrame(
+
+                [
+
+                    {
+
+                        "id": 91,
+
+                        "username": "lencai-b",
+
+                        "password_hash": "pbkdf2_sha256$390000$salt$hash",
+
+                        "role": "supplier",
+
+                        "supplier_id": 5,
+
+                        "display_name": "莲菜档口B",
+
+                        "is_active": 1,
+
+                    }
+
+                ]
+
+            )
+
+
+        def get_auth_user_by_username(self, username):
+
+            assert username == "lencai-b"
 
             return pd.DataFrame(
 

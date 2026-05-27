@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 
 
 AuthUserRole = Literal["admin", "supplier"]
+SUPPLIER_QUOTE_IMPORT_MAX_ITEMS = 1000
 
 
 class MarketSummaryResponse(BaseModel):
@@ -40,9 +41,13 @@ class AuthUserItem(BaseModel):
     role: AuthUserRole
     display_name: str | None = None
     is_active: bool = True
+    is_deleted: bool = False
     supplier_id: int | None = None
     supplier_profile: AuthSupplierProfile | None = None
     last_login_at: str | None = None
+    deleted_at: str | None = None
+    deleted_by: str | None = None
+    deleted_username: str | None = None
     created_at: str | None = None
     updated_at: str | None = None
 
@@ -61,6 +66,33 @@ class AuthLoginResponse(BaseModel):
 
 class AuthMeResponse(BaseModel):
     user: AuthUserItem
+
+
+class AuthUserListResponse(BaseModel):
+    items: list[AuthUserItem]
+
+
+class AuthUserCreateRequest(BaseModel):
+    username: str = Field(..., min_length=3, max_length=64)
+    password: str = Field(..., min_length=8)
+    role: AuthUserRole
+    supplier_id: int | None = Field(default=None, ge=1)
+    display_name: str | None = None
+    is_active: bool = True
+
+
+class AuthUserUpdateRequest(BaseModel):
+    username: str = Field(..., min_length=3, max_length=64)
+    password: str | None = Field(default=None, min_length=8)
+    role: AuthUserRole
+    supplier_id: int | None = Field(default=None, ge=1)
+    display_name: str | None = None
+    is_active: bool = True
+
+
+class AuthUserDeleteResponse(BaseModel):
+    deleted: bool
+    user_id: int
 
 
 class SupplierItem(BaseModel):
@@ -126,7 +158,7 @@ class SupplierRegistrationReviewRequest(BaseModel):
     channel: str | None = None
     notes: str | None = None
     account_display_name: str | None = None
-    account_password: str | None = Field(default=None, min_length=6)
+    account_password: str | None = Field(default=None, min_length=8)
     account_is_active: bool = True
     supplier_is_active: bool = True
     review_notes: str | None = None
@@ -159,7 +191,7 @@ class SupplierCreateRequest(BaseModel):
     notes: str | None = None
     is_active: bool = True
     account_username: str | None = None
-    account_password: str | None = Field(default=None, min_length=6)
+    account_password: str | None = Field(default=None, min_length=8)
     account_display_name: str | None = None
     account_is_active: bool = True
 
@@ -174,7 +206,7 @@ class SupplierUpdateRequest(BaseModel):
     notes: str | None = None
     is_active: bool = True
     account_username: str | None = None
-    account_password: str | None = Field(default=None, min_length=6)
+    account_password: str | None = Field(default=None, min_length=8)
     account_display_name: str | None = None
     account_is_active: bool | None = None
 
@@ -230,7 +262,7 @@ class SupplierQuoteImportRequest(BaseModel):
     import_mode: Literal["append", "skip_duplicate", "override_latest"] = "append"
     duplicate_match_fields: list[str] = Field(default_factory=list)
     abnormal_change_ratio_threshold: float | None = Field(default=None, ge=0)
-    items: list[SupplierQuoteImportItemRequest] = Field(..., min_length=1)
+    items: list[SupplierQuoteImportItemRequest] = Field(..., min_length=1, max_length=SUPPLIER_QUOTE_IMPORT_MAX_ITEMS)
 
 
 class SupplierQuoteImportPreviewRequest(BaseModel):
@@ -238,7 +270,7 @@ class SupplierQuoteImportPreviewRequest(BaseModel):
     import_mode: Literal["append", "skip_duplicate", "override_latest"] = "append"
     duplicate_match_fields: list[str] = Field(default_factory=list)
     abnormal_change_ratio_threshold: float | None = Field(default=None, ge=0)
-    items: list[SupplierQuoteImportItemRequest] = Field(..., min_length=1)
+    items: list[SupplierQuoteImportItemRequest] = Field(..., min_length=1, max_length=SUPPLIER_QUOTE_IMPORT_MAX_ITEMS)
 
 
 class SupplierQuoteItem(BaseModel):
@@ -487,8 +519,8 @@ class MenuItemInput(BaseModel):
 class MenuPlanRequest(BaseModel):
     menu_text: str | None = None
     menu_items: list[MenuItemInput] = Field(default_factory=list)
-    diners: int = 0
-    tables: int = 0
+    diners: int = Field(0, ge=0, description="总人数（全部桌合计）")
+    tables: int = Field(0, ge=0, description="总桌数")
     preferred_province: str | None = None
     preferred_city: str | None = None
     preferred_location: str | None = None
@@ -523,6 +555,8 @@ class CrawlRunRequest(BaseModel):
 
 class CrawlScheduleUpdateRequest(BaseModel):
     enabled: bool
+    mode: Literal["interval", "daily_time"] = "interval"
+    daily_run_time: str | None = Field(default=None, pattern=r"^\d{2}:\d{2}$")
     interval_seconds: int = Field(default=86400, ge=60)
     fetch_mode: Literal["requests", "playwright"] | None = None
     target_scope: Literal["all_saved", "province", "city"] = "all_saved"

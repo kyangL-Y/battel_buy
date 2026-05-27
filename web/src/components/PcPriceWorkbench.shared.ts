@@ -8,7 +8,7 @@ export type ModuleMetric = { label: string; value: string; detail: string; tone:
 
 export type ModuleSideItem = { label: string; title: string; detail: string; tone: string }
 
-export type ModuleFlowItem = { step: string; text: string }
+export type ModuleFlowItem = { step: string; text: string; status?: string }
 
 export type ModuleView = {
   kicker: string

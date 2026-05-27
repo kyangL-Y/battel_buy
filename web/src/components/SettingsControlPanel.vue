@@ -15,7 +15,19 @@
       <strong>{{ settingsScheduleEnabled ? '已开启' : '已关闭' }}</strong>
       <small>{{ settingsScheduleDetail }}</small>
     </article>
-    <form class="pcw-settings-form" @submit.prevent="saveSettingsSchedule">
+    <nav class="pcw-settings-panel-tabs" aria-label="系统设置分区">
+      <button
+        v-for="item in settingsPanelTabs"
+        :key="item.key"
+        type="button"
+        :class="{ active: settingsActivePanel === item.key }"
+        @click="settingsActivePanel = item.key"
+      >
+        <strong>{{ item.label }}</strong>
+        <small>{{ item.detail }}</small>
+      </button>
+    </nav>
+    <form v-if="settingsActivePanel === 'schedule'" class="pcw-settings-form" @submit.prevent="saveSettingsSchedule">
       <label>
         <span>自动同步</span>
         <select v-model="settingsScheduleDraftEnabled" :disabled="settingsManagementLocked" @change="markSettingsScheduleDraftChanged">
@@ -24,6 +36,17 @@
         </select>
       </label>
       <label>
+        <span>同步方式</span>
+        <select v-model="settingsScheduleDraftMode" :disabled="settingsManagementLocked" @change="markSettingsScheduleDraftChanged">
+          <option value="daily_time">每天固定时间</option>
+          <option value="interval">按间隔循环</option>
+        </select>
+      </label>
+      <label v-if="settingsScheduleDraftMode === 'daily_time'">
+        <span>抓取时间</span>
+        <input v-model="settingsScheduleDraftDailyRunTime" type="time" :disabled="settingsManagementLocked" @change="markSettingsScheduleDraftChanged" />
+      </label>
+      <label v-else>
         <span>同步频率</span>
         <select v-model.number="settingsScheduleDraftInterval" :disabled="settingsManagementLocked" @change="markSettingsScheduleDraftChanged">
           <option :value="3600">每 1 小时</option>
@@ -51,7 +74,7 @@
 
     <p v-if="settingsManagementLocked" class="pcw-settings-auth-hint">系统设置需要管理员登录后才能修改，当前账号只有查看权限。</p>
 
-    <section v-if="settingsChangeLogs?.length" class="pcw-settings-log-panel">
+    <section v-if="settingsActivePanel === 'source' && settingsChangeLogs?.length" class="pcw-settings-log-panel">
       <div class="pcw-settings-log-head">
         <strong>最近一次改动记录</strong>
         <span>{{ settingsChangeLogs.length }} 条</span>
@@ -65,7 +88,7 @@
       </div>
     </section>
 
-    <form class="pcw-settings-source-form" @submit.prevent="saveSettingsSourceConfig">
+    <form v-if="settingsActivePanel === 'source'" class="pcw-settings-source-form" @submit.prevent="saveSettingsSourceConfig">
       <label class="full">
         <span>数据来源</span>
         <select v-model="settingsSelectedSourceUrl" :disabled="settingsManagementLocked" @change="settingsSourceDraftTouched = false; syncSelectedSourceDraft()">
@@ -101,7 +124,7 @@
       </div>
     </form>
 
-    <form class="pcw-settings-source-form" @submit.prevent="saveSettingsSourceStrategy">
+    <form v-if="settingsActivePanel === 'strategy'" class="pcw-settings-source-form" @submit.prevent="saveSettingsSourceStrategy">
       <div class="pcw-settings-run-feedback full">
         <strong>来源试跑反馈</strong>
         <span>{{ settingsSelectedSourceRunSummary }}</span>
@@ -151,7 +174,7 @@
       </div>
     </form>
 
-    <form class="pcw-settings-source-form" @submit.prevent="saveGlobalAlertRules">
+    <form v-if="settingsActivePanel === 'alerts'" class="pcw-settings-source-form" @submit.prevent="saveGlobalAlertRules">
       <div class="pcw-settings-alert-rule-list">
         <div v-for="(item, index) in settingsGlobalAlertDraftRows" :key="`alert-rule-${index}`" class="pcw-settings-alert-rule-row">
           <label>
@@ -214,7 +237,13 @@ const emit = defineEmits<{
   (event: 'refresh'): void
   (event: 'run-crawl'): void
   (event: 'run-source-crawl', value: { source_url?: string; source_name?: string }): void
-  (event: 'update-crawl-schedule', value: { enabled: boolean; interval_seconds: number; fetch_mode?: 'requests' | 'playwright' }): void
+  (event: 'update-crawl-schedule', value: {
+    enabled: boolean
+    mode?: 'interval' | 'daily_time'
+    daily_run_time?: string | null
+    interval_seconds: number
+    fetch_mode?: 'requests' | 'playwright'
+  }): void
   (event: 'update-source-config', value: {
     source_url: string
     enabled: boolean
@@ -237,7 +266,12 @@ const emit = defineEmits<{
   (event: 'update-global-alert-rules', value: GlobalAlertRuleItem[]): void
 }>()
 
+type SettingsPanelKey = 'schedule' | 'source' | 'strategy' | 'alerts'
+
+const settingsActivePanel = ref<SettingsPanelKey>('schedule')
 const settingsScheduleDraftEnabled = ref(false)
+const settingsScheduleDraftMode = ref<'interval' | 'daily_time'>('daily_time')
+const settingsScheduleDraftDailyRunTime = ref('03:30')
 const settingsScheduleDraftInterval = ref(86400)
 const settingsFetchModeDraft = ref<'requests' | 'playwright'>('requests')
 const settingsScheduleDraftTouched = ref(false)
@@ -275,6 +309,8 @@ const settingsLatestCaptureAt = computed(() =>
 const settingsScheduleEnabled = computed(() => Boolean(props.crawlStatus?.schedule_enabled))
 const settingsScheduleDirty = computed(() =>
   settingsScheduleDraftEnabled.value !== Boolean(props.crawlStatus?.schedule_enabled)
+  || settingsScheduleDraftMode.value !== (props.crawlStatus?.schedule_mode === 'interval' ? 'interval' : 'daily_time')
+  || settingsScheduleDraftDailyRunTime.value !== String(props.crawlStatus?.schedule_daily_run_time || '03:30')
   || settingsScheduleDraftInterval.value !== Number(props.crawlStatus?.schedule_interval_seconds || 86400)
   || settingsFetchModeDraft.value !== (props.crawlStatus?.schedule_fetch_mode === 'playwright' ? 'playwright' : 'requests'),
 )
@@ -303,8 +339,17 @@ const settingsCrawlProgressLabel = computed(() => {
 })
 const settingsScheduleDetail = computed(() => {
   if (!settingsScheduleEnabled.value) return '当前仅手动同步'
-  return props.crawlStatus?.next_run_at ? `下次 ${formatShortDateTime(props.crawlStatus.next_run_at)}` : '每日自动同步'
+  const modeLabel = props.crawlStatus?.schedule_mode === 'interval'
+    ? `按间隔 ${formatIntervalLabel(Number(props.crawlStatus?.schedule_interval_seconds || 86400))}`
+    : `每天 ${props.crawlStatus?.schedule_daily_run_time || '03:30'}`
+  return props.crawlStatus?.next_run_at ? `${modeLabel} · 下次 ${formatShortDateTime(props.crawlStatus.next_run_at)}` : modeLabel
 })
+const settingsPanelTabs = computed<Array<{ key: SettingsPanelKey; label: string; detail: string }>>(() => [
+  { key: 'schedule', label: '同步调度', detail: settingsScheduleEnabled.value ? '自动任务已开启' : '手动同步优先' },
+  { key: 'source', label: '来源配置', detail: `${props.sourceCoverageRows?.length || 0} 个来源` },
+  { key: 'strategy', label: '抓取策略', detail: settingsSelectedSource.value?.source_name || '选择来源后配置' },
+  { key: 'alerts', label: '全局预警', detail: `${settingsGlobalAlertDraftRows.value.length} 条规则` },
+])
 const settingsSourceOptions = computed(() => (props.sourceCoverageRows || []).map((item) => ({
   value: String(item.source_url || ''),
   label: item.configured_name || item.source_name || item.source_url || '未命名来源',
@@ -368,7 +413,13 @@ const settingsSourceDirty = computed(() => {
 })
 
 watch(
-  () => [props.crawlStatus?.schedule_enabled, props.crawlStatus?.schedule_interval_seconds, props.crawlStatus?.schedule_fetch_mode] as const,
+  () => [
+    props.crawlStatus?.schedule_enabled,
+    props.crawlStatus?.schedule_mode,
+    props.crawlStatus?.schedule_daily_run_time,
+    props.crawlStatus?.schedule_interval_seconds,
+    props.crawlStatus?.schedule_fetch_mode,
+  ] as const,
   () => {
     if (!settingsScheduleDraftTouched.value) syncSettingsScheduleDraft()
   },
@@ -413,8 +464,16 @@ function formatShortDateTime(value?: string | null) {
   return `${month}/${day} ${hour}:${minute}`
 }
 
+function formatIntervalLabel(seconds: number) {
+  if (seconds % 86400 === 0) return `${seconds / 86400} 天`
+  if (seconds % 3600 === 0) return `${seconds / 3600} 小时`
+  return `${seconds} 秒`
+}
+
 function syncSettingsScheduleDraft() {
   settingsScheduleDraftEnabled.value = Boolean(props.crawlStatus?.schedule_enabled)
+  settingsScheduleDraftMode.value = props.crawlStatus?.schedule_mode === 'interval' ? 'interval' : 'daily_time'
+  settingsScheduleDraftDailyRunTime.value = String(props.crawlStatus?.schedule_daily_run_time || '03:30')
   settingsScheduleDraftInterval.value = Number(props.crawlStatus?.schedule_interval_seconds || 86400)
   settingsFetchModeDraft.value = props.crawlStatus?.schedule_fetch_mode === 'playwright' ? 'playwright' : 'requests'
 }
@@ -492,15 +551,21 @@ function confirmPendingSettingsChange() {
 }
 
 function saveSettingsSchedule() {
+  const modeLabel = settingsScheduleDraftMode.value === 'daily_time' ? '每天固定时间' : '按间隔循环'
   const nextLines = [
     `自动同步：${settingsScheduleDraftEnabled.value ? '开启' : '关闭'}`,
-    `同步频率：${settingsScheduleDraftInterval.value} 秒`,
+    `同步方式：${modeLabel}`,
+    settingsScheduleDraftMode.value === 'daily_time'
+      ? `抓取时间：${settingsScheduleDraftDailyRunTime.value || '03:30'}`
+      : `同步频率：${settingsScheduleDraftInterval.value} 秒`,
     `抓取模式：${settingsFetchModeDraft.value}`,
   ]
   openSettingsConfirm('保存系统同步设置', '以下改动会立即写入当前系统设置。', nextLines, () => {
     settingsScheduleDraftTouched.value = false
     emit('update-crawl-schedule', {
       enabled: settingsScheduleDraftEnabled.value,
+      mode: settingsScheduleDraftMode.value,
+      daily_run_time: settingsScheduleDraftMode.value === 'daily_time' ? settingsScheduleDraftDailyRunTime.value : null,
       interval_seconds: settingsScheduleDraftInterval.value,
       fetch_mode: settingsFetchModeDraft.value,
     })
@@ -637,6 +702,51 @@ function saveGlobalAlertRules() {
   white-space: nowrap;
   color: #10203d;
   font-size: 18px;
+}
+
+.pcw-settings-panel-tabs {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  padding: 4px;
+  border: 1px solid #dbe5f1;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.pcw-settings-panel-tabs button {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  text-align: left;
+}
+
+.pcw-settings-panel-tabs button.active {
+  background: #eff6ff;
+  box-shadow: inset 0 0 0 1px #bfdbfe;
+}
+
+.pcw-settings-panel-tabs strong,
+.pcw-settings-panel-tabs small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pcw-settings-panel-tabs strong {
+  color: #10203d;
+  font-size: 13px;
+}
+
+.pcw-settings-panel-tabs small {
+  color: #64748b;
+  font-size: 12px;
 }
 
 .pcw-settings-form {
@@ -866,6 +976,7 @@ function saveGlobalAlertRules() {
   .pcw-settings-inline-admin,
   .pcw-settings-form,
   .pcw-settings-source-form,
+  .pcw-settings-panel-tabs,
   .pcw-settings-alert-rule-row {
     grid-template-columns: 1fr;
   }

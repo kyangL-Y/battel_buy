@@ -21,12 +21,13 @@ DEFAULT_ADMIN_USERNAME = os.getenv("BATTEL_DEFAULT_ADMIN_USERNAME", "admin")
 DEFAULT_ADMIN_PASSWORD = os.getenv("BATTEL_DEFAULT_ADMIN_PASSWORD", "admin123")
 DEFAULT_ADMIN_DISPLAY_NAME = os.getenv("BATTEL_DEFAULT_ADMIN_DISPLAY_NAME", "系统管理员")
 PBKDF2_ITERATIONS = int(os.getenv("BATTEL_AUTH_PBKDF2_ITERATIONS", "390000"))
+MIN_PASSWORD_LENGTH = 8
 
 
 def hash_password(password: str) -> str:
     normalized_password = str(password or "")
-    if len(normalized_password) < 6:
-        raise ValueError("password must be at least 6 characters")
+    if len(normalized_password) < MIN_PASSWORD_LENGTH:
+        raise ValueError(f"password must be at least {MIN_PASSWORD_LENGTH} characters")
 
     salt = secrets.token_hex(16)
     digest = hashlib.pbkdf2_hmac(

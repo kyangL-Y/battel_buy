@@ -1,4 +1,4 @@
-import { createApp, defineAsyncComponent } from 'vue'
+import { createApp, defineAsyncComponent, h } from 'vue'
 import { ElButton } from 'element-plus/es/components/button/index.mjs'
 import { ElCheckbox } from 'element-plus/es/components/checkbox/index.mjs'
 import { ElDatePicker } from 'element-plus/es/components/date-picker/index.mjs'
@@ -35,10 +35,41 @@ import './styles.css'
 const pathname = typeof window !== 'undefined'
   ? window.location.pathname.replace(/\/$/, '') || '/'
   : '/'
-const App = defineAsyncComponent(() => import('./App.vue'))
-const PlatformAdminApp = defineAsyncComponent(() => import('./PlatformAdminApp.vue'))
-const SupplierBackendApp = defineAsyncComponent(() => import('./SupplierBackendApp.vue'))
-const SupplierPortalApp = defineAsyncComponent(() => import('./SupplierPortalApp.vue'))
+const RootLoading = {
+  name: 'RootLoading',
+  setup() {
+    return () => h('div', { class: 'app-root-loader', role: 'status', 'aria-live': 'polite' }, [
+      h('span', { class: 'app-root-loader-ring' }),
+      h('strong', '正在打开系统'),
+      h('small', '业务界面加载中'),
+    ])
+  },
+}
+
+const App = defineAsyncComponent({
+  loader: () => import('./App.vue'),
+  loadingComponent: RootLoading,
+  delay: 0,
+  suspensible: false,
+})
+const PlatformAdminApp = defineAsyncComponent({
+  loader: () => import('./PlatformAdminApp.vue'),
+  loadingComponent: RootLoading,
+  delay: 0,
+  suspensible: false,
+})
+const SupplierBackendApp = defineAsyncComponent({
+  loader: () => import('./SupplierBackendApp.vue'),
+  loadingComponent: RootLoading,
+  delay: 0,
+  suspensible: false,
+})
+const SupplierPortalApp = defineAsyncComponent({
+  loader: () => import('./SupplierPortalApp.vue'),
+  loadingComponent: RootLoading,
+  delay: 0,
+  suspensible: false,
+})
 
 const rootComponent = pathname === '/supplier-portal'
   ? SupplierPortalApp
@@ -68,7 +99,9 @@ const app = createApp(rootComponent)
   ElTable,
   ElTableColumn,
 ].forEach((component) => {
-  app.component(component.name, component)
+  if (component.name) {
+    app.component(component.name, component)
+  }
 })
 
 app.directive('loading', ElLoadingDirective)

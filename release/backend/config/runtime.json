@@ -13,6 +13,8 @@
   },
   "schedule": {
     "enabled": true,
+    "mode": "daily_time",
+    "daily_run_time": "03:30",
     "interval_seconds": 86400,
     "fetch_mode": "requests",
     "target_scope": "all_saved"
