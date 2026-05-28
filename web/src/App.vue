@@ -11406,17 +11406,17 @@ onBeforeUnmount(() => {
   position: relative;
   z-index: 1;
   display: grid;
-  grid-template-columns: 1.08fr .92fr;
-  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
 }
 
 .mobile-redesign-command-grid button {
   display: grid;
-  gap: 8px;
-  min-height: 102px;
-  padding: 13px;
+  gap: 6px;
+  min-height: 82px;
+  padding: 10px;
   border: 1px solid var(--phone-line);
-  border-radius: 22px;
+  border-radius: 18px;
   background: #fffdf4;
   color: var(--phone-ink);
   font: inherit;
@@ -11424,7 +11424,6 @@ onBeforeUnmount(() => {
 }
 
 .mobile-redesign-command-grid .alert {
-  grid-row: span 2;
   background: linear-gradient(160deg, #fff4e8 0%, #fffdf4 68%);
 }
 
@@ -11444,14 +11443,14 @@ onBeforeUnmount(() => {
 
 .mobile-redesign-command-grid strong {
   color: var(--phone-ink);
-  font-size: 22px;
+  font-size: 18px;
   line-height: 1;
 }
 
 .mobile-redesign-command-grid small {
   color: var(--phone-muted);
-  font-size: 12px;
-  line-height: 1.35;
+  font-size: 11px;
+  line-height: 1.25;
 }
 
 .mobile-redesign-main {
@@ -11664,10 +11663,6 @@ onBeforeUnmount(() => {
   .mobile-redesign-directory-grid,
   .mobile-redesign-entry-grid {
     grid-template-columns: 1fr;
-  }
-
-  .mobile-redesign-command-grid .alert {
-    grid-row: auto;
   }
 
   .mobile-redesign-hero-copy h1 {
