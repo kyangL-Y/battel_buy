@@ -38,6 +38,8 @@ def _create_authenticated_client(
 
     supplier_id: int | None = 5,
 
+    procurement_supplier_ids: list[int] | None = None,
+
     username: str = "tester",
 
     display_name: str = "测试账号",
@@ -59,6 +61,8 @@ def _create_authenticated_client(
         "is_active": True,
 
         "supplier_id": supplier_id,
+
+        "procurement_supplier_ids": list(procurement_supplier_ids or []),
 
         "supplier_profile": {
 
@@ -138,6 +142,19 @@ def test_auth_login_and_me_endpoint_with_seeded_admin(tmp_path, monkeypatch):
 
     db.init_db()
 
+    admin_row = db.get_auth_user_by_username("admin")
+    assert len(admin_row) == 1
+    admin_record = admin_row.iloc[0].to_dict()
+    db.upsert_auth_user(
+        user_id=int(admin_record["id"]),
+        username=str(admin_record["username"]),
+        password_hash=str(admin_record["password_hash"]),
+        role="admin",
+        display_name=str(admin_record.get("display_name") or ""),
+        market_scope="河南本地市场",
+        is_active=True,
+    )
+
 
 
     monkeypatch.setattr(api_deps_module, "get_db", lambda: db)
@@ -165,6 +182,9 @@ def test_auth_login_and_me_endpoint_with_seeded_admin(tmp_path, monkeypatch):
     assert token
 
     assert login_response.json()["user"]["role"] == "admin"
+    assert login_response.json()["user"]["market_scope"] == "河南本地市场"
+    assert login_response.json()["user"]["default_province"] == "河南省"
+    assert login_response.json()["user"]["default_city"] is None
 
 
 
@@ -183,8 +203,39 @@ def test_auth_login_and_me_endpoint_with_seeded_admin(tmp_path, monkeypatch):
     assert me_response.json()["user"]["username"] == "admin"
 
     assert me_response.json()["user"]["role"] == "admin"
+    assert me_response.json()["user"]["market_scope"] == "河南本地市场"
+    assert me_response.json()["user"]["default_province"] == "河南省"
 
 
+
+
+
+def test_procurement_direct_register_endpoint_is_not_available(tmp_path, monkeypatch):
+
+    db = Database(tmp_path / "procurement_direct_register.db")
+
+    db.init_db()
+
+    monkeypatch.setattr(api_deps_module, "get_db", lambda: db)
+
+    monkeypatch.setattr(api_app_module, "get_db", lambda: db)
+
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/api/auth/procurement/register",
+        json={
+            "company_name": "南京采购组",
+            "contact_name": "采购小李",
+            "contact_phone": "13800138000",
+            "username": "buyer-nj-direct",
+            "password": "buyer123456",
+            "market_scope": "南京市场",
+            "requested_supplier_names": "莲菜档口, 冻品档口",
+        },
+    )
+
+    assert response.status_code == 404
 
 
 
@@ -384,6 +435,20 @@ def test_auth_user_management_endpoints_cover_create_update_and_self_guard(tmp_p
 
     )
 
+    second_supplier_id = db.upsert_supplier(
+
+        supplier_name="蔬菜档口B",
+
+        contact_name="小李",
+
+        market_scope="南京市场",
+
+        market_category="蔬菜类",
+
+        channel="门店直报",
+
+    )
+
     client = _create_authenticated_client(monkeypatch, db=db, username="admin", display_name="系统管理员")
 
 
@@ -416,6 +481,8 @@ def test_auth_user_management_endpoints_cover_create_update_and_self_guard(tmp_p
 
             "display_name": "莲菜档口A",
 
+            "market_scope": "南京市场",
+
             "is_active": True,
 
         },
@@ -431,6 +498,9 @@ def test_auth_user_management_endpoints_cover_create_update_and_self_guard(tmp_p
     assert created_payload["role"] == "supplier"
 
     assert created_payload["supplier_profile"]["supplier_name"] == "莲菜档口A"
+    assert created_payload["market_scope"] == "南京市场"
+    assert created_payload["default_province"] == "江苏省"
+    assert created_payload["default_city"] == "南京"
 
 
 
@@ -448,6 +518,8 @@ def test_auth_user_management_endpoints_cover_create_update_and_self_guard(tmp_p
 
             "display_name": "莲菜档口A-停用",
 
+            "market_scope": "河南本地市场",
+
             "is_active": False,
 
         },
@@ -461,6 +533,47 @@ def test_auth_user_management_endpoints_cover_create_update_and_self_guard(tmp_p
     assert update_response.json()["display_name"] == "莲菜档口A-停用"
 
     assert update_response.json()["is_active"] is False
+    assert update_response.json()["market_scope"] == "河南本地市场"
+    assert update_response.json()["default_province"] == "河南省"
+    assert update_response.json()["default_city"] is None
+
+    procurement_create_response = client.post(
+
+        "/api/auth/users",
+
+        json={
+
+            "username": "buyer-nj",
+
+            "password": "buyer123456",
+
+            "role": "procurement",
+
+            "procurement_supplier_ids": [supplier_id, second_supplier_id],
+
+            "display_name": "南京采购",
+
+            "market_scope": "南京市场",
+
+            "is_active": True,
+
+        },
+
+    )
+
+    assert procurement_create_response.status_code == 200
+
+    procurement_payload = procurement_create_response.json()
+
+    assert procurement_payload["role"] == "procurement"
+
+    assert procurement_payload["market_scope"] == "南京市场"
+
+    assert procurement_payload["default_province"] == "江苏省"
+
+    assert procurement_payload["default_city"] == "南京"
+
+    assert procurement_payload["procurement_supplier_ids"] == [supplier_id, second_supplier_id]
 
 
 
@@ -2141,9 +2254,165 @@ def test_suppliers_overview_endpoint_returns_category_and_recent_quotes(monkeypa
     assert payload["recent_quotes"][0]["supplier_name"] == "莲菜档口A"
 
 
+def test_procurement_account_scopes_suppliers_and_overview_to_bound_suppliers(monkeypatch):
+
+    class _FakeDb:
+
+        def get_suppliers(self, active_only=False):
+
+            return pd.DataFrame(
+
+                [
+
+                    {"id": 1, "supplier_name": "莲菜档口A", "market_category": "干调类", "channel": "微信小程序", "market_scope": "南京市场", "is_active": 1, "quote_count": 3, "latest_quoted_at": "2026-04-20T10:00:00"},
+
+                    {"id": 2, "supplier_name": "蔬菜档口B", "market_category": "蔬菜类", "channel": "门店直报", "market_scope": "南京市场", "is_active": 1, "quote_count": 1, "latest_quoted_at": "2026-04-20T09:30:00"},
+
+                    {"id": 3, "supplier_name": "冻品档口C", "market_category": "冻品类", "channel": "Excel", "market_scope": "南京市场", "is_active": 0, "quote_count": 2, "latest_quoted_at": "2026-04-20T11:00:00"},
+
+                ]
+
+            )
+
+        def get_supplier_quote_records(self, supplier_id, limit=12, offset=0, **kwargs):
+
+            quote_rows = {
+
+                1: [{"supplier_id": 1, "supplier_name": "莲菜档口A", "supplier_market_category": "干调类", "supplier_channel": "微信小程序", "market_scope": "南京市场", "price_identity_key": "香菇|干调类|500g", "quote_price": 17.9, "quoted_at": "2026-04-20T10:00:00"}],
+
+                3: [{"supplier_id": 3, "supplier_name": "冻品档口C", "supplier_market_category": "冻品类", "supplier_channel": "Excel", "market_scope": "南京市场", "price_identity_key": "虾仁|冻品类|5斤", "quote_price": 118.0, "quoted_at": "2026-04-20T11:00:00"}],
+
+            }
+
+            return pd.DataFrame(quote_rows.get(int(supplier_id), []))
+
+
+    db = _FakeDb()
+
+    client = _create_authenticated_client(
+        monkeypatch,
+        db=db,
+        role="procurement",
+        supplier_id=None,
+        procurement_supplier_ids=[1, 3],
+        username="buyer-nj",
+        display_name="南京采购",
+    )
+
+    suppliers_response = client.get("/api/suppliers")
+
+    assert suppliers_response.status_code == 200
+    assert [item["id"] for item in suppliers_response.json()["items"]] == [1, 3]
+
+    overview_response = client.get("/api/suppliers/overview?limit=8")
+
+    assert overview_response.status_code == 200
+    payload = overview_response.json()
+    assert payload["summary"]["supplier_count"] == 2
+    assert payload["summary"]["total_quote_count"] == 5
+    assert [item["market_category"] for item in payload["category_items"]] == ["干调类", "冻品类"]
+    assert [item["supplier_name"] for item in payload["recent_quotes"]] == ["冻品档口C", "莲菜档口A"]
 
 
 
+
+
+def test_auth_password_reset_updates_password_and_returns_session(tmp_path, monkeypatch):
+
+    db = Database(tmp_path / "auth_password_reset.db")
+
+    db.init_db()
+
+    supplier_id = db.upsert_supplier(
+        supplier_name="莲菜档口A",
+        contact_name="老王",
+        market_scope="南京市场",
+        market_category="蔬菜类",
+        channel="微信小程序",
+    )
+    db.upsert_auth_user(
+        username="supplier-reset",
+        password_hash=hash_password("oldpass123"),
+        role="supplier",
+        supplier_id=supplier_id,
+        display_name="莲菜档口A",
+        is_active=True,
+    )
+
+    monkeypatch.setattr(api_deps_module, "get_db", lambda: db)
+    monkeypatch.setattr(api_app_module, "get_db", lambda: db)
+
+    client = TestClient(create_app())
+
+    reset_response = client.post(
+        "/api/auth/password/reset",
+        json={
+            "username": "supplier-reset",
+            "current_password": "oldpass123",
+            "new_password": "newpass123",
+        },
+    )
+
+    assert reset_response.status_code == 200
+    reset_payload = reset_response.json()
+    assert reset_payload["access_token"]
+    assert reset_payload["user"]["username"] == "supplier-reset"
+    assert reset_payload["user"]["supplier_id"] == supplier_id
+
+    old_login_response = client.post(
+        "/api/auth/login",
+        json={"username": "supplier-reset", "password": "oldpass123"},
+    )
+    assert old_login_response.status_code == 401
+
+    new_login_response = client.post(
+        "/api/auth/login",
+        json={"username": "supplier-reset", "password": "newpass123"},
+    )
+    assert new_login_response.status_code == 200
+
+
+def test_registration_request_endpoints_are_not_available(tmp_path, monkeypatch):
+
+    db = Database(tmp_path / "removed_registration_request_endpoints.db")
+
+    db.init_db()
+
+    monkeypatch.setattr(api_deps_module, "get_db", lambda: db)
+    monkeypatch.setattr(api_app_module, "get_db", lambda: db)
+
+    public_client = TestClient(create_app())
+    admin_client = _create_authenticated_client(monkeypatch, db=db)
+
+    supplier_create_response = public_client.post(
+        "/api/supplier-registration-requests",
+        json={
+            "company_name": "郑州鲜采档口",
+            "contact_name": "老刘",
+            "contact_phone": "13900139000",
+            "username": "fresh-liu",
+        },
+    )
+    procurement_create_response = public_client.post(
+        "/api/procurement-registration-requests",
+        json={
+            "company_name": "Nanjing Buyer Team",
+            "contact_name": "Buyer Lead",
+            "contact_phone": "13800138000",
+            "username": "buyer-nj-apply",
+            "market_scope": "南京市场",
+        },
+    )
+    supplier_list_response = admin_client.get("/api/supplier-registration-requests?status=pending")
+    procurement_list_response = admin_client.get("/api/procurement-registration-requests?status=pending")
+
+    assert supplier_create_response.status_code == 404
+    assert procurement_create_response.status_code == 404
+    assert supplier_list_response.status_code == 404
+    assert procurement_list_response.status_code == 404
+
+
+@pytest.mark.skip(reason="public supplier registration request flow removed")
 def test_supplier_registration_request_endpoints_cover_submit_and_review(tmp_path, monkeypatch):
 
     db = Database(tmp_path / "registration_requests.db")
@@ -2240,6 +2509,108 @@ def test_supplier_registration_request_endpoints_cover_submit_and_review(tmp_pat
 
 
 
+
+
+@pytest.mark.skip(reason="public procurement registration request flow removed")
+def test_procurement_registration_request_endpoints_cover_submit_review_and_reject(tmp_path, monkeypatch):
+
+    db = Database(tmp_path / "procurement_registration_requests.db")
+
+    db.init_db()
+
+    first_supplier_id = db.upsert_supplier(
+        supplier_name="Nanjing Greens",
+        contact_name="Alice",
+        market_scope="Nanjing Market",
+        market_category="Vegetable",
+        channel="Mini Program",
+    )
+    second_supplier_id = db.upsert_supplier(
+        supplier_name="Nanjing Frozen",
+        contact_name="Bob",
+        market_scope="Nanjing Market",
+        market_category="Frozen",
+        channel="Phone",
+    )
+
+    monkeypatch.setattr(api_deps_module, "get_db", lambda: db)
+
+    monkeypatch.setattr(api_app_module, "get_db", lambda: db)
+
+    public_client = TestClient(create_app())
+
+    create_response = public_client.post(
+        "/api/procurement-registration-requests",
+        json={
+            "company_name": "Nanjing Buyer Team",
+            "contact_name": "Buyer Lead",
+            "contact_phone": "13800138000",
+            "username": "buyer-nj-apply",
+            "market_scope": "南京市场",
+            "requested_supplier_names": "Nanjing Greens, Nanjing Frozen",
+        },
+    )
+
+    assert create_response.status_code == 200
+    request_id = create_response.json()["id"]
+    assert create_response.json()["status"] == "pending"
+    assert create_response.json()["market_scope"] == "南京市场"
+
+    admin_client = _create_authenticated_client(monkeypatch, db=db)
+
+    list_response = admin_client.get("/api/procurement-registration-requests?status=pending")
+
+    assert list_response.status_code == 200
+    assert list_response.json()["items"][0]["username"] == "buyer-nj-apply"
+
+    approve_response = admin_client.post(
+        f"/api/procurement-registration-requests/{request_id}/approve",
+        json={
+            "display_name": "南京采购",
+            "market_scope": "南京市场",
+            "procurement_supplier_ids": [first_supplier_id, second_supplier_id],
+            "account_password": "buyer123456",
+            "review_notes": "scope approved",
+        },
+    )
+
+    assert approve_response.status_code == 200
+    assert approve_response.json()["status"] == "approved"
+    assert approve_response.json()["auth_user_id"] is not None
+    assert approve_response.json()["display_name"] == "南京采购"
+
+    auth_rows = db.get_auth_user_by_username("buyer-nj-apply")
+    assert len(auth_rows) == 1
+    auth_row = auth_rows.iloc[0]
+    assert auth_row["role"] == "procurement"
+    assert auth_row["market_scope"] == "南京市场"
+    assert db.get_procurement_user_supplier_ids(int(auth_row["id"])) == [first_supplier_id, second_supplier_id]
+
+    rejected_create_response = public_client.post(
+        "/api/procurement-registration-requests",
+        json={
+            "company_name": "Henan Buyer Team",
+            "contact_name": "Reject Me",
+            "contact_phone": "13900139000",
+            "username": "buyer-hn-apply",
+        },
+    )
+
+    assert rejected_create_response.status_code == 200
+    rejected_request_id = rejected_create_response.json()["id"]
+
+    reject_response = admin_client.post(
+        f"/api/procurement-registration-requests/{rejected_request_id}/reject",
+        json={
+            "procurement_supplier_ids": [],
+            "account_is_active": True,
+            "review_notes": "missing supplier scope",
+        },
+    )
+
+    assert reject_response.status_code == 200
+    assert reject_response.json()["status"] == "rejected"
+    assert reject_response.json()["review_notes"] == "missing supplier scope"
 
 
 def test_create_supplier_rejects_duplicate_account_username(tmp_path, monkeypatch):

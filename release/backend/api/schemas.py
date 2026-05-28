@@ -5,7 +5,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 
-AuthUserRole = Literal["admin", "supplier"]
+AuthUserRole = Literal["admin", "supplier", "procurement"]
 SUPPLIER_QUOTE_IMPORT_MAX_ITEMS = 1000
 
 
@@ -40,10 +40,14 @@ class AuthUserItem(BaseModel):
     username: str
     role: AuthUserRole
     display_name: str | None = None
+    market_scope: str | None = None
+    default_province: str | None = None
+    default_city: str | None = None
     is_active: bool = True
     is_deleted: bool = False
     supplier_id: int | None = None
     supplier_profile: AuthSupplierProfile | None = None
+    procurement_supplier_ids: list[int] = Field(default_factory=list)
     last_login_at: str | None = None
     deleted_at: str | None = None
     deleted_by: str | None = None
@@ -77,7 +81,9 @@ class AuthUserCreateRequest(BaseModel):
     password: str = Field(..., min_length=8)
     role: AuthUserRole
     supplier_id: int | None = Field(default=None, ge=1)
+    procurement_supplier_ids: list[int] = Field(default_factory=list)
     display_name: str | None = None
+    market_scope: str | None = None
     is_active: bool = True
 
 
@@ -86,7 +92,9 @@ class AuthUserUpdateRequest(BaseModel):
     password: str | None = Field(default=None, min_length=8)
     role: AuthUserRole
     supplier_id: int | None = Field(default=None, ge=1)
+    procurement_supplier_ids: list[int] = Field(default_factory=list)
     display_name: str | None = None
+    market_scope: str | None = None
     is_active: bool = True
 
 
@@ -161,6 +169,56 @@ class SupplierRegistrationReviewRequest(BaseModel):
     account_password: str | None = Field(default=None, min_length=8)
     account_is_active: bool = True
     supplier_is_active: bool = True
+    review_notes: str | None = None
+
+
+class ProcurementRegistrationRequestItem(BaseModel):
+    id: int
+    company_name: str
+    contact_name: str | None = None
+    contact_phone: str | None = None
+    username: str
+    market_scope: str | None = None
+    requested_supplier_names: str | None = None
+    status: Literal["pending", "approved", "rejected"] = "pending"
+    review_notes: str | None = None
+    auth_user_id: int | None = None
+    reviewed_by: str | None = None
+    reviewed_at: str | None = None
+    created_at: str | None = None
+    updated_at: str | None = None
+    display_name: str | None = None
+
+
+class ProcurementRegistrationRequestListResponse(BaseModel):
+    items: list[ProcurementRegistrationRequestItem]
+
+
+class ProcurementRegistrationCreateRequest(BaseModel):
+    company_name: str = Field(..., min_length=1)
+    contact_name: str | None = None
+    contact_phone: str = Field(..., min_length=1)
+    username: str = Field(..., min_length=1)
+    market_scope: str | None = None
+    requested_supplier_names: str | None = None
+
+
+class ProcurementAccountRegisterRequest(BaseModel):
+    company_name: str = Field(..., min_length=1)
+    contact_name: str | None = None
+    contact_phone: str = Field(..., min_length=1)
+    username: str = Field(..., min_length=1)
+    password: str = Field(..., min_length=8)
+    market_scope: str | None = None
+    requested_supplier_names: str | None = None
+
+
+class ProcurementRegistrationReviewRequest(BaseModel):
+    display_name: str | None = None
+    market_scope: str | None = None
+    procurement_supplier_ids: list[int] = Field(default_factory=list)
+    account_password: str | None = Field(default=None, min_length=8)
+    account_is_active: bool = True
     review_notes: str | None = None
 
 

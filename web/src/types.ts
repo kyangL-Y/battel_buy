@@ -154,28 +154,7 @@ export interface SupplierItem {
   account_is_active?: boolean | null
 }
 
-export type SupplierRegistrationRequestStatus = 'pending' | 'approved' | 'rejected'
-
-export interface SupplierRegistrationRequestItem {
-  id: number
-  company_name: string
-  contact_name?: string | null
-  contact_phone?: string | null
-  username: string
-  status: SupplierRegistrationRequestStatus
-  review_notes?: string | null
-  supplier_id?: number | null
-  reviewed_by?: string | null
-  reviewed_at?: string | null
-  created_at?: string | null
-  updated_at?: string | null
-  supplier_name?: string | null
-  market_category?: string | null
-  channel?: string | null
-  supplier_is_active?: boolean | null
-}
-
-export type AuthUserRole = 'admin' | 'supplier'
+export type AuthUserRole = 'admin' | 'supplier' | 'procurement'
 
 export interface AuthSupplierProfile {
   supplier_id: number
@@ -191,10 +170,14 @@ export interface AuthUserItem {
   username: string
   role: AuthUserRole
   display_name?: string | null
+  market_scope?: string | null
+  default_province?: string | null
+  default_city?: string | null
   is_active?: boolean | null
   is_deleted?: boolean | null
   supplier_id?: number | null
   supplier_profile?: AuthSupplierProfile | null
+  procurement_supplier_ids?: number[]
   last_login_at?: string | null
   deleted_at?: string | null
   deleted_by?: string | null
@@ -206,6 +189,12 @@ export interface AuthUserItem {
 export interface AuthLoginPayload {
   username: string
   password: string
+}
+
+export interface AuthPasswordResetPayload {
+  username: string
+  current_password: string
+  new_password: string
 }
 
 export interface AuthLoginResponse {
@@ -228,7 +217,9 @@ export interface AuthUserCreatePayload {
   password: string
   role: AuthUserRole
   supplier_id?: number | null
+  procurement_supplier_ids?: number[]
   display_name?: string
+  market_scope?: string | null
   is_active: boolean
 }
 
@@ -237,7 +228,9 @@ export interface AuthUserUpdatePayload {
   password?: string
   role: AuthUserRole
   supplier_id?: number | null
+  procurement_supplier_ids?: number[]
   display_name?: string
+  market_scope?: string | null
   is_active: boolean
 }
 
@@ -600,32 +593,6 @@ export type SupplierSettlementBuildFromQuotesResponse = SupplierSettlementItem
 
 export interface SupplierListResponse {
   items: SupplierItem[]
-}
-
-export interface SupplierRegistrationRequestListResponse {
-  items: SupplierRegistrationRequestItem[]
-}
-
-export interface SupplierRegistrationCreatePayload {
-  company_name: string
-  contact_name?: string
-  contact_phone: string
-  username: string
-}
-
-export interface SupplierRegistrationReviewPayload {
-  supplier_name?: string
-  contact_name?: string
-  contact_phone?: string
-  market_scope?: string
-  market_category?: string
-  channel?: string
-  notes?: string
-  account_display_name?: string
-  account_password?: string
-  account_is_active?: boolean
-  supplier_is_active?: boolean
-  review_notes?: string
 }
 
 export interface SupplierOverviewResponse {

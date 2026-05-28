@@ -4,6 +4,7 @@ import type {
   AuthLoginPayload,
   AuthLoginResponse,
   AuthMeResponse,
+  AuthPasswordResetPayload,
   AuthUserCreatePayload,
   AuthUserDeleteResponse,
   AuthUserItem,
@@ -26,10 +27,6 @@ import type {
   GlobalAlertRuleItem,
   SupplierListResponse,
   SupplierItem,
-  SupplierRegistrationCreatePayload,
-  SupplierRegistrationRequestItem,
-  SupplierRegistrationRequestListResponse,
-  SupplierRegistrationReviewPayload,
   SupplierQuoteActionCreatePayload,
   SupplierQuoteActionItem,
   SupplierQuoteActionListResponse,
@@ -59,7 +56,12 @@ import type {
   SupplierUpdatePayload,
 } from './types'
 
-const AUTH_STORAGE_KEY = 'battel.auth.session'
+const AUTH_STORAGE_KEYS = {
+  procurement: 'battel.auth.session.procurement',
+  supplier: 'battel.auth.session.supplier',
+  admin: 'battel.auth.session.admin',
+} as const
+const LEGACY_AUTH_STORAGE_KEY = 'battel.auth.session'
 const MARKET_SNAPSHOT_URL = (import.meta.env.VITE_MARKET_SNAPSHOT_URL || '/data/market-snapshot.json').trim()
 const MARKET_SNAPSHOT_MODE = (import.meta.env.VITE_MARKET_SNAPSHOT_MODE || 'auto').trim().toLowerCase()
 
@@ -119,37 +121,58 @@ function canUseStorage() {
   return typeof window !== 'undefined' && typeof window.localStorage !== 'undefined'
 }
 
-export function readAuthSession(): AuthSessionState | null {
+type AuthSessionScope = keyof typeof AUTH_STORAGE_KEYS
+
+function resolveAuthSessionScope(scope?: AuthSessionScope): AuthSessionScope {
+  if (scope) return scope
+  if (typeof window === 'undefined') return 'procurement'
+  const pathname = window.location.pathname
+  if (pathname === '/admin') return 'admin'
+  if (pathname === '/supplier-portal' || pathname === '/supplier-backend') return 'supplier'
+  return 'procurement'
+}
+
+function readScopedAuthSession(scope?: AuthSessionScope): AuthSessionState | null {
   if (!canUseStorage()) {
     return null
   }
   try {
-    const rawValue = window.localStorage.getItem(AUTH_STORAGE_KEY)
+    const storageKey = AUTH_STORAGE_KEYS[resolveAuthSessionScope(scope)]
+    const rawValue = window.localStorage.getItem(storageKey) || window.localStorage.getItem(LEGACY_AUTH_STORAGE_KEY)
     if (!rawValue) {
       return null
     }
-    return JSON.parse(rawValue) as AuthSessionState
+    const parsed = JSON.parse(rawValue) as AuthSessionState
+    if (!window.localStorage.getItem(storageKey)) {
+      window.localStorage.setItem(storageKey, rawValue)
+    }
+    return parsed
   } catch {
     return null
   }
 }
 
-export function writeAuthSession(session: AuthSessionState) {
+export function readAuthSession(scope?: AuthSessionScope): AuthSessionState | null {
+  return readScopedAuthSession(scope)
+}
+
+export function writeAuthSession(session: AuthSessionState, scope?: AuthSessionScope) {
   if (!canUseStorage()) {
     return
   }
-  window.localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(session))
+  window.localStorage.setItem(AUTH_STORAGE_KEYS[resolveAuthSessionScope(scope)], JSON.stringify(session))
 }
 
-export function clearAuthSession() {
+export function clearAuthSession(scope?: AuthSessionScope) {
   if (!canUseStorage()) {
     return
   }
-  window.localStorage.removeItem(AUTH_STORAGE_KEY)
+  window.localStorage.removeItem(AUTH_STORAGE_KEYS[resolveAuthSessionScope(scope)])
+  window.localStorage.removeItem(LEGACY_AUTH_STORAGE_KEY)
 }
 
-export function getAccessToken() {
-  return readAuthSession()?.access_token || ''
+export function getAccessToken(scope?: AuthSessionScope) {
+  return readScopedAuthSession(scope)?.access_token || ''
 }
 
 api.interceptors.request.use((config) => {
@@ -484,6 +507,13 @@ async function requestWithState<T>(request: () => Promise<T>, options: RequestSt
 export async function login(payload: AuthLoginPayload) {
   return requestWithState(async () => {
     const { data } = await api.post<AuthLoginResponse>('/auth/login', payload, { timeout: AUTH_REQUEST_TIMEOUT })
+    return data
+  }, { affectGlobalState: false })
+}
+
+export async function resetAuthPassword(payload: AuthPasswordResetPayload) {
+  return requestWithState(async () => {
+    const { data } = await api.post<AuthLoginResponse>('/auth/password/reset', payload, { timeout: AUTH_REQUEST_TIMEOUT })
     return data
   }, { affectGlobalState: false })
 }
@@ -896,34 +926,6 @@ export async function previewImportSupplierQuotes(payload: SupplierQuoteImportPr
 export async function invalidateSupplierQuote(recordId: number, payload: SupplierQuoteInvalidatePayload = {}) {
   return requestWithState(async () => {
     const { data } = await api.post<SupplierQuoteInvalidateResponse>(`/supplier-prices/${recordId}/invalidate`, payload)
-    return data
-  }, { affectGlobalState: false })
-}
-
-export async function createSupplierRegistrationRequest(payload: SupplierRegistrationCreatePayload) {
-  return requestWithState(async () => {
-    const { data } = await api.post<SupplierRegistrationRequestItem>('/supplier-registration-requests', payload)
-    return data
-  }, { affectGlobalState: false })
-}
-
-export async function fetchSupplierRegistrationRequests(params: { status?: string; keyword?: string } = {}) {
-  return requestWithState(async () => {
-    const { data } = await api.get<SupplierRegistrationRequestListResponse>('/supplier-registration-requests', { params })
-    return data
-  }, { affectGlobalState: false })
-}
-
-export async function approveSupplierRegistrationRequest(requestId: number, payload: SupplierRegistrationReviewPayload) {
-  return requestWithState(async () => {
-    const { data } = await api.post<SupplierRegistrationRequestItem>(`/supplier-registration-requests/${requestId}/approve`, payload)
-    return data
-  }, { affectGlobalState: false })
-}
-
-export async function rejectSupplierRegistrationRequest(requestId: number, payload: SupplierRegistrationReviewPayload) {
-  return requestWithState(async () => {
-    const { data } = await api.post<SupplierRegistrationRequestItem>(`/supplier-registration-requests/${requestId}/reject`, payload)
     return data
   }, { affectGlobalState: false })
 }

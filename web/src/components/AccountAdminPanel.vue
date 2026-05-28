@@ -14,11 +14,12 @@
 
     <div class="account-admin-toolbar">
       <el-input v-model="keyword" clearable placeholder="搜索账号、显示名、供应商、联系人" />
-      <el-select v-model="roleFilter" placeholder="角色">
-        <el-option label="全部角色" value="all" />
-        <el-option label="管理员" value="admin" />
-        <el-option label="供应商" value="supplier" />
-      </el-select>
+        <el-select v-model="roleFilter" placeholder="角色">
+          <el-option label="全部角色" value="all" />
+          <el-option label="管理员" value="admin" />
+          <el-option label="采购账号" value="procurement" />
+          <el-option label="供应商" value="supplier" />
+        </el-select>
       <el-select v-model="statusFilter" placeholder="状态">
         <el-option label="全部状态" value="all" />
         <el-option label="启用中" value="active" />
@@ -92,20 +93,38 @@
             <span>角色</span>
             <el-select v-model="accountForm.role" placeholder="选择角色" @change="handleRoleChange">
               <el-option label="管理员" value="admin" />
+              <el-option label="采购账号" value="procurement" />
               <el-option label="供应商" value="supplier" />
             </el-select>
           </label>
-          <label>
+          <label v-if="accountForm.role === 'supplier'">
             <span>绑定供应商</span>
             <el-select
               v-model="accountForm.supplier_id"
               clearable
               filterable
-              :disabled="accountForm.role !== 'supplier'"
               placeholder="供应商账号必须绑定"
             >
               <el-option v-for="item in suppliers" :key="item.id" :label="item.supplier_name" :value="item.id" />
             </el-select>
+          </label>
+          <label v-if="accountForm.role === 'procurement'">
+            <span>租户供应商</span>
+            <el-select
+              v-model="accountForm.procurement_supplier_ids"
+              multiple
+              clearable
+              filterable
+              collapse-tags
+              collapse-tags-tooltip
+              placeholder="至少选择一家供应商"
+            >
+              <el-option v-for="item in suppliers" :key="`procurement-supplier-${item.id}`" :label="item.supplier_name" :value="item.id" />
+            </el-select>
+          </label>
+          <label>
+            <span>默认行情地区</span>
+            <el-input v-model="accountForm.market_scope" placeholder="例如：南京、南京市场、河南本地市场、全国" />
           </label>
           <label>
             <span>{{ selectedUserId ? '重置密码' : '初始密码' }}</span>
@@ -189,7 +208,9 @@ const accountForm = reactive({
   password: '',
   role: 'supplier' as AuthUserRole,
   supplier_id: null as number | null,
+  procurement_supplier_ids: [] as number[],
   display_name: '',
+  market_scope: '',
   is_active: true,
 })
 
@@ -200,12 +221,24 @@ const supplierCount = computed(() => users.value.filter((item) => item.role === 
 const inactiveCount = computed(() => users.value.filter((item) => item.is_active === false).length)
 
 function roleLabel(role: AuthUserRole) {
-  return role === 'admin' ? '管理员' : '供应商'
+  if (role === 'admin') return '管理员'
+  if (role === 'procurement') return '采购账号'
+  return '供应商'
 }
 
 function accountScopeLabel(item: AuthUserItem) {
-  if (item.role === 'admin') return '全局权限'
-  return item.supplier_profile?.supplier_name || '未绑定供应商'
+  const marketScope = String(item.market_scope || '').trim()
+  if (item.role === 'admin') return marketScope || '全局权限'
+  if (item.role === 'procurement') {
+    const supplierCount = (item.procurement_supplier_ids || []).length
+    if (marketScope && supplierCount > 0) return `${marketScope} · ${supplierCount} 家供应商`
+    if (supplierCount > 0) return `${supplierCount} 家供应商`
+    return marketScope || '未绑定供应商'
+  }
+  if (marketScope && item.supplier_profile?.supplier_name) {
+    return `${item.supplier_profile.supplier_name} · ${marketScope}`
+  }
+  return marketScope || item.supplier_profile?.supplier_name || '未绑定供应商'
 }
 
 function formatTime(value?: string | null) {
@@ -216,7 +249,14 @@ function formatTime(value?: string | null) {
 function handleRoleChange() {
   if (accountForm.role === 'admin') {
     accountForm.supplier_id = null
+    accountForm.procurement_supplier_ids = []
+    return
   }
+  if (accountForm.role === 'procurement') {
+    accountForm.supplier_id = null
+    return
+  }
+  accountForm.procurement_supplier_ids = []
 }
 
 function fillForm(item: AuthUserItem | null) {
@@ -225,7 +265,9 @@ function fillForm(item: AuthUserItem | null) {
   accountForm.password = ''
   accountForm.role = item?.role || 'supplier'
   accountForm.supplier_id = item?.role === 'supplier' ? item.supplier_id ?? null : null
+  accountForm.procurement_supplier_ids = item?.role === 'procurement' ? [...(item.procurement_supplier_ids || [])] : []
   accountForm.display_name = item?.display_name || ''
+  accountForm.market_scope = item?.market_scope || ''
   accountForm.is_active = item?.is_active == null ? true : Boolean(item.is_active)
 }
 
@@ -246,6 +288,10 @@ function validateBeforeSave() {
   }
   if (accountForm.role === 'supplier' && !accountForm.supplier_id) {
     ElMessage.warning('供应商账号必须绑定供应商')
+    return false
+  }
+  if (accountForm.role === 'procurement' && accountForm.procurement_supplier_ids.length === 0) {
+    ElMessage.warning('采购账号至少绑定一家供应商')
     return false
   }
   if (!selectedUserId.value && !password) {
@@ -299,13 +345,15 @@ async function saveAccount() {
   if (!validateBeforeSave()) return
   saving.value = true
   try {
-    const payload = {
-      username: accountForm.username.trim(),
-      role: accountForm.role,
-      supplier_id: accountForm.role === 'supplier' ? accountForm.supplier_id : null,
-      display_name: accountForm.display_name.trim() || undefined,
-      is_active: accountForm.is_active,
-    }
+      const payload = {
+        username: accountForm.username.trim(),
+        role: accountForm.role,
+        supplier_id: accountForm.role === 'supplier' ? accountForm.supplier_id : null,
+        procurement_supplier_ids: accountForm.role === 'procurement' ? accountForm.procurement_supplier_ids : [],
+        display_name: accountForm.display_name.trim() || undefined,
+        market_scope: accountForm.market_scope.trim() || undefined,
+        is_active: accountForm.is_active,
+      }
     if (selectedUserId.value) {
       await updateAuthUser(selectedUserId.value, {
         ...payload,
@@ -335,13 +383,15 @@ async function toggleAccountActive(item: AuthUserItem) {
   }
   actionUserId.value = item.id
   try {
-    await updateAuthUser(item.id, {
-      username: item.username,
-      role: item.role,
-      supplier_id: item.role === 'supplier' ? item.supplier_id ?? null : null,
-      display_name: item.display_name || undefined,
-      is_active: item.is_active === false,
-    })
+      await updateAuthUser(item.id, {
+        username: item.username,
+        role: item.role,
+        supplier_id: item.role === 'supplier' ? item.supplier_id ?? null : null,
+        procurement_supplier_ids: item.role === 'procurement' ? (item.procurement_supplier_ids || []) : [],
+        display_name: item.display_name || undefined,
+        market_scope: item.market_scope || undefined,
+        is_active: item.is_active === false,
+      })
     ElMessage.success(item.is_active === false ? '账号已启用' : '账号已停用')
     await loadAll()
   } catch (error) {

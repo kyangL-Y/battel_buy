@@ -2575,14 +2575,15 @@ body::after {
 
 .menu-actions {
   display: grid;
-  grid-template-columns: 132px 132px minmax(172px, 220px);
-  gap: 12px;
-  align-items: end;
-  padding-top: 10px;
-  padding: 12px;
+  grid-template-columns: minmax(118px, 132px) minmax(118px, 132px) minmax(188px, 1fr);
+  gap: 14px;
+  align-items: stretch;
+  padding: 14px;
   border: 1px solid rgba(148, 163, 184, 0.18);
-  border-radius: 16px;
-  background: rgba(247, 248, 250, 0.88);
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(248, 250, 252, 0.9)),
+    rgba(247, 248, 250, 0.88);
 }
 
 .menu-action-field,
@@ -2592,18 +2593,20 @@ body::after {
 
 .menu-action-field {
   display: grid;
-  gap: 6px;
-  padding: 8px 10px;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.92);
-  border: 1px solid rgba(148, 163, 184, 0.14);
+  gap: 8px;
+  padding: 10px 12px 12px;
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.94));
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.82);
 }
 
 .menu-action-label {
   font-size: 11px;
   line-height: 1;
   color: var(--ink-500);
-  font-weight: 600;
+  font-weight: 700;
+  letter-spacing: 0.02em;
   padding-left: 2px;
 }
 
@@ -2612,8 +2615,32 @@ body::after {
   min-width: 0;
 }
 
-.menu-action-field :deep(.el-input-number__wrapper) {
+.menu-action-field :deep(.el-input-number__wrapper),
+.menu-action-field :deep(.el-input__wrapper),
+.menu-action-field :deep(.el-select__wrapper) {
   width: 100%;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 0 0 1px rgba(203, 213, 225, 0.92) inset;
+}
+
+.menu-action-field :deep(.el-input-number__decrease),
+.menu-action-field :deep(.el-input-number__increase) {
+  min-width: 34px;
+}
+
+.menu-action-field :deep(.el-input-number__wrapper:hover),
+.menu-action-field :deep(.el-input__wrapper:hover),
+.menu-action-field :deep(.el-select__wrapper:hover) {
+  box-shadow: 0 0 0 1px rgba(147, 197, 253, 0.96) inset;
+}
+
+.menu-action-field :deep(.el-input-number__wrapper.is-focus),
+.menu-action-field :deep(.el-input__wrapper.is-focus),
+.menu-action-field :deep(.el-select__wrapper.is-focused) {
+  box-shadow:
+    0 0 0 2px rgba(37, 99, 235, 0.12),
+    0 0 0 1px rgba(37, 99, 235, 0.38) inset;
 }
 
 .menu-submit-bar {
@@ -3639,8 +3666,8 @@ body::after {
 
   .menu-actions {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 6px;
-    padding: 6px;
+    gap: 10px;
+    padding: 10px;
   }
 
   .menu-command-panel {
@@ -3658,9 +3685,9 @@ body::after {
   }
 
   .menu-action-field {
-    gap: 4px;
-    padding: 6px 8px;
-    border-radius: 10px;
+    gap: 6px;
+    padding: 8px 10px 10px;
+    border-radius: 14px;
   }
 
   .menu-submit-bar {

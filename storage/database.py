@@ -25,7 +25,9 @@ TABLE_ORDER = [
     "local_compare_records",
     "auth_users",
     "suppliers",
+    "procurement_user_suppliers",
     "supplier_registration_requests",
+    "procurement_registration_requests",
     "supplier_price_records",
     "supplier_settlement_records",
     "supplier_quote_actions",
@@ -175,12 +177,29 @@ AUTH_USER_COLUMNS = {
     "role": "TEXT",
     "supplier_id": "INTEGER",
     "display_name": "TEXT",
+    "market_scope": "TEXT",
     "is_active": "INTEGER",
     "is_deleted": "INTEGER",
     "last_login_at": "TEXT",
     "deleted_at": "TEXT",
     "deleted_by": "TEXT",
     "deleted_username": "TEXT",
+    "updated_at": "TEXT",
+}
+
+PROCUREMENT_REGISTRATION_REQUEST_COLUMNS = {
+    "company_name": "TEXT",
+    "contact_name": "TEXT",
+    "contact_phone": "TEXT",
+    "username": "TEXT",
+    "market_scope": "TEXT",
+    "requested_supplier_names": "TEXT",
+    "status": "TEXT",
+    "review_notes": "TEXT",
+    "auth_user_id": "INTEGER",
+    "reviewed_by": "TEXT",
+    "reviewed_at": "TEXT",
+    "created_at": "TEXT",
     "updated_at": "TEXT",
 }
 
@@ -364,7 +383,28 @@ class Database:
                 )
                 conn.exec_driver_sql(
                     """
+                    CREATE TABLE IF NOT EXISTS procurement_user_suppliers (
+                        id BIGINT PRIMARY KEY AUTO_INCREMENT,
+                        user_id BIGINT NOT NULL,
+                        supplier_id BIGINT NOT NULL,
+                        created_at VARCHAR(64) NOT NULL,
+                        CONSTRAINT fk_procurement_user_suppliers_user FOREIGN KEY (user_id) REFERENCES auth_users(id),
+                        CONSTRAINT fk_procurement_user_suppliers_supplier FOREIGN KEY (supplier_id) REFERENCES suppliers(id)
+                    )
+                    """
+                )
+                conn.exec_driver_sql(
+                    """
                     CREATE TABLE IF NOT EXISTS supplier_registration_requests (
+                        id BIGINT PRIMARY KEY AUTO_INCREMENT,
+                        company_name VARCHAR(255) NOT NULL,
+                        created_at VARCHAR(64) NOT NULL
+                    )
+                    """
+                )
+                conn.exec_driver_sql(
+                    """
+                    CREATE TABLE IF NOT EXISTS procurement_registration_requests (
                         id BIGINT PRIMARY KEY AUTO_INCREMENT,
                         company_name VARCHAR(255) NOT NULL,
                         created_at VARCHAR(64) NOT NULL
@@ -471,7 +511,28 @@ class Database:
                 )
                 conn.exec_driver_sql(
                     """
+                    CREATE TABLE IF NOT EXISTS procurement_user_suppliers (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        user_id INTEGER NOT NULL,
+                        supplier_id INTEGER NOT NULL,
+                        created_at TEXT NOT NULL,
+                        FOREIGN KEY(user_id) REFERENCES auth_users(id),
+                        FOREIGN KEY(supplier_id) REFERENCES suppliers(id)
+                    )
+                    """
+                )
+                conn.exec_driver_sql(
+                    """
                     CREATE TABLE IF NOT EXISTS supplier_registration_requests (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        company_name TEXT NOT NULL,
+                        created_at TEXT NOT NULL
+                    )
+                    """
+                )
+                conn.exec_driver_sql(
+                    """
+                    CREATE TABLE IF NOT EXISTS procurement_registration_requests (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
                         company_name TEXT NOT NULL,
                         created_at TEXT NOT NULL
@@ -516,7 +577,13 @@ class Database:
             self._ensure_columns(conn, "local_compare_records", LOCAL_COMPARE_COLUMNS)
             self._ensure_columns(conn, "auth_users", AUTH_USER_COLUMNS)
             self._ensure_columns(conn, "suppliers", SUPPLIER_COLUMNS)
+            self._ensure_columns(conn, "procurement_user_suppliers", {
+                "user_id": "INTEGER",
+                "supplier_id": "INTEGER",
+                "created_at": "TEXT",
+            })
             self._ensure_columns(conn, "supplier_registration_requests", SUPPLIER_REGISTRATION_REQUEST_COLUMNS)
+            self._ensure_columns(conn, "procurement_registration_requests", PROCUREMENT_REGISTRATION_REQUEST_COLUMNS)
             self._ensure_columns(conn, "supplier_price_records", SUPPLIER_PRICE_COLUMNS)
             self._ensure_columns(conn, "supplier_quote_actions", SUPPLIER_QUOTE_ACTION_COLUMNS)
             self._ensure_columns(conn, "supplier_settlement_records", SUPPLIER_SETTLEMENT_COLUMNS)
@@ -540,7 +607,9 @@ class Database:
                 "products",
                 "auth_users",
                 "suppliers",
+                "procurement_user_suppliers",
                 "supplier_registration_requests",
+                "procurement_registration_requests",
                 "supplier_price_records",
                 "supplier_quote_actions",
                 "supplier_settlement_records",
@@ -585,12 +654,41 @@ class Database:
                 """
             )
         if "idx_auth_users_role_supplier" not in existing["auth_users"]:
-            conn.exec_driver_sql(
-                """
-                CREATE INDEX idx_auth_users_role_supplier
-                ON auth_users (role, supplier_id)
-                """
-            )
+                conn.exec_driver_sql(
+                    """
+                    CREATE INDEX idx_auth_users_role_supplier
+                    ON auth_users (role, supplier_id)
+                    """
+                )
+        if "idx_procurement_user_suppliers_user_supplier" not in existing.get("procurement_user_suppliers", set()):
+            if self.engine.dialect.name == "mysql":
+                conn.exec_driver_sql(
+                    """
+                    CREATE UNIQUE INDEX idx_procurement_user_suppliers_user_supplier
+                    ON procurement_user_suppliers (user_id, supplier_id)
+                    """
+                )
+                if "idx_procurement_user_suppliers_supplier" not in existing.get("procurement_user_suppliers", set()):
+                    conn.exec_driver_sql(
+                        """
+                        CREATE INDEX idx_procurement_user_suppliers_supplier
+                        ON procurement_user_suppliers (supplier_id, user_id)
+                        """
+                    )
+            else:
+                conn.exec_driver_sql(
+                    """
+                    CREATE UNIQUE INDEX idx_procurement_user_suppliers_user_supplier
+                    ON procurement_user_suppliers (user_id, supplier_id)
+                    """
+                )
+                if "idx_procurement_user_suppliers_supplier" not in existing.get("procurement_user_suppliers", set()):
+                    conn.exec_driver_sql(
+                        """
+                        CREATE INDEX idx_procurement_user_suppliers_supplier
+                        ON procurement_user_suppliers (supplier_id, user_id)
+                        """
+                    )
         if "idx_suppliers_name" not in existing["suppliers"]:
             conn.exec_driver_sql(
                 """
@@ -613,6 +711,18 @@ class Database:
                 else """
                 CREATE INDEX idx_supplier_registration_requests_status_created_id
                 ON supplier_registration_requests (status, created_at, id)
+                """
+            )
+        if "idx_procurement_registration_requests_status_created_id" not in existing["procurement_registration_requests"]:
+            conn.exec_driver_sql(
+                """
+                CREATE INDEX idx_procurement_registration_requests_status_created_id
+                ON procurement_registration_requests (status(64), created_at, id)
+                """
+                if self.backend == "mysql"
+                else """
+                CREATE INDEX idx_procurement_registration_requests_status_created_id
+                ON procurement_registration_requests (status, created_at, id)
                 """
             )
         if "idx_supplier_price_records_identity_quoted_id" not in existing["supplier_price_records"]:
@@ -709,8 +819,8 @@ class Database:
 
     def _normalize_auth_user_role(self, role: str | None) -> str:
         normalized_role = str(role or "").strip().lower()
-        if normalized_role not in {"admin", "supplier"}:
-            raise ValueError("role must be admin or supplier")
+        if normalized_role not in {"admin", "supplier", "procurement"}:
+            raise ValueError("role must be admin, supplier or procurement")
         return normalized_role
 
     def _normalize_auth_username(self, username: str | None) -> str:
@@ -729,6 +839,7 @@ class Database:
         password_hash: str | None = None,
         supplier_id: int | None = None,
         display_name: str | None = None,
+        market_scope: str | None = None,
         is_active: bool = True,
         user_id: int | None = None,
     ) -> int:
@@ -737,7 +848,7 @@ class Database:
         normalized_role = self._normalize_auth_user_role(role)
         if normalized_role == "supplier" and supplier_id is None:
             raise ValueError("supplier role requires supplier_id")
-        if normalized_role == "admin":
+        if normalized_role in {"admin", "procurement"}:
             supplier_id = None
 
         now = datetime.utcnow().isoformat()
@@ -788,6 +899,7 @@ class Database:
                             role = :role,
                             supplier_id = :supplier_id,
                             display_name = :display_name,
+                            market_scope = :market_scope,
                             is_active = :is_active,
                             is_deleted = 0,
                             deleted_at = NULL,
@@ -804,6 +916,7 @@ class Database:
                         "role": normalized_role,
                         "supplier_id": int(supplier_id) if supplier_id is not None else None,
                         "display_name": str(display_name or "").strip() or None,
+                        "market_scope": str(market_scope or "").strip() or None,
                         "is_active": 1 if is_active else 0,
                         "updated_at": now,
                     },
@@ -818,11 +931,11 @@ class Database:
                     """
                     INSERT INTO auth_users (
                         username, password_hash, role, supplier_id,
-                        display_name, is_active, is_deleted, last_login_at,
+                        display_name, market_scope, is_active, is_deleted, last_login_at,
                         deleted_at, deleted_by, deleted_username, created_at, updated_at
                     ) VALUES (
                         :username, :password_hash, :role, :supplier_id,
-                        :display_name, :is_active, :is_deleted, :last_login_at,
+                        :display_name, :market_scope, :is_active, :is_deleted, :last_login_at,
                         :deleted_at, :deleted_by, :deleted_username, :created_at, :updated_at
                     )
                     """
@@ -833,6 +946,7 @@ class Database:
                     "role": normalized_role,
                     "supplier_id": int(supplier_id) if supplier_id is not None else None,
                     "display_name": str(display_name or "").strip() or None,
+                    "market_scope": str(market_scope or "").strip() or None,
                     "is_active": 1 if is_active else 0,
                     "is_deleted": 0,
                     "last_login_at": None,
@@ -876,6 +990,7 @@ class Database:
             u.role,
             u.supplier_id,
             u.display_name,
+            u.market_scope,
             u.is_active,
             u.is_deleted,
             u.last_login_at,
@@ -934,7 +1049,7 @@ class Database:
         if not include_deleted:
             where_clauses.append("COALESCE(u.is_deleted, 0) = 0")
         normalized_role = str(role or "").strip().lower()
-        if normalized_role in {"admin", "supplier"}:
+        if normalized_role in {"admin", "supplier", "procurement"}:
             where_clauses.append("u.role = :role")
             params["role"] = normalized_role
         normalized_status = str(active_status or "").strip().lower()
@@ -950,6 +1065,7 @@ class Database:
                 (
                     LOWER(COALESCE(u.username, '')) LIKE :keyword_like
                     OR LOWER(COALESCE(u.display_name, '')) LIKE :keyword_like
+                    OR LOWER(COALESCE(u.market_scope, '')) LIKE :keyword_like
                     OR LOWER(COALESCE(s.supplier_name, '')) LIKE :keyword_like
                     OR LOWER(COALESCE(s.contact_name, '')) LIKE :keyword_like
                     OR LOWER(COALESCE(s.contact_phone, '')) LIKE :keyword_like
@@ -966,6 +1082,7 @@ class Database:
                 u.role,
                 u.supplier_id,
                 u.display_name,
+                u.market_scope,
                 u.is_active,
                 u.is_deleted,
                 u.last_login_at,
@@ -993,6 +1110,52 @@ class Database:
             """,
             params,
         )
+
+    def get_procurement_user_supplier_ids(self, user_id: int) -> list[int]:
+        rows = self._read_sql(
+            """
+            SELECT supplier_id
+            FROM procurement_user_suppliers
+            WHERE user_id = :user_id
+            ORDER BY supplier_id ASC
+            """,
+            {"user_id": int(user_id)},
+        )
+        if rows.empty:
+            return []
+        return [
+            int(value)
+            for value in rows["supplier_id"].tolist()
+            if value is not None and str(value).strip()
+        ]
+
+    def replace_procurement_user_suppliers(self, user_id: int, supplier_ids: list[int] | tuple[int, ...]) -> None:
+        normalized_user_id = int(user_id)
+        normalized_supplier_ids = sorted({
+            int(supplier_id)
+            for supplier_id in (supplier_ids or [])
+            if supplier_id is not None and int(supplier_id) > 0
+        })
+        now = datetime.utcnow().isoformat()
+        with self.connect() as conn:
+            conn.execute(
+                text("DELETE FROM procurement_user_suppliers WHERE user_id = :user_id"),
+                {"user_id": normalized_user_id},
+            )
+            for supplier_id in normalized_supplier_ids:
+                conn.execute(
+                    text(
+                        """
+                        INSERT INTO procurement_user_suppliers (user_id, supplier_id, created_at)
+                        VALUES (:user_id, :supplier_id, :created_at)
+                        """
+                    ),
+                    {
+                        "user_id": normalized_user_id,
+                        "supplier_id": supplier_id,
+                        "created_at": now,
+                    },
+                )
 
     def delete_auth_user(self, user_id: int, deleted_by: str | None = None) -> bool:
         now = datetime.utcnow().isoformat()
@@ -2088,6 +2251,66 @@ class Database:
             )
             return int(result.lastrowid)
 
+    def create_procurement_registration_request(
+        self,
+        company_name: str,
+        contact_name: str | None = None,
+        contact_phone: str | None = None,
+        username: str | None = None,
+        market_scope: str | None = None,
+        requested_supplier_names: str | None = None,
+    ) -> int:
+        normalized_company_name = str(company_name or "").strip()
+        normalized_username = self._normalize_auth_username(username)
+        if not normalized_company_name:
+            raise ValueError("company_name is required")
+        existing_auth = self.get_auth_user_by_username(normalized_username)
+        if not existing_auth.empty:
+            raise ValueError("username already exists")
+        pending_request = self._read_sql(
+            """
+            SELECT id
+            FROM procurement_registration_requests
+            WHERE username = :username
+              AND COALESCE(status, 'pending') = 'pending'
+            LIMIT 1
+            """,
+            {"username": normalized_username},
+        )
+        if not pending_request.empty:
+            raise ValueError("registration request already pending")
+        now = datetime.utcnow().isoformat()
+        with self.connect() as conn:
+            result = conn.execute(
+                text(
+                    """
+                    INSERT INTO procurement_registration_requests (
+                        company_name, contact_name, contact_phone, username, market_scope, requested_supplier_names,
+                        status, review_notes, auth_user_id, reviewed_by, reviewed_at, created_at, updated_at
+                    ) VALUES (
+                        :company_name, :contact_name, :contact_phone, :username, :market_scope, :requested_supplier_names,
+                        :status, :review_notes, :auth_user_id, :reviewed_by, :reviewed_at, :created_at, :updated_at
+                    )
+                    """
+                ),
+                {
+                    "company_name": normalized_company_name,
+                    "contact_name": str(contact_name or "").strip() or None,
+                    "contact_phone": str(contact_phone or "").strip() or None,
+                    "username": normalized_username,
+                    "market_scope": str(market_scope or "").strip() or None,
+                    "requested_supplier_names": str(requested_supplier_names or "").strip() or None,
+                    "status": "pending",
+                    "review_notes": None,
+                    "auth_user_id": None,
+                    "reviewed_by": None,
+                    "reviewed_at": None,
+                    "created_at": now,
+                    "updated_at": now,
+                },
+            )
+            return int(result.lastrowid)
+
     def get_supplier_registration_requests(
         self,
         status: str | None = None,
@@ -2149,6 +2372,68 @@ class Database:
             params,
         )
 
+    def get_procurement_registration_requests(
+        self,
+        status: str | None = None,
+        keyword: str | None = None,
+    ) -> pd.DataFrame:
+        where_clauses: list[str] = []
+        params: dict[str, Any] = {}
+        normalized_status = str(status or "").strip().lower()
+        if normalized_status:
+            where_clauses.append("LOWER(COALESCE(r.status, 'pending')) = :status")
+            params["status"] = normalized_status
+        normalized_keyword = str(keyword or "").strip().lower()
+        if normalized_keyword:
+            params["keyword_like"] = f"%{normalized_keyword}%"
+            where_clauses.append(
+                """
+                (
+                    LOWER(COALESCE(r.company_name, '')) LIKE :keyword_like
+                    OR LOWER(COALESCE(r.contact_name, '')) LIKE :keyword_like
+                    OR LOWER(COALESCE(r.contact_phone, '')) LIKE :keyword_like
+                    OR LOWER(COALESCE(r.username, '')) LIKE :keyword_like
+                    OR LOWER(COALESCE(r.market_scope, '')) LIKE :keyword_like
+                    OR LOWER(COALESCE(r.requested_supplier_names, '')) LIKE :keyword_like
+                    OR LOWER(COALESCE(u.display_name, '')) LIKE :keyword_like
+                )
+                """
+            )
+        where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
+        return self._read_sql(
+            f"""
+            SELECT
+                r.id,
+                r.company_name,
+                r.contact_name,
+                r.contact_phone,
+                r.username,
+                r.market_scope,
+                r.requested_supplier_names,
+                COALESCE(r.status, 'pending') AS status,
+                r.review_notes,
+                r.auth_user_id,
+                r.reviewed_by,
+                r.reviewed_at,
+                r.created_at,
+                r.updated_at,
+                u.display_name
+            FROM procurement_registration_requests r
+            LEFT JOIN auth_users u ON u.id = r.auth_user_id
+            {where_sql}
+            ORDER BY
+                CASE COALESCE(r.status, 'pending')
+                    WHEN 'pending' THEN 0
+                    WHEN 'approved' THEN 1
+                    WHEN 'rejected' THEN 2
+                    ELSE 3
+                END,
+                r.created_at DESC,
+                r.id DESC
+            """,
+            params,
+        )
+
     def update_supplier_registration_request(
         self,
         request_id: int,
@@ -2187,6 +2472,51 @@ class Database:
                     "status": normalized_status,
                     "review_notes": str(review_notes or "").strip() or None,
                     "supplier_id": int(supplier_id) if supplier_id else None,
+                    "reviewed_by": str(reviewed_by or "").strip() or None,
+                    "reviewed_at": now if normalized_status in {"approved", "rejected"} else None,
+                    "updated_at": now,
+                },
+            )
+            return int(request_id)
+
+    def update_procurement_registration_request(
+        self,
+        request_id: int,
+        *,
+        status: str,
+        review_notes: str | None = None,
+        reviewed_by: str | None = None,
+        auth_user_id: int | None = None,
+    ) -> int | None:
+        normalized_status = str(status or "").strip().lower()
+        if normalized_status not in {"pending", "approved", "rejected"}:
+            raise ValueError("invalid registration status")
+        now = datetime.utcnow().isoformat()
+        with self.connect() as conn:
+            existing = conn.execute(
+                text("SELECT id FROM procurement_registration_requests WHERE id = :request_id"),
+                {"request_id": int(request_id)},
+            ).mappings().first()
+            if existing is None:
+                return None
+            conn.execute(
+                text(
+                    """
+                    UPDATE procurement_registration_requests
+                    SET status = :status,
+                        review_notes = :review_notes,
+                        auth_user_id = :auth_user_id,
+                        reviewed_by = :reviewed_by,
+                        reviewed_at = :reviewed_at,
+                        updated_at = :updated_at
+                    WHERE id = :request_id
+                    """
+                ),
+                {
+                    "request_id": int(request_id),
+                    "status": normalized_status,
+                    "review_notes": str(review_notes or "").strip() or None,
+                    "auth_user_id": int(auth_user_id) if auth_user_id else None,
                     "reviewed_by": str(reviewed_by or "").strip() or None,
                     "reviewed_at": now if normalized_status in {"approved", "rejected"} else None,
                     "updated_at": now,

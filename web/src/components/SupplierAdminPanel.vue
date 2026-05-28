@@ -233,21 +233,9 @@
         <strong>供应商管理</strong>
         <small>维护正式供应商、账号与报价链路</small>
       </button>
-      <button
-        type="button"
-        :class="{ active: procurementAdminView === 'applications' }"
-        @click="procurementAdminView = 'applications'"
-      >
-        <strong>注册审核</strong>
-        <small>处理新申请并转正式供应商</small>
-      </button>
     </div>
 
-    <SupplierRegistrationAdminPanel
-      v-if="isProcurementSupplierManagement && isAdminSession && procurementAdminView === 'applications'"
-    />
-
-    <div v-else-if="isSupplierSession && isSettlementWorkspace" class="supplier-my-settlement-page">
+    <div v-if="isSupplierSession && isSettlementWorkspace" class="supplier-my-settlement-page">
       <div class="supplier-my-settlement-shell">
         <div class="supplier-my-settlement-hero">
           <div class="supplier-my-settlement-hero-copy">
@@ -2063,7 +2051,6 @@ import type {
   SupplierSettlementItem,
   SupplierSettlementStatus,
 } from '../types'
-import SupplierRegistrationAdminPanel from './SupplierRegistrationAdminPanel.vue'
 
 const props = defineProps<{
   productOptions: ProductOptionItem[]
@@ -2080,7 +2067,7 @@ const props = defineProps<{
   mobileTask?: MobileSupplierTask | null
 }>()
 const mobile = computed(() => props.mobile)
-const procurementAdminView = ref<'suppliers' | 'applications'>('suppliers')
+const procurementAdminView = ref<'suppliers'>('suppliers')
 
 const emit = defineEmits<{
   (event: 'select-product', value: string): void

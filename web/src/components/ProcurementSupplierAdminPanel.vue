@@ -4,7 +4,7 @@
       <div>
         <p class="panel-kicker">采购端</p>
         <h2>供应商管理</h2>
-        <p>这里只维护正式供应商、账号状态和注册审核，不承载报价导入、历史、结算等供应平台工作区。</p>
+        <p>这里只维护正式供应商和账号状态，不承载报价导入、历史、结算等供应平台工作区。</p>
       </div>
       <div class="procurement-head-actions">
         <el-button plain :loading="loading" @click="loadAll">刷新数据</el-button>
@@ -65,8 +65,8 @@
       </article>
       <article>
         <span>登录后第二步</span>
-        <strong>处理注册审核</strong>
-        <small>新申请供应商审核通过后，直接转入正式供应商档案。</small>
+        <strong>分配供应商账号</strong>
+        <small>采购在后台直接给正式供应商分配账号。</small>
       </article>
       <article>
         <span>登录后第三步</span>
@@ -76,7 +76,7 @@
     </section>
 
     <el-alert
-      v-else-if="effectiveAuthRole !== 'admin'"
+      v-else-if="!canUseProcurementSupplierAdmin"
       class="procurement-permission-alert"
       type="warning"
       :closable="false"
@@ -85,14 +85,10 @@
       show-icon
     />
 
-    <div v-else class="procurement-view-switch">
+    <div v-else-if="isAdminSession" class="procurement-view-switch">
       <button type="button" :class="{ active: currentView === 'archive' }" @click="currentView = 'archive'">
         <strong>供应商管理</strong>
         <small>维护正式供应商与账号</small>
-      </button>
-      <button type="button" :class="{ active: currentView === 'applications' }" @click="currentView = 'applications'">
-        <strong>注册审核</strong>
-        <small>处理新申请并转正式供应商</small>
       </button>
       <button type="button" :class="{ active: currentView === 'accounts' }" @click="currentView = 'accounts'">
         <strong>账号管理</strong>
@@ -100,13 +96,12 @@
       </button>
     </div>
 
-    <SupplierRegistrationAdminPanel v-if="effectiveAuthRole === 'admin' && currentView === 'applications'" />
     <AccountAdminPanel
-      v-else-if="effectiveAuthRole === 'admin' && currentView === 'accounts'"
+      v-if="isAdminSession && currentView === 'accounts'"
       :current-user-id="localAuthSession?.user.id"
     />
 
-    <div v-else-if="effectiveAuthRole === 'admin'" class="procurement-layout">
+    <div v-else-if="canUseProcurementSupplierAdmin" class="procurement-layout">
       <section class="procurement-list-shell">
         <div class="procurement-list-head">
           <strong>供应商管理</strong>
@@ -165,7 +160,7 @@
           </button>
           <div v-if="!filteredSuppliers.length" class="procurement-empty">
             <strong>还没有供应商</strong>
-            <p>先创建供应商，后续注册审核通过后也会落到这里。</p>
+            <p>先创建供应商，再分配供应商账号。</p>
           </div>
         </div>
       </section>
@@ -278,7 +273,6 @@ import {
   writeAuthSession,
 } from '../api'
 import AccountAdminPanel from './AccountAdminPanel.vue'
-import SupplierRegistrationAdminPanel from './SupplierRegistrationAdminPanel.vue'
 import type { AuthLoginResponse, AuthUserRole, SupplierItem, SupplierOverviewResponse, SupplierUpdatePayload } from '../types'
 
 const props = defineProps<{
@@ -287,12 +281,14 @@ const props = defineProps<{
 
 const ACCOUNT_USERNAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.@-]{2,63}$/
 const MIN_ACCOUNT_PASSWORD_LENGTH = 8
-const currentView = ref<'archive' | 'applications' | 'accounts'>('archive')
+const currentView = ref<'archive' | 'accounts'>('archive')
 const loading = ref(false)
 const saving = ref(false)
 const authSubmitting = ref(false)
 const localAuthSession = ref<AuthLoginResponse | null>(readAuthSession())
 const effectiveAuthRole = computed<AuthUserRole | null>(() => props.authRole || localAuthSession.value?.user.role || null)
+const isAdminSession = computed(() => effectiveAuthRole.value === 'admin')
+const canUseProcurementSupplierAdmin = computed(() => effectiveAuthRole.value === 'admin' || effectiveAuthRole.value === 'procurement')
 const authError = ref('')
 const suppliers = ref<SupplierItem[]>([])
 const overview = ref<SupplierOverviewResponse | null>(null)
@@ -415,7 +411,7 @@ function validateAccountFormBeforeSave() {
 }
 
 async function loadAll() {
-  if (effectiveAuthRole.value !== 'admin') {
+  if (!canUseProcurementSupplierAdmin.value) {
     suppliers.value = []
     overview.value = null
     selectedSupplierId.value = null
@@ -461,8 +457,8 @@ async function submitProcurementLogin() {
     const session = await login({ username: authForm.username.trim(), password: authForm.password })
     writeAuthSession(session)
     localAuthSession.value = session
-    if (session.user.role !== 'admin') {
-      authError.value = '当前账号不是采购管理员，无法进入供应商管理'
+    if (session.user.role !== 'admin' && session.user.role !== 'procurement') {
+      authError.value = '当前账号不是采购端账号，无法进入供应商管理'
       return
     }
     ElMessage.success('采购端登录成功，正在进入供应商管理')
@@ -475,7 +471,7 @@ async function submitProcurementLogin() {
 }
 
 async function saveSupplierForm() {
-  if (effectiveAuthRole.value !== 'admin') {
+  if (!canUseProcurementSupplierAdmin.value) {
     ElMessage.warning('当前账号没有权限进入供应商管理')
     return
   }
@@ -523,11 +519,11 @@ watch(selectedSupplier, (item) => {
 }, { immediate: true })
 
 watch(effectiveAuthRole, async (role, previousRole) => {
-  if (role === 'admin' && previousRole !== 'admin') {
+  if ((role === 'admin' || role === 'procurement') && previousRole !== role) {
     authError.value = ''
     await loadAll()
   }
-  if (role !== 'admin') {
+  if (role !== 'admin' && role !== 'procurement') {
     suppliers.value = []
     overview.value = null
     selectedSupplierId.value = null
@@ -535,7 +531,7 @@ watch(effectiveAuthRole, async (role, previousRole) => {
 })
 
 onMounted(async () => {
-  if (effectiveAuthRole.value === 'admin') {
+  if (canUseProcurementSupplierAdmin.value) {
     await loadAll()
   }
 })

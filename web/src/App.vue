@@ -3,13 +3,13 @@
   <section v-if="isLegacyMobileLandingEnabled && isMobileViewport && viewMode === 'landing'" class="app-shell market-mobile-home mobile-redesign-home" data-testid="sales-landing-view">
     <header class="mobile-redesign-hero-card">
       <div class="mobile-redesign-topbar">
-        <div class="mobile-redesign-brand">
-          <span>食</span>
+        <button type="button" class="mobile-redesign-brand" @click="enterWorkspace('summary')">
+          <span>采</span>
           <div>
-            <strong>食采云</strong>
-            <small>本地餐饮采购</small>
+            <strong>采购工作台</strong>
+            <small>{{ selectedLocationLabel }} · {{ latestSyncLabel }}</small>
           </div>
-        </div>
+        </button>
         <div class="mobile-redesign-top-actions">
           <button type="button" class="mobile-redesign-location" @click="toggleMobileLocationPanel()">
             <i></i>
@@ -35,7 +35,9 @@
       </div>
 
       <div class="mobile-redesign-hero-copy">
-        <small>{{ latestSyncLabel === '等待同步' ? '行情数据同步后将更新商品与价格提醒。' : `最近同步 ${latestSyncLabel}` }}</small>
+        <p>TEAM MARKET</p>
+        <h1>今天先看异常，再定采购价。</h1>
+        <small>{{ summaryStatusText }} · {{ crawlResultLabel }}</small>
       </div>
 
       <div class="mobile-redesign-search" :class="{ loading: summaryLoading || locationLoading }">
@@ -45,48 +47,56 @@
           inputmode="search"
           enterkeyhint="search"
           aria-label="搜索食材关键词"
-          placeholder="搜商品"
+          placeholder="搜菜名、规格、档口"
           clearable
           @keyup.enter="enterWorkspace('summary')"
         />
-        <button type="button" data-testid="enter-workspace-button" @click="enterWorkspace('summary')"><span>查看行情</span></button>
+        <button type="button" data-testid="enter-workspace-button" @click="enterWorkspace('summary')"><span>查行情</span></button>
       </div>
 
-      <div class="mobile-redesign-stat-strip" aria-label="今日关键动作">
-        <button type="button" class="danger" @click="enterWorkspace('alerts')">
-          <span>预警</span>
-          <strong>{{ mobileAlertBadge }}</strong>
+      <div class="mobile-redesign-command-grid" aria-label="采购快捷入口">
+        <button type="button" class="alert" @click="enterWorkspace('alerts')">
+          <span>价格预警</span>
+          <strong>{{ mobileAlertBadge }} 条</strong>
+          <small>{{ mobileAlertBadge ? '优先处理异常价' : '暂无紧急异常' }}</small>
         </button>
-        <button type="button" class="primary" @click="enterWorkspace('summary')">
-          <span>参考</span>
-          <strong>{{ mobileSpotlightRows.length }}</strong>
+        <button type="button" class="market" @click="enterWorkspace('summary')">
+          <span>行情报价</span>
+          <strong>{{ mobileSpotlightRows.length }} 个</strong>
+          <small>{{ lowestPriceSignal }}</small>
         </button>
-        <button type="button" class="success" @click="enterWorkspace('menu')">
-          <span>采购</span>
-          <strong>{{ parsedMenuCount || procurementRecommendations.length || planRows.length }}</strong>
+        <button type="button" class="buy" @click="enterWorkspace('menu')">
+          <span>采购计划</span>
+          <strong>{{ matchedPlanCount }}/{{ parsedMenuCount || planRows.length || 0 }}</strong>
+          <small>{{ pendingPlanCount ? `${pendingPlanCount} 项待确认` : '录菜单生成建议' }}</small>
         </button>
       </div>
     </header>
 
     <main v-if="mobileHomePanel === 'home'" class="mobile-redesign-main">
-      <section class="mobile-redesign-section mobile-redesign-priority-grid">
-        <div class="mobile-redesign-workbench-head">
-          <p>业务总览</p>
-          <h2>市场价格总览</h2>
+      <section class="mobile-redesign-section mobile-redesign-today-card">
+        <div class="mobile-redesign-section-head">
+          <div>
+            <p>今日裁决</p>
+            <h2>{{ mobileAlertBadge ? '先处理价格异常' : '可直接进入采购执行' }}</h2>
+          </div>
+          <button type="button" @click="mobileAlertBadge ? enterWorkspace('alerts') : enterWorkspace('menu')">
+            {{ mobileAlertBadge ? '处理' : '采购' }}
+          </button>
         </div>
         <button type="button" class="mobile-redesign-priority-card is-main" @click="mobileAlertBadge ? enterWorkspace('alerts') : enterWorkspace('menu')">
-          <p>{{ mobileAlertBadge ? '预警处理' : '采购执行' }}</p>
-          <strong>{{ mobileAlertBadge ? `${mobileAlertBadge} 条价格提醒待处理` : '生成采购建议' }}</strong>
-          <small>{{ mobileAlertBadge ? '请优先核对影响采购成本的商品。' : (matchedPlanCount ? `${matchedPlanCount} 项已完成报价匹配，可继续处理。` : '录入菜单后可生成采购建议并匹配报价。') }}</small>
+          <p>{{ selectedLocationLabel }}</p>
+          <strong>{{ mobileAlertBadge ? `${mobileAlertBadge} 条价格提醒待处理` : '菜单、报价、供应商协同在一个工作流里处理' }}</strong>
+          <small>{{ mobileAlertBadge ? '核对异常来源，必要时带商品去供应商报价。' : '录入菜单后自动匹配行情与供应商报价。' }}</small>
         </button>
       </section>
 
       <section class="mobile-redesign-section mobile-redesign-products" data-testid="mobile-spotlight-feed-section">
         <div class="mobile-redesign-section-head">
           <div>
-            <p>价格参考</p>
-            <h2>价格参考商品</h2>
-            <small class="mobile-redesign-section-note">各展示 1 个：全场最低、低于均价最多、当日价差最大。</small>
+            <p>可比价商品</p>
+            <h2>优先看的价格</h2>
+            <small class="mobile-redesign-section-note">保留抓取规格，不强拆斤价，按真实可购买单位展示。</small>
           </div>
           <div class="mobile-redesign-head-actions">
             <button type="button" class="mobile-trend-shortcut market-mobile-bottom-item" @click="enterWorkspace('trend')">单品</button>
@@ -95,7 +105,7 @@
         </div>
         <div class="mobile-redesign-product-rail" data-testid="mobile-spotlight-feed">
           <button
-            v-for="item in mobileSpotlightRows.slice(0, 3)"
+            v-for="item in mobileSpotlightRows.slice(0, 4)"
             :key="item.identityKey"
             type="button"
             class="mobile-redesign-product-card"
@@ -117,40 +127,13 @@
         </div>
       </section>
 
-      <section class="mobile-redesign-section mobile-redesign-sources">
-        <div class="mobile-redesign-section-head">
-          <div>
-            <p>商品分类</p>
-          </div>
-          <button type="button" @click="openMobileCategoryDirectory()">
-            查看全部
-          </button>
-        </div>
-        <div class="mobile-redesign-source-grid" data-testid="mobile-source-groups">
-          <button
-            v-for="item in displayedMobileCategoryTableRows.slice(0, 4)"
-            :key="item.key"
-            type="button"
-            @click="openCategoryMarket(item.category)"
-          >
-            <span>{{ item.category }}</span>
-            <strong>{{ item.subcategory }}</strong>
-            <small>{{ item.count }} 款可比价</small>
-          </button>
-          <div v-if="!mobileCategoryTableRows.length" class="mobile-redesign-empty-card compact">
-            <strong>暂无商品分类</strong>
-            <small>{{ selectedCategorySourceLabel }} 当前没有可展示分类。</small>
-          </div>
-        </div>
-      </section>
-
       <section class="mobile-redesign-section mobile-redesign-alert-preview">
         <div class="mobile-redesign-section-head">
           <div>
-            <p>最新预警</p>
-            <h2>价格提醒</h2>
+            <p>预警队列</p>
+            <h2>需要复核的价格</h2>
           </div>
-          <button type="button" @click="enterWorkspace('alerts')">查看全部</button>
+          <button type="button" @click="enterWorkspace('alerts')">全部</button>
         </div>
         <div class="mobile-redesign-alert-list">
           <button
@@ -170,23 +153,49 @@
         </div>
       </section>
 
+      <section class="mobile-redesign-section mobile-redesign-sources">
+        <div class="mobile-redesign-section-head">
+          <div>
+            <p>分类入口</p>
+            <h2>按品类找市场</h2>
+          </div>
+          <button type="button" @click="openMobileCategoryDirectory()">全部</button>
+        </div>
+        <div class="mobile-redesign-source-grid" data-testid="mobile-source-groups">
+          <button
+            v-for="item in displayedMobileCategoryTableRows.slice(0, 4)"
+            :key="item.key"
+            type="button"
+            @click="openCategoryMarket(item.category)"
+          >
+            <span>{{ item.category }}</span>
+            <strong>{{ item.subcategory }}</strong>
+            <small>{{ item.count }} 款可比价</small>
+          </button>
+          <div v-if="!mobileCategoryTableRows.length" class="mobile-redesign-empty-card compact">
+            <strong>暂无商品分类</strong>
+            <small>{{ selectedCategorySourceLabel }} 当前没有可展示分类。</small>
+          </div>
+        </div>
+      </section>
+
       <section class="mobile-redesign-section mobile-redesign-entry-section">
         <div class="mobile-redesign-section-head">
           <div>
             <p>协同入口</p>
-            <h2>采购与供应协同</h2>
+            <h2>采购与供应商</h2>
           </div>
         </div>
         <div class="mobile-redesign-entry-grid">
-          <button type="button" data-testid="mobile-buyer-entry-button" @click="enterWorkspace()">
-            <span>采购业务</span>
-            <strong>进入采购</strong>
-            <small>行情、预警、采购建议</small>
+          <button type="button" data-testid="mobile-buyer-entry-button" @click="enterWorkspace('menu')">
+            <span>采购端</span>
+            <strong>处理采购</strong>
+            <small>菜单、建议、价格核对</small>
           </button>
           <button type="button" data-testid="mobile-supplier-nav-button" @click="openSupplierPortal(false)">
-            <span>供应商报价</span>
+            <span>供应商端</span>
             <strong>报价录入</strong>
-            <small>报价、草稿、历史</small>
+            <small>账号由采购分配</small>
           </button>
         </div>
       </section>
@@ -196,9 +205,9 @@
       <section class="mobile-redesign-section mobile-redesign-directory-section">
         <div class="mobile-redesign-section-head">
           <div>
-            <p>商品分类</p>
-            <h2>全部分类</h2>
-            <small class="mobile-redesign-section-note">展示当前可比价的全部分类，点分类直接进入行情页。</small>
+            <p>全部分类</p>
+            <h2>点品类进入行情</h2>
+            <small class="mobile-redesign-section-note">展示当前可比价的全部分类。</small>
           </div>
           <button type="button" @click="mobileHomePanel = 'home'">返回</button>
         </div>
@@ -244,16 +253,16 @@
 
 
 
-  <div v-else-if="isMobileViewport" class="app-shell market-mobile-shell">
+  <div v-else-if="isMobileViewport" class="app-shell market-mobile-shell mobile-redesign-workspace">
 
-    <header class="market-mobile-shell-head">
+    <header class="market-mobile-shell-head mobile-redesign-workspace-head">
 
       <button type="button" class="market-mobile-back-button market-mobile-back-icon" :aria-label="mobileBackAriaLabel" @click="handleMobileBack()">‹</button>
 
       <div class="market-mobile-shell-copy">
-
+        <p>{{ selectedLocationLabel }}</p>
         <h1>{{ mobileTabMeta.title }}</h1>
-
+        <small>{{ mobileTabMeta.description }}</small>
       </div>
 
       <button type="button" class="mobile-trend-shortcut market-mobile-bottom-item" aria-label="单品" @click="enterWorkspace('trend')">单品</button>
@@ -792,6 +801,8 @@
     @menu-confirm-row="handleMenuPlanConfirmRow"
     @menu-fill-missing-quotes="handleMenuPlanFillMissingQuotes"
     @refresh="reloadAll"
+    @open-procurement-auth="openProcurementAuthDialog"
+    @logout-procurement-auth="logoutProcurementAuth"
     @open-supplier-backend="openSupplierBackend"
     @run-crawl="handleWorkbenchRunCrawl"
     @run-source-crawl="handleWorkbenchRunSourceCrawl"
@@ -804,6 +815,30 @@
   <el-dialog v-model="imagePreviewVisible" :title="imagePreviewTitle || '图片预览'" width="min(92vw, 960px)">
     <div class="market-image-preview-shell">
       <img v-if="imagePreviewUrl" :src="imagePreviewUrl" :alt="imagePreviewTitle || ''" class="market-image-preview" />
+    </div>
+  </el-dialog>
+
+  <el-dialog v-model="procurementAuthVisible" title="采购端登录" width="min(92vw, 420px)">
+    <div class="market-auth-dialog">
+      <div class="market-auth-notice">
+        <strong>账号由超级管理员分配</strong>
+        <span>采购账号需要在后台账号管理中创建并绑定供应商。</span>
+      </div>
+      <label>
+        <span>账号</span>
+        <input v-model="procurementAuthForm.username" type="text" autocomplete="username" placeholder="采购账号 / 管理员账号" />
+      </label>
+      <label>
+        <span>密码</span>
+        <input v-model="procurementAuthForm.password" type="password" autocomplete="current-password" placeholder="请输入密码" @keyup.enter="submitProcurementAuth" />
+      </label>
+      <p v-if="procurementAuthError" class="market-auth-error">{{ procurementAuthError }}</p>
+      <div class="market-auth-actions">
+        <button type="button" @click="procurementAuthVisible = false">取消</button>
+        <button type="button" class="primary" :disabled="procurementAuthSubmitting" @click="submitProcurementAuth">
+          {{ procurementAuthSubmitting ? '登录中' : '登录采购端' }}
+        </button>
+      </div>
     </div>
   </el-dialog>
 
@@ -851,6 +886,7 @@ import {
   fetchSupplierOverview,
   getAccessToken,
   generateMenuPlan,
+  login,
   readAuthSession,
   triggerCrawlRun,
   updateCrawlSchedule,
@@ -1052,7 +1088,15 @@ const mobileTrendSearchLoading = ref(false)
 const workbenchRefreshing = ref(false)
 const productOptionsContextKey = ref('')
 const mobileTrendSearchOptions = ref<ProductOptionItem[]>([])
+const ACCOUNT_USERNAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.@-]{2,63}$/
 const authSession = ref<AuthLoginResponse | null>(readAuthSession())
+const procurementAuthVisible = ref(false)
+const procurementAuthSubmitting = ref(false)
+const procurementAuthError = ref('')
+const procurementAuthForm = reactive({
+  username: '',
+  password: '',
+})
 const imagePreviewVisible = ref(false)
 const imagePreviewUrl = ref('')
 const imagePreviewTitle = ref('')
@@ -1081,9 +1125,19 @@ const activeMarketCategory = ref('全部')
 
 const selectedCategorySourceName = ref('')
 
+function resolveAuthScopedLocation(user?: AuthLoginResponse['user'] | null) {
+  return {
+    province: String(user?.default_province || '').trim(),
+    city: String(user?.default_city || '').trim(),
+    scope: String(user?.market_scope || '').trim(),
+  }
+}
+
+const initialAuthScopedLocation = resolveAuthScopedLocation(authSession.value?.user ?? null)
+
 const filters = reactive({
-  province: '',
-  city: '',
+  province: initialAuthScopedLocation.province,
+  city: initialAuthScopedLocation.city,
   keyword: '',
   summarySourceName: '',
   liancaiTopCategory: '',
@@ -3625,6 +3679,111 @@ function applyAuthSession(session: AuthLoginResponse | null) {
     clearAuthSession()
 
   }
+
+  const scopedLocation = resolveAuthScopedLocation(session?.user ?? null)
+  if (filters.province !== scopedLocation.province) {
+    filters.province = scopedLocation.province
+  }
+  if (filters.city !== scopedLocation.city) {
+    filters.city = scopedLocation.city
+  }
+  if (scopedLocation.scope.includes('全国')) {
+    mobileLocationPreset.value = 'all'
+  } else if (scopedLocation.province === '河南省' && !scopedLocation.city) {
+    mobileLocationPreset.value = 'henan'
+  } else {
+    mobileLocationPreset.value = ''
+  }
+
+}
+
+
+function openProcurementAuthDialog() {
+
+  procurementAuthError.value = ''
+
+  procurementAuthForm.username = authSession.value?.user.username || procurementAuthForm.username
+
+  procurementAuthForm.password = ''
+
+  procurementAuthVisible.value = true
+
+}
+
+
+async function submitProcurementAuth() {
+
+  if (!procurementAuthForm.username.trim() || !procurementAuthForm.password.trim()) {
+
+    procurementAuthError.value = '请填写采购端账号和密码'
+
+    return
+
+  }
+
+  procurementAuthSubmitting.value = true
+
+  procurementAuthError.value = ''
+
+  try {
+
+    const session = await login({
+
+      username: procurementAuthForm.username.trim(),
+
+      password: procurementAuthForm.password,
+
+    })
+
+    if (session.user.role !== 'admin' && session.user.role !== 'procurement') {
+
+      procurementAuthError.value = '当前账号不是采购端账号，请使用采购账号或管理员账号登录'
+
+      return
+
+    }
+
+    applyAuthSession(session)
+
+    await Promise.allSettled([
+      reloadSummary(),
+      reloadSupplierOverview(),
+    ])
+
+    procurementAuthVisible.value = false
+
+    procurementAuthForm.password = ''
+
+    ElMessage.success('采购端登录成功')
+
+  } catch (error) {
+
+    procurementAuthError.value = extractApiErrorDetail(error) || '登录失败，请检查账号密码'
+
+  } finally {
+
+    procurementAuthSubmitting.value = false
+
+  }
+
+}
+
+
+function logoutProcurementAuth() {
+
+  applyAuthSession(null)
+
+  supplierOverview.value = null
+
+  productSupplierQuotes.value = []
+
+  procurementAuthError.value = ''
+
+  procurementAuthForm.password = ''
+
+  void reloadSummary()
+
+  ElMessage.success('已退出采购端账号')
 
 }
 
@@ -8450,6 +8609,127 @@ onBeforeUnmount(() => {
   border-radius: 12px;
 }
 
+.market-auth-dialog {
+  display: grid;
+  gap: 14px;
+}
+
+.market-auth-switch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.market-auth-switch button {
+  min-height: 38px;
+  border: 1px solid #dbe4ef;
+  border-radius: 999px;
+  background: #f8fafc;
+  color: #475569;
+  font: inherit;
+  font-weight: 700;
+}
+
+.market-auth-switch button.active {
+  border-color: #93c5fd;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.market-auth-dialog label {
+  display: grid;
+  gap: 6px;
+}
+
+.market-auth-dialog span {
+  color: #334155;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.market-auth-dialog input {
+  min-height: 42px;
+  padding: 0 12px;
+  border: 1px solid #dbe4ef;
+  border-radius: 12px;
+  background: #fff;
+  color: #0f172a;
+  font: inherit;
+}
+
+.market-auth-dialog input:focus {
+  outline: none;
+  border-color: #93c5fd;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+.market-auth-error {
+  margin: 0;
+  color: #dc2626;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.market-auth-submitted {
+  display: grid;
+  gap: 10px;
+}
+
+.market-auth-submitted > strong {
+  color: #0f172a;
+  font-size: 18px;
+}
+
+.market-auth-submitted > p {
+  margin: 0;
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.market-auth-submitted-card {
+  display: grid;
+  gap: 6px;
+  padding: 14px;
+  border: 1px solid #dbe4ef;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #eff6ff, #f8fafc);
+}
+
+.market-auth-submitted-card strong {
+  color: #0f172a;
+  font-size: 16px;
+}
+
+.market-auth-submitted-card small {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.market-auth-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.market-auth-actions button {
+  min-height: 38px;
+  padding: 0 14px;
+  border: 1px solid #dbe4ef;
+  border-radius: 999px;
+  background: #fff;
+  color: #334155;
+  font: inherit;
+  font-weight: 700;
+}
+
+.market-auth-actions button.primary {
+  border-color: #1d4ed8;
+  background: #2563eb;
+  color: #fff;
+}
+
 .market-mobile-alert-row .market-mobile-thumb {
   width: 32px;
   height: 32px;
@@ -10935,6 +11215,463 @@ onBeforeUnmount(() => {
 
   .mobile-redesign-priority-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+/* Mobile Experience v3: procurement-first phone UI with clearer touch targets. */
+.mobile-redesign-home,
+.mobile-redesign-workspace {
+  --phone-bg: #f2f6ef;
+  --phone-ink: #182114;
+  --phone-muted: #66735f;
+  --phone-line: rgba(48, 74, 43, .14);
+  --phone-card: rgba(255, 255, 248, .96);
+  --phone-green: #315b2c;
+  --phone-lime: #d8f26a;
+  --phone-orange: #e98332;
+  --phone-red: #d94d36;
+  background:
+    radial-gradient(circle at 15% 2%, rgba(216, 242, 106, .36), transparent 28%),
+    radial-gradient(circle at 85% 8%, rgba(233, 131, 50, .16), transparent 26%),
+    linear-gradient(180deg, #f5f8ef 0%, #edf4e7 48%, #f8f5eb 100%);
+  color: var(--phone-ink);
+}
+
+.mobile-redesign-home {
+  display: block;
+  min-height: 100dvh;
+  padding: 12px 12px calc(92px + env(safe-area-inset-bottom, 0px));
+}
+
+.mobile-redesign-hero-card,
+.mobile-redesign-section {
+  border: 1px solid var(--phone-line);
+  border-radius: 28px;
+  background: var(--phone-card);
+  box-shadow: 0 18px 36px rgba(40, 63, 36, .11);
+}
+
+.mobile-redesign-hero-card {
+  position: relative;
+  overflow: hidden;
+  gap: 16px;
+  padding: 16px;
+}
+
+.mobile-redesign-hero-card::before {
+  content: "";
+  position: absolute;
+  inset: auto -36px -58px auto;
+  width: 148px;
+  height: 148px;
+  border-radius: 999px;
+  background: rgba(216, 242, 106, .5);
+  pointer-events: none;
+}
+
+.mobile-redesign-topbar {
+  position: relative;
+  z-index: 1;
+}
+
+.mobile-redesign-brand {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  text-align: left;
+}
+
+.mobile-redesign-brand > span {
+  width: 42px;
+  height: 42px;
+  border-radius: 16px;
+  background: #1f3d1f;
+  color: var(--phone-lime);
+  box-shadow: 0 10px 20px rgba(31, 61, 31, .18);
+}
+
+.mobile-redesign-brand strong,
+.mobile-redesign-hero-copy h1,
+.mobile-redesign-section-head h2,
+.mobile-redesign-priority-card strong,
+.mobile-redesign-product-card strong,
+.mobile-redesign-entry-grid strong {
+  color: var(--phone-ink);
+  letter-spacing: -.03em;
+}
+
+.mobile-redesign-brand small,
+.mobile-redesign-hero-copy small,
+.mobile-redesign-section-note,
+.mobile-redesign-priority-card small,
+.mobile-redesign-product-card span,
+.mobile-redesign-alert-list span,
+.mobile-redesign-alert-list small,
+.mobile-redesign-source-grid small,
+.mobile-redesign-entry-grid small {
+  color: var(--phone-muted);
+}
+
+.mobile-redesign-location,
+.mobile-redesign-alert-dot,
+.mobile-redesign-section-head button,
+.mobile-redesign-search button {
+  border-color: var(--phone-line);
+  border-radius: 999px;
+}
+
+.mobile-redesign-location {
+  max-width: 116px;
+  background: rgba(255,255,248,.86);
+  color: var(--phone-green);
+}
+
+.mobile-redesign-location i {
+  background: var(--phone-orange);
+  box-shadow: 0 0 0 5px rgba(233, 131, 50, .15);
+}
+
+.mobile-redesign-alert-dot {
+  background: #fffaf1;
+  color: var(--phone-red);
+}
+
+.mobile-redesign-alert-dot b {
+  background: var(--phone-red);
+}
+
+.mobile-redesign-location-panel {
+  position: relative;
+  z-index: 2;
+  border-color: var(--phone-line);
+  border-radius: 20px;
+  background: #fffdf4;
+}
+
+.mobile-redesign-location-panel button {
+  border-color: var(--phone-line);
+  border-radius: 16px;
+  background: #f6f2e7;
+  color: var(--phone-green);
+}
+
+.mobile-redesign-location-panel button.active {
+  border-color: var(--phone-green);
+  background: #e7f6c5;
+  color: #203f1f;
+}
+
+.mobile-redesign-hero-copy {
+  position: relative;
+  z-index: 1;
+  margin-top: 4px;
+}
+
+.mobile-redesign-hero-copy p,
+.mobile-redesign-section-head p {
+  color: var(--phone-orange);
+  font-size: 11px;
+  font-weight: 950;
+  letter-spacing: .12em;
+}
+
+.mobile-redesign-hero-copy h1 {
+  max-width: 290px;
+  font-size: clamp(26px, 8vw, 34px);
+  line-height: .98;
+}
+
+.mobile-redesign-search {
+  position: relative;
+  z-index: 1;
+  padding: 7px;
+  border: 1px solid var(--phone-line);
+  border-radius: 20px;
+  background: rgba(255,255,248,.9);
+  box-shadow: none;
+}
+
+.mobile-redesign-search :deep(.el-input__wrapper) {
+  min-height: 44px;
+}
+
+.mobile-redesign-search button {
+  min-height: 46px;
+  min-width: 82px;
+  border-color: var(--phone-green);
+  background: var(--phone-green);
+}
+
+.mobile-redesign-command-grid {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: 1.08fr .92fr;
+  gap: 10px;
+}
+
+.mobile-redesign-command-grid button {
+  display: grid;
+  gap: 8px;
+  min-height: 102px;
+  padding: 13px;
+  border: 1px solid var(--phone-line);
+  border-radius: 22px;
+  background: #fffdf4;
+  color: var(--phone-ink);
+  font: inherit;
+  text-align: left;
+}
+
+.mobile-redesign-command-grid .alert {
+  grid-row: span 2;
+  background: linear-gradient(160deg, #fff4e8 0%, #fffdf4 68%);
+}
+
+.mobile-redesign-command-grid .market {
+  background: linear-gradient(160deg, #edf9c9 0%, #fffdf4 74%);
+}
+
+.mobile-redesign-command-grid .buy {
+  background: linear-gradient(160deg, #eef6ff 0%, #fffdf4 74%);
+}
+
+.mobile-redesign-command-grid span {
+  color: var(--phone-muted);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.mobile-redesign-command-grid strong {
+  color: var(--phone-ink);
+  font-size: 22px;
+  line-height: 1;
+}
+
+.mobile-redesign-command-grid small {
+  color: var(--phone-muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.mobile-redesign-main {
+  display: grid;
+  gap: 20px;
+  margin-top: 20px;
+}
+
+.mobile-redesign-section {
+  gap: 14px;
+  padding: 14px;
+}
+
+.mobile-redesign-today-card {
+  scroll-margin-bottom: 120px;
+}
+
+.mobile-redesign-section-head h2 {
+  font-size: 19px;
+}
+
+.mobile-redesign-section-head button {
+  min-height: 38px;
+  background: #f5f0e3;
+  color: var(--phone-green);
+}
+
+.mobile-redesign-priority-card {
+  min-height: 116px;
+  border-color: rgba(49, 91, 44, .2);
+  border-radius: 24px;
+  background: #1f3d1f;
+  color: #f8ffe9;
+  box-shadow: none;
+}
+
+.mobile-redesign-priority-card p,
+.mobile-redesign-priority-card strong,
+.mobile-redesign-priority-card small {
+  color: inherit;
+}
+
+.mobile-redesign-priority-card p {
+  color: var(--phone-lime);
+}
+
+.mobile-redesign-priority-card strong {
+  font-size: 19px;
+}
+
+.mobile-redesign-priority-card small {
+  color: rgba(248, 255, 233, .78);
+}
+
+.mobile-redesign-product-rail {
+  grid-template-columns: 1fr;
+}
+
+.mobile-redesign-product-card,
+.mobile-redesign-alert-list button,
+.mobile-redesign-source-grid button,
+.mobile-redesign-directory-card,
+.mobile-redesign-entry-grid button {
+  border-color: var(--phone-line);
+  border-radius: 22px;
+  background: #fffdf4;
+  box-shadow: none;
+}
+
+.mobile-redesign-product-card {
+  grid-template-columns: minmax(0, 1fr);
+  min-height: 108px;
+}
+
+.mobile-redesign-product-card footer {
+  padding-top: 8px;
+  border-top: 1px dashed rgba(48, 74, 43, .18);
+}
+
+.mobile-redesign-product-card b {
+  color: var(--phone-green);
+  font-size: 20px;
+}
+
+.mobile-redesign-product-card em {
+  color: var(--phone-orange);
+}
+
+.mobile-redesign-alert-list button {
+  border-color: rgba(217, 77, 54, .18);
+  background: linear-gradient(160deg, #fff4ec 0%, #fffdf4 72%);
+}
+
+.mobile-redesign-source-grid,
+.mobile-redesign-directory-grid,
+.mobile-redesign-entry-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.mobile-redesign-source-grid button,
+.mobile-redesign-directory-card,
+.mobile-redesign-entry-grid button {
+  min-height: 96px;
+}
+
+.mobile-redesign-source-grid span,
+.mobile-redesign-directory-card span,
+.mobile-redesign-entry-grid span {
+  color: var(--phone-orange);
+}
+
+.mobile-redesign-empty-card {
+  border-color: rgba(48, 74, 43, .22);
+  border-radius: 22px;
+  background: rgba(255, 253, 244, .78);
+}
+
+.mobile-redesign-nav,
+.mobile-redesign-workspace .market-mobile-bottom-nav {
+  left: 10px;
+  right: 10px;
+  bottom: 10px;
+  border: 1px solid rgba(48, 74, 43, .13);
+  border-radius: 24px;
+  background: rgba(255, 253, 244, .94);
+  box-shadow: 0 14px 32px rgba(40, 63, 36, .16);
+}
+
+.mobile-redesign-home .mobile-redesign-main::after,
+.mobile-redesign-workspace .market-mobile-shell-content::after {
+  content: "";
+  display: block;
+  min-height: 88px;
+}
+
+.mobile-redesign-nav .market-mobile-bottom-item,
+.mobile-redesign-workspace .market-mobile-bottom-item {
+  min-height: 48px;
+  border-radius: 18px;
+}
+
+.mobile-redesign-nav .market-mobile-bottom-item.active,
+.mobile-redesign-workspace .market-mobile-bottom-item.active {
+  background: #1f3d1f;
+  color: var(--phone-lime);
+}
+
+.mobile-redesign-workspace {
+  min-height: 100dvh;
+}
+
+.mobile-redesign-workspace-head {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  grid-template-columns: 44px minmax(0, 1fr) auto 44px;
+  align-items: center;
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(48, 74, 43, .1);
+  background: rgba(245, 248, 239, .92);
+  backdrop-filter: blur(16px);
+}
+
+.mobile-redesign-workspace-head .market-mobile-shell-copy {
+  min-width: 0;
+}
+
+.mobile-redesign-workspace-head .market-mobile-shell-copy p,
+.mobile-redesign-workspace-head .market-mobile-shell-copy small {
+  overflow: hidden;
+  margin: 0;
+  color: var(--phone-muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mobile-redesign-workspace-head .market-mobile-shell-copy h1 {
+  overflow: hidden;
+  margin: 0;
+  color: var(--phone-ink);
+  font-size: 18px;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mobile-redesign-workspace .market-mobile-shell-content {
+  padding: 12px 12px calc(102px + env(safe-area-inset-bottom, 0px));
+}
+
+.mobile-redesign-workspace .market-mobile-alert-card,
+.mobile-redesign-workspace .market-mobile-alert-hero,
+.mobile-redesign-workspace .market-mobile-menu-intro {
+  border-color: var(--phone-line);
+  border-radius: 24px;
+  background: var(--phone-card);
+  box-shadow: 0 14px 30px rgba(40, 63, 36, .1);
+}
+
+.mobile-redesign-workspace .mobile-trend-shortcut.market-mobile-bottom-item {
+  background: #1f3d1f;
+  color: var(--phone-lime);
+  box-shadow: none;
+}
+
+@media (max-width: 374px) {
+  .mobile-redesign-command-grid,
+  .mobile-redesign-source-grid,
+  .mobile-redesign-directory-grid,
+  .mobile-redesign-entry-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .mobile-redesign-command-grid .alert {
+    grid-row: auto;
+  }
+
+  .mobile-redesign-hero-copy h1 {
+    font-size: 26px;
   }
 }
 

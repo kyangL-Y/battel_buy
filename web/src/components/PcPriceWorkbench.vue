@@ -682,7 +682,7 @@
 
 
 
-        <h1>{{ pageTitle }}<small class="pcw-build-badge">{{ workbenchBuildMarker }}</small></h1>
+        <h1>{{ pageTitle }}</h1>
 
 
 
@@ -729,6 +729,10 @@
 
 
 
+
+          <button type="button" @click="emit('open-procurement-auth')">{{ procurementAuthButtonLabel }}</button>
+
+          <button v-if="props.authRole === 'admin' || props.authRole === 'procurement'" type="button" @click="emit('logout-procurement-auth')">退出</button>
 
           <button type="button" class="pcw-user" @click="handleNavSelect('suppliers')">企业设置</button>
 
@@ -2071,276 +2075,81 @@
 
 
             </section>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-            <section class="pcw-card pcw-chart">
-
-
-
-
-
-
-
+            <section v-else class="pcw-card pcw-summary-side-fill">
               <div class="pcw-card-head">
-
-
-
-
-
-
-
-                <h2>价格趋势（{{ selectedProductName || '当前商品' }}）</h2>
-
-
-
-
-
-
-
-                <button type="button" @click="setChartRange(chartRange === 7 ? 30 : 7)">{{ chartRangeLabel }}⌄</button>
-
-
-
-
-
-
-
+                <h2>经营侧边栏</h2>
+                <button type="button" @click="handleNavSelect('purchase')">去执行 ›</button>
               </div>
-
-
-
-
-
-
-
-              <div class="pcw-legend">
-
-
-
-
-
-
-
-                <span class="blue">均价(元/公斤)</span>
-
-
-
-
-
-
-
-                <span class="green">最低价(元/公斤)</span>
-
-
-
-
-
-
-
+              <div class="pcw-summary-side-hero">
+                <div>
+                  <span>当前地区</span>
+                  <strong>{{ displayLocationLabel }}</strong>
+                </div>
+                <p>先看商品池、报价覆盖和价差机会，再决定去采购还是去趋势页。</p>
               </div>
-
-
-
-
-
-
-
-              <svg viewBox="0 0 330 150" role="img" :aria-label="`${selectedProductName || '真实商品'}价格趋势`">
-
-
-
-
-
-
-
-                <g class="grid">
-
-
-
-
-
-
-
-                  <path d="M28 12H318M28 46H318M28 80H318M28 114H318M28 148H318" />
-
-
-
-
-
-
-
-                  <path d="M28 12V148M86 12V148M144 12V148M202 12V148M260 12V148M318 12V148" />
-
-
-
-
-
-
-
-                </g>
-
-
-
-
-
-
-
-                <polyline v-if="trendChartRows.length" class="line-blue" :points="smallTrendLinePoints" />
-
-
-
-
-
-
-
-                <polyline v-if="trendChartRows.length" class="line-green" :points="smallTrendLowLinePoints" />
-
-
-
-
-
-
-
-                <g v-if="trendChartRows.length" class="dots">
-
-
-
-
-
-
-
-                  <circle v-for="point in smallTrendDots" :key="`${point.x}-${point.y}`" :cx="point.x" :cy="point.y" r="3" />
-
-
-
-
-
-
-
-                </g>
-
-
-
-
-
-
-
-                <g v-if="smallTrendAxisLabels.length" class="pcw-axis mini">
-
-
-
-
-
-
-
-                  <text v-for="label in smallTrendAxisLabels" :key="`${label.x}-${label.text}`" :x="label.x" y="146">{{ label.text }}</text>
-
-
-
-
-
-
-
-                </g>
-
-
-
-
-
-
-
-              </svg>
-
-
-
-
-
-
-
-              <div class="pcw-chart-foot">
-
-
-
-
-
-
-
-                <span>{{ trendChartRows.length ? (isUsingTrendSnapshot ? '行情快照已显示' : `${trendChartRows.length} 条真实趋势记录`) : trendEmptyTitle }}</span>
-
-
-
-
-
-
-
-                <button type="button" @click="handleNavSelect('trend')">查看趋势 ›</button>
-
-
-
-
-
-
-
+              <div class="pcw-summary-side-metrics">
+                <article>
+                  <span>行情商品</span>
+                  <strong>{{ displayRowTotal }}</strong>
+                </article>
+                <article>
+                  <span>今日报价</span>
+                  <strong>{{ visibleQuoteCount }}</strong>
+                </article>
+                <article>
+                  <span>可复核机会</span>
+                  <strong>{{ summaryOpportunityRows.length }}</strong>
+                </article>
+                <article>
+                  <span>处理建议</span>
+                  <strong>{{ summaryAdviceRows.length }}</strong>
+                </article>
               </div>
-
-
-
-
-
-
-
-              <div v-if="!trendChartRows.length" class="pcw-chart-empty mini">
-
-
-
-
-
-
-
-                <strong>{{ trendEmptyTitle }}</strong>
-
-
-
-
-
-
-
-                <span>{{ trendEmptyDetail }}</span>
-
-
-
-
-
-
-
+              <div class="pcw-summary-side-grid">
+                <button
+                  v-for="item in summaryActionCards"
+                  :key="`side-${item.label}-${item.title}`"
+                  type="button"
+                  class="pcw-summary-side-card"
+                  @click="openWorkbenchActionSection(item.section, item.identityKey)"
+                >
+                  <span>{{ item.label }}</span>
+                  <strong>{{ item.title }}</strong>
+                  <small>{{ item.detail }}</small>
+                </button>
               </div>
-
-
-
-
-
-
-
+              <div class="pcw-summary-side-block">
+                <div class="pcw-summary-side-block-head">
+                  <span>处理建议</span>
+                  <button type="button" @click="handleNavSelect('purchase')">去采购 ›</button>
+                </div>
+                <p v-for="(item, index) in summaryAdviceRows.slice(0, 3)" :key="`advice-${index}-${item}`">
+                  {{ item }}
+                </p>
+              </div>
+              <div class="pcw-summary-side-block">
+                <div class="pcw-summary-side-block-head">
+                  <span>价差机会</span>
+                  <button type="button" @click="handleNavSelect('trend')">看趋势 ›</button>
+                </div>
+                <button
+                  v-for="item in summaryOpportunityRows.slice(0, 3)"
+                  :key="`side-opportunity-${item.identityKey}-${item.name}`"
+                  type="button"
+                  class="pcw-summary-side-opportunity"
+                  @click="openWorkbenchActionSection('trend', item.identityKey)"
+                >
+                  <div>
+                    <strong>{{ item.name }}</strong>
+                    <small>{{ item.market }} · {{ item.quotes }} 条报价</small>
+                  </div>
+                  <div class="pcw-summary-opportunity-metrics">
+                    <b>{{ item.low }}</b>
+                    <span>价差 {{ item.spread }}</span>
+                  </div>
+                </button>
+              </div>
             </section>
-
-
-
-
-
-
 
           </aside>
 
@@ -8186,6 +7995,8 @@ const emit = defineEmits<{
 
 
   (event: 'refresh'): void
+  (event: 'open-procurement-auth'): void
+  (event: 'logout-procurement-auth'): void
   (event: 'update-summary-liancai-filter', value: { source_name?: string; liancai_top_category?: string; liancai_subcategory?: string; liancai_keyword?: string; liancai_brand?: string }): void
 
 
@@ -8254,6 +8065,13 @@ const emit = defineEmits<{
 
 
 
+
+const procurementAuthButtonLabel = computed(() => {
+  if (props.authRole === 'admin' || props.authRole === 'procurement') {
+    return props.authDisplayName?.trim() || '采购账号'
+  }
+  return '采购登录'
+})
 
 const currentSection = ref<SectionId>(readInitialWorkbenchSection() ?? 'summary')
 
@@ -9237,7 +9055,6 @@ const pageTitle = computed(() => {
 
 
 
-const chartRangeLabel = computed(() => `${chartRange.value} 日趋势`)
 
 
 
@@ -13490,7 +13307,6 @@ const moduleView = computed(() => sectionModuleViews.value[currentSection.value]
 
 
 const currentDateLabel = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai' }).format(new Date())
-const workbenchBuildMarker = '上传时间 2026-05-27 18:47'
 
 
 
@@ -18491,14 +18307,6 @@ const isUsingTrendSnapshot = computed(() => rawTrendChartRows.value.length < 2 &
 
 
 
-const smallTrendDots = computed(() => buildLineDots(trendChartRows.value, 28, 318, 22, 122))
-
-
-
-
-
-
-
 const bigTrendDots = computed(() => buildLineDots(trendChartRows.value, 50, 690, 36, 198))
 
 
@@ -18507,23 +18315,7 @@ const bigTrendDots = computed(() => buildLineDots(trendChartRows.value, 50, 690,
 
 
 
-const smallTrendLinePoints = computed(() => stringifyDots(smallTrendDots.value))
-
-
-
-
-
-
-
 const bigTrendLinePoints = computed(() => stringifyDots(bigTrendDots.value))
-
-
-
-
-
-
-
-const smallTrendLowLinePoints = computed(() => stringifyDots(smallTrendDots.value.map((point) => ({ x: point.x, y: Math.min(148, point.y + 22) }))))
 
 
 
@@ -18572,62 +18364,6 @@ const trendPointRailRows = computed(() => {
       source: row?.source_name || row?.site_name || row?.trend_series_name || row?.market_name || '真实来源',
     }
   })
-})
-
-
-
-
-
-
-
-const smallTrendAxisLabels = computed(() => {
-
-
-
-
-
-
-
-  const dots = smallTrendDots.value
-
-
-
-
-
-
-
-  return trendChartRows.value.map((row, index) => ({
-
-
-
-
-
-
-
-    x: dots[index]?.x || 28,
-
-
-
-
-
-
-
-    text: row.captured_at ? formatMonthDay(row.captured_at) : String(index + 1),
-
-
-
-
-
-
-
-  }))
-
-
-
-
-
-
-
 })
 
 
@@ -32503,7 +32239,16 @@ th{height:36px;background:#f8fafc;color:#64748b;font-size:12px;font-weight:600}t
 
 .pcw-summary-opportunities {
   display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 12px;
   align-content: start;
+  padding-bottom: 16px;
+}
+
+.pcw-summary-opportunities .pcw-card-head,
+.pcw-summary-opportunities .pcw-panel-empty {
+  grid-column: 1 / -1;
 }
 
 .pcw-summary-opportunity {
@@ -32511,15 +32256,18 @@ th{height:36px;background:#f8fafc;color:#64748b;font-size:12px;font-weight:600}t
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 10px;
   align-items: center;
-  margin: 0 14px;
-  padding: 12px 0;
-  border-bottom: 1px solid #edf1f6;
-  background: transparent;
+  width: auto;
+  margin: 0;
+  padding: 13px 14px;
+  border: 1px solid #e6edf6;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+  appearance: none;
   text-align: left;
 }
 
 .pcw-summary-opportunity:last-child {
-  border-bottom: 0;
+  border-bottom: 1px solid #e6edf6;
 }
 
 .pcw-summary-opportunity strong {
@@ -32541,6 +32289,174 @@ th{height:36px;background:#f8fafc;color:#64748b;font-size:12px;font-weight:600}t
 
 .pcw-summary-opportunity-metrics span {
   color: #64748b;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.pcw-summary-side-fill {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  overflow: hidden;
+}
+
+.pcw-summary-side-hero {
+  display: grid;
+  gap: 8px;
+  padding: 0 14px;
+}
+
+.pcw-summary-side-hero span {
+  color: #607089;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.pcw-summary-side-hero strong {
+  color: #10203d;
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+.pcw-summary-side-hero p {
+  margin: 0;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.pcw-summary-side-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  padding: 0 14px;
+}
+
+.pcw-summary-side-metrics article {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid #dfe7f1;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+}
+
+.pcw-summary-side-metrics span {
+  color: #607089;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.pcw-summary-side-metrics strong {
+  color: #10203d;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.pcw-summary-side-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  padding: 12px 14px 0;
+}
+
+.pcw-summary-side-card {
+  display: grid;
+  gap: 6px;
+  min-height: 102px;
+  padding: 12px;
+  border: 1px solid #dfe7f1;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+  text-align: left;
+}
+
+.pcw-summary-side-card span,
+.pcw-summary-side-block-head span {
+  color: #607089;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.pcw-summary-side-card strong {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  color: #10203d;
+  font-size: 14px;
+  line-height: 1.25;
+}
+
+.pcw-summary-side-card small {
+  color: #7a8aa3;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.pcw-summary-side-block {
+  display: grid;
+  gap: 8px;
+  margin: 0 14px 14px;
+  padding-top: 12px;
+  border-top: 1px solid #edf1f6;
+}
+
+.pcw-summary-side-block-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.pcw-summary-side-block-head button {
+  border: 0;
+  background: transparent;
+  color: #2563eb;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.pcw-summary-side-block p,
+.pcw-summary-side-opportunity {
+  margin: 0;
+}
+
+.pcw-summary-side-block p {
+  color: #34445d;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.pcw-summary-side-opportunity {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  padding: 10px 0;
+  border: 0;
+  border-bottom: 1px solid #edf1f6;
+  background: transparent;
+  text-align: left;
+}
+
+.pcw-summary-side-opportunity:last-child {
+  border-bottom: 0;
+}
+
+.pcw-summary-side-opportunity strong {
+  display: block;
+  overflow: hidden;
+  color: #10203d;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pcw-summary-side-opportunity small {
+  color: #607089;
   font-size: 11px;
   font-weight: 700;
 }
@@ -33004,6 +32920,9 @@ th{height:36px;background:#f8fafc;color:#64748b;font-size:12px;font-weight:600}t
 
 @media (max-width: 1100px) {
   .pcw-summary-action-grid,
+  .pcw-summary-side-metrics,
+  .pcw-summary-side-grid,
+  .pcw-summary-opportunities,
   .pcw-purchase-runbook-grid,
   .pcw-purchase-empty-path {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -33037,6 +32956,9 @@ th{height:36px;background:#f8fafc;color:#64748b;font-size:12px;font-weight:600}t
 @media (max-width: 720px) {
   .pcw-bottom,
   .pcw-summary-action-grid,
+  .pcw-summary-side-metrics,
+  .pcw-summary-side-grid,
+  .pcw-summary-opportunities,
   .pcw-purchase-runbook-grid,
   .pcw-purchase-empty-path,
   .pcw-trend-point-rail {

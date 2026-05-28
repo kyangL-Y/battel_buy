@@ -863,7 +863,9 @@ const ingredientTableHeight = computed(() => calculatePanelTableHeight(props.ing
   .menu-actions {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 10px;
+    gap: 12px;
+    padding: 10px;
+    border-radius: 18px;
   }
 
   .menu-location-field {
@@ -872,13 +874,16 @@ const ingredientTableHeight = computed(() => calculatePanelTableHeight(props.ing
 
   .menu-action-field {
     display: grid;
-    gap: 6px;
+    gap: 8px;
+    padding: 8px 10px 10px;
+    border-radius: 14px;
   }
 
   .menu-action-label {
     color: #64748b;
     font-size: 11px;
     font-weight: 700;
+    letter-spacing: 0.02em;
   }
 
   .menu-action-field :deep(.el-input-number) {

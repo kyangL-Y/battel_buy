@@ -14,6 +14,7 @@ from analysis.metrics import _build_price_identity_frame, build_cross_site_ident
 from storage.database import Database
 from utils.auth import decode_access_token
 from utils.config_loader import BASE_DIR, load_runtime_config
+from utils.location_catalog import match_standard_city, match_standard_province
 
 
 _DB = Database()
@@ -222,12 +223,36 @@ def get_runtime_settings() -> dict:
     return load_runtime_config(BASE_DIR / "config" / "runtime.json")
 
 
+def _resolve_auth_market_scope_defaults(scope_text: str | None) -> tuple[str | None, str | None]:
+    normalized_scope = str(scope_text or "").strip()
+    if not normalized_scope:
+        return None, None
+    if "全国" in normalized_scope:
+        return None, None
+    matched_city, province_from_city = match_standard_city(normalized_scope)
+    matched_province = match_standard_province(normalized_scope) or province_from_city
+    if "河南本地市场" in normalized_scope and not matched_province:
+        matched_province = "河南省"
+    return matched_province, matched_city
+
+
 def _normalize_auth_user_row(row: dict | None) -> dict | None:
     if not row:
         return None
 
     supplier_id = row.get("supplier_id")
     normalized_supplier_id = int(supplier_id) if supplier_id is not None else None
+    account_market_scope = str(row.get("market_scope") or "").strip() or None
+    supplier_market_scope = str(row.get("supplier_market_scope") or "").strip() or None
+    effective_market_scope = account_market_scope or supplier_market_scope
+    default_province, default_city = _resolve_auth_market_scope_defaults(effective_market_scope)
+    user_id = int(row.get("id") or 0)
+    role = str(row.get("role") or "").strip() or "supplier"
+    procurement_supplier_ids = (
+        get_db().get_procurement_user_supplier_ids(user_id)
+        if role == "procurement" and user_id > 0
+        else []
+    )
     supplier_profile = None
     if normalized_supplier_id is not None and row.get("supplier_name"):
         supplier_profile = {
@@ -240,15 +265,19 @@ def _normalize_auth_user_row(row: dict | None) -> dict | None:
         }
 
     return {
-        "id": int(row.get("id") or 0),
+        "id": user_id,
         "username": str(row.get("username") or "").strip(),
         "password_hash": row.get("password_hash"),
-        "role": str(row.get("role") or "").strip() or "supplier",
+        "role": role,
         "display_name": row.get("display_name"),
+        "market_scope": effective_market_scope,
+        "default_province": default_province,
+        "default_city": default_city,
         "is_active": bool(row.get("is_active")) if row.get("is_active") is not None else True,
         "is_deleted": bool(row.get("is_deleted")) if row.get("is_deleted") is not None else False,
         "supplier_id": normalized_supplier_id,
         "supplier_profile": supplier_profile,
+        "procurement_supplier_ids": procurement_supplier_ids,
         "last_login_at": row.get("last_login_at"),
         "deleted_at": row.get("deleted_at"),
         "deleted_by": row.get("deleted_by"),
@@ -317,8 +346,22 @@ def is_supplier_user(current_user: dict) -> bool:
     return str(current_user.get("role") or "") == "supplier"
 
 
+def is_procurement_user(current_user: dict) -> bool:
+    return str(current_user.get("role") or "") == "procurement"
+
+
 def get_actor_display_name(current_user: dict) -> str:
     return str(current_user.get("display_name") or current_user.get("username") or "").strip() or "系统用户"
+
+
+def get_procurement_supplier_ids(current_user: dict) -> list[int]:
+    if not is_procurement_user(current_user):
+        return []
+    return sorted({
+        int(supplier_id)
+        for supplier_id in current_user.get("procurement_supplier_ids") or []
+        if supplier_id is not None and int(supplier_id) > 0
+    })
 
 
 def ensure_supplier_access(current_user: dict, supplier_id: int) -> int:

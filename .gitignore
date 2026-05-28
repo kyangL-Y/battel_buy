@@ -24,6 +24,7 @@ data/market_summary_cache/
 web/artifacts/
 web/*.log
 web/*.png
+web/src/**/*.vue.js
 
 # Local tooling / scratch
 .claude/

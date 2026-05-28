@@ -5,7 +5,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 
-AuthUserRole = Literal["admin", "supplier"]
+AuthUserRole = Literal["admin", "supplier", "procurement"]
 SUPPLIER_QUOTE_IMPORT_MAX_ITEMS = 1000
 
 
@@ -40,10 +40,14 @@ class AuthUserItem(BaseModel):
     username: str
     role: AuthUserRole
     display_name: str | None = None
+    market_scope: str | None = None
+    default_province: str | None = None
+    default_city: str | None = None
     is_active: bool = True
     is_deleted: bool = False
     supplier_id: int | None = None
     supplier_profile: AuthSupplierProfile | None = None
+    procurement_supplier_ids: list[int] = Field(default_factory=list)
     last_login_at: str | None = None
     deleted_at: str | None = None
     deleted_by: str | None = None
@@ -55,6 +59,12 @@ class AuthUserItem(BaseModel):
 class AuthLoginRequest(BaseModel):
     username: str = Field(..., min_length=1)
     password: str = Field(..., min_length=6)
+
+
+class AuthPasswordResetRequest(BaseModel):
+    username: str = Field(..., min_length=1)
+    current_password: str = Field(..., min_length=6)
+    new_password: str = Field(..., min_length=8)
 
 
 class AuthLoginResponse(BaseModel):
@@ -77,7 +87,9 @@ class AuthUserCreateRequest(BaseModel):
     password: str = Field(..., min_length=8)
     role: AuthUserRole
     supplier_id: int | None = Field(default=None, ge=1)
+    procurement_supplier_ids: list[int] = Field(default_factory=list)
     display_name: str | None = None
+    market_scope: str | None = None
     is_active: bool = True
 
 
@@ -86,7 +98,9 @@ class AuthUserUpdateRequest(BaseModel):
     password: str | None = Field(default=None, min_length=8)
     role: AuthUserRole
     supplier_id: int | None = Field(default=None, ge=1)
+    procurement_supplier_ids: list[int] = Field(default_factory=list)
     display_name: str | None = None
+    market_scope: str | None = None
     is_active: bool = True
 
 
@@ -117,51 +131,6 @@ class SupplierItem(BaseModel):
 
 class SupplierListResponse(BaseModel):
     items: list[SupplierItem]
-
-
-class SupplierRegistrationRequestItem(BaseModel):
-    id: int
-    company_name: str
-    contact_name: str | None = None
-    contact_phone: str | None = None
-    username: str
-    status: Literal["pending", "approved", "rejected"] = "pending"
-    review_notes: str | None = None
-    supplier_id: int | None = None
-    reviewed_by: str | None = None
-    reviewed_at: str | None = None
-    created_at: str | None = None
-    updated_at: str | None = None
-    supplier_name: str | None = None
-    market_category: str | None = None
-    channel: str | None = None
-    supplier_is_active: bool | None = None
-
-
-class SupplierRegistrationRequestListResponse(BaseModel):
-    items: list[SupplierRegistrationRequestItem]
-
-
-class SupplierRegistrationCreateRequest(BaseModel):
-    company_name: str = Field(..., min_length=1)
-    contact_name: str | None = None
-    contact_phone: str = Field(..., min_length=1)
-    username: str = Field(..., min_length=1)
-
-
-class SupplierRegistrationReviewRequest(BaseModel):
-    supplier_name: str | None = None
-    contact_name: str | None = None
-    contact_phone: str | None = None
-    market_scope: str | None = None
-    market_category: str | None = None
-    channel: str | None = None
-    notes: str | None = None
-    account_display_name: str | None = None
-    account_password: str | None = Field(default=None, min_length=8)
-    account_is_active: bool = True
-    supplier_is_active: bool = True
-    review_notes: str | None = None
 
 
 class SupplierCategorySummaryItem(BaseModel):

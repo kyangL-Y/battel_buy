@@ -32,12 +32,14 @@ from api.deps import (
     ensure_supplier_access,
     get_actor_display_name,
     get_auth_user_by_username,
+    get_procurement_supplier_ids,
     get_identity_aliases,
     get_current_user,
     get_db,
     get_history_df,
     get_auth_user_by_id,
     is_admin_user,
+    is_procurement_user,
     get_latest_df,
     get_product_keys_for_identity,
     get_product_history_identity_df,
@@ -67,6 +69,11 @@ from api.schemas import (
     MenuPlanResponse,
     PricingPackagesResponse,
     ProductSupplierQuotesResponse,
+    ProcurementAccountRegisterRequest,
+    ProcurementRegistrationCreateRequest,
+    ProcurementRegistrationRequestItem,
+    ProcurementRegistrationRequestListResponse,
+    ProcurementRegistrationReviewRequest,
     ProcurementRecommendationResponse,
     SalesDemoContentResponse,
     SignalInsightItem,
@@ -1053,10 +1060,14 @@ def _build_auth_user_item(user: dict) -> AuthUserItem:
         username=str(user.get("username") or "").strip(),
         role=str(user.get("role") or "supplier"),
         display_name=user.get("display_name"),
+        market_scope=user.get("market_scope"),
+        default_province=user.get("default_province"),
+        default_city=user.get("default_city"),
         is_active=bool(user.get("is_active")) if user.get("is_active") is not None else True,
         is_deleted=bool(user.get("is_deleted")) if user.get("is_deleted") is not None else False,
         supplier_id=supplier_id,
         supplier_profile=supplier_profile,
+        procurement_supplier_ids=list(user.get("procurement_supplier_ids") or []),
         last_login_at=user.get("last_login_at"),
         deleted_at=user.get("deleted_at"),
         deleted_by=user.get("deleted_by"),
@@ -1073,6 +1084,40 @@ def _normalize_account_username(value: str | None) -> str | None:
     if not ACCOUNT_USERNAME_RE.match(username):
         raise HTTPException(status_code=400, detail="登录账号需为 3-64 位，只能包含字母、数字、下划线、中划线、点或 @")
     return username
+
+
+def _normalize_supplier_id_list(values: list[int] | None) -> list[int]:
+    return sorted({
+        int(value)
+        for value in (values or [])
+        if value is not None and int(value) > 0
+    })
+
+
+def _validate_procurement_supplier_ids(supplier_ids: list[int]) -> None:
+    if not supplier_ids:
+        raise HTTPException(status_code=400, detail="采购账号至少绑定一家供应商")
+    supplier_rows = _sanitize_dataframe(get_db().get_suppliers(active_only=False))
+    existing_ids = {int(item.get("id") or 0) for item in supplier_rows}
+    missing_ids = [supplier_id for supplier_id in supplier_ids if supplier_id not in existing_ids]
+    if missing_ids:
+        raise HTTPException(status_code=400, detail=f"存在未找到的供应商 ID: {', '.join(str(item) for item in missing_ids)}")
+
+
+def _require_procurement_or_admin(current_user: dict) -> None:
+    if is_admin_user(current_user) or is_procurement_user(current_user):
+        return
+    raise HTTPException(status_code=403, detail="当前账号无权进入采购端")
+
+
+def _filter_suppliers_by_current_user(current_user: dict, items: list[dict]) -> list[dict]:
+    if is_admin_user(current_user):
+        return items
+    if is_procurement_user(current_user):
+        allowed_supplier_ids = set(get_procurement_supplier_ids(current_user))
+        return [item for item in items if int(item.get("id") or 0) in allowed_supplier_ids]
+    supplier_scope = ensure_supplier_access(current_user, int(current_user.get("supplier_id") or 0))
+    return [item for item in items if int(item.get("id") or 0) == supplier_scope]
 
 
 def _hash_required_account_password(value: str | None, detail: str) -> str:
@@ -1119,7 +1164,11 @@ def _ensure_auth_user_can_be_removed(user_id: int, existing_user: dict, current_
         raise HTTPException(status_code=400, detail="至少保留一个启用的管理员账号")
 
 
-def _build_product_supplier_quotes_response(identity_key: str, supplier_id: int | None = None) -> dict:
+def _build_product_supplier_quotes_response(
+    identity_key: str,
+    supplier_id: int | None = None,
+    supplier_ids: list[int] | None = None,
+) -> dict:
     decoded_key = str(identity_key or "").strip()
     history_df = get_product_history_identity_df(decoded_key)
     supplier_history_df = _build_supplier_quotes_market_frame(get_identity_aliases(decoded_key))
@@ -1137,7 +1186,10 @@ def _build_product_supplier_quotes_response(identity_key: str, supplier_id: int 
         quote_rows = _sanitize_dataframe(get_db().get_latest_supplier_quotes(price_identity_keys=identity_aliases))
     except TypeError:
         quote_rows = _sanitize_dataframe(get_db().get_latest_supplier_quotes(decoded_key))
-    if supplier_id is not None:
+    normalized_supplier_ids = set(_normalize_supplier_id_list(supplier_ids))
+    if normalized_supplier_ids:
+        quote_rows = [row for row in quote_rows if int(row.get("supplier_id") or 0) in normalized_supplier_ids]
+    elif supplier_id is not None:
         quote_rows = [row for row in quote_rows if int(row.get("supplier_id") or 0) == int(supplier_id)]
     market_lowest_price = _normalize_float(market_summary.get("current_lowest_price"))
     market_average_price = _normalize_float(market_summary.get("average_price"))
@@ -1657,28 +1709,55 @@ def _create_supplier_quote_record(
     return resolved_supplier_id, record_id, decoded_key, _build_supplier_quote_item(record_rows[0])
 
 
-def _build_supplier_overview_response(recent_limit: int = 12, supplier_id: int | None = None) -> dict:
+def _build_supplier_overview_response(
+    recent_limit: int = 12,
+    supplier_id: int | None = None,
+    supplier_ids: list[int] | None = None,
+) -> dict:
     supplier_rows = _sanitize_dataframe(get_db().get_suppliers(active_only=False))
-    if supplier_id is not None:
+    normalized_supplier_ids = set(_normalize_supplier_id_list(supplier_ids))
+    if normalized_supplier_ids:
+        supplier_rows = [item for item in supplier_rows if int(item.get("id") or 0) in normalized_supplier_ids]
+    elif supplier_id is not None:
         supplier_rows = [item for item in supplier_rows if int(item.get("id") or 0) == int(supplier_id)]
 
-    if supplier_id is None:
+    if supplier_id is None and not normalized_supplier_ids:
         category_rows = _sanitize_dataframe(get_db().get_supplier_category_summary())
         recent_rows = _sanitize_dataframe(get_db().get_recent_supplier_quotes(limit=recent_limit))
     else:
-        current_supplier = supplier_rows[0] if supplier_rows else {}
-        category_rows = [
-            {
-                "market_category": current_supplier.get("market_category") or "未分类",
-                "supplier_count": 1 if current_supplier else 0,
-                "active_supplier_count": 1 if current_supplier and bool(current_supplier.get("is_active")) else 0,
-                "quote_count": int(current_supplier.get("quote_count") or 0),
-                "latest_quoted_at": current_supplier.get("latest_quoted_at"),
-            }
-        ] if current_supplier else []
-        recent_rows = _sanitize_dataframe(
-            get_db().get_supplier_quote_records(int(supplier_id), limit=recent_limit, offset=0)
-        )
+        category_buckets: dict[str, dict] = {}
+        for item in supplier_rows:
+            category_name = str(item.get("market_category") or "未分类").strip() or "未分类"
+            bucket = category_buckets.setdefault(category_name, {
+                "market_category": category_name,
+                "supplier_count": 0,
+                "active_supplier_count": 0,
+                "quote_count": 0,
+                "latest_quoted_at": None,
+            })
+            bucket["supplier_count"] += 1
+            if bool(item.get("is_active")):
+                bucket["active_supplier_count"] += 1
+            bucket["quote_count"] += int(item.get("quote_count") or 0)
+            latest_quoted_at = item.get("latest_quoted_at")
+            if latest_quoted_at and (bucket["latest_quoted_at"] is None or str(latest_quoted_at) > str(bucket["latest_quoted_at"])):
+                bucket["latest_quoted_at"] = latest_quoted_at
+        category_rows = list(category_buckets.values())
+        if normalized_supplier_ids:
+            all_recent_rows: list[dict] = []
+            for current_supplier_id in sorted(normalized_supplier_ids):
+                all_recent_rows.extend(
+                    _sanitize_dataframe(get_db().get_supplier_quote_records(int(current_supplier_id), limit=recent_limit, offset=0))
+                )
+            recent_rows = sorted(
+                all_recent_rows,
+                key=lambda item: str(item.get("quoted_at") or item.get("updated_at") or ""),
+                reverse=True,
+            )[:recent_limit]
+        else:
+            recent_rows = _sanitize_dataframe(
+                get_db().get_supplier_quote_records(int(supplier_id), limit=recent_limit, offset=0)
+            )
     recent_quotes = [_build_supplier_quote_item(row) for row in recent_rows]
 
     active_supplier_count = sum(1 for item in supplier_rows if bool(item.get("is_active")))
@@ -1725,6 +1804,26 @@ def _build_supplier_registration_request_item(row: dict) -> dict:
         "market_category": str(row.get("market_category") or "").strip() or None,
         "channel": str(row.get("channel") or "").strip() or None,
         "supplier_is_active": None if row.get("supplier_is_active") is None else bool(row.get("supplier_is_active")),
+    }
+
+
+def _build_procurement_registration_request_item(row: dict) -> dict:
+    return {
+        "id": int(row.get("id") or 0),
+        "company_name": str(row.get("company_name") or "").strip(),
+        "contact_name": str(row.get("contact_name") or "").strip() or None,
+        "contact_phone": str(row.get("contact_phone") or "").strip() or None,
+        "username": str(row.get("username") or "").strip(),
+        "market_scope": str(row.get("market_scope") or "").strip() or None,
+        "requested_supplier_names": str(row.get("requested_supplier_names") or "").strip() or None,
+        "status": str(row.get("status") or "pending").strip().lower() or "pending",
+        "review_notes": str(row.get("review_notes") or "").strip() or None,
+        "auth_user_id": _normalize_int(row.get("auth_user_id")),
+        "reviewed_by": str(row.get("reviewed_by") or "").strip() or None,
+        "reviewed_at": str(row.get("reviewed_at") or "").strip() or None,
+        "created_at": str(row.get("created_at") or "").strip() or None,
+        "updated_at": str(row.get("updated_at") or "").strip() or None,
+        "display_name": str(row.get("display_name") or "").strip() or None,
     }
 
 
@@ -2222,6 +2321,44 @@ def create_app() -> FastAPI:
         latest_user = get_auth_user_by_id(int(user["id"])) or user
         return AuthLoginResponse(access_token=token, expires_in=expires_in, user=_build_auth_user_item(latest_user))
 
+    @app.post("/api/auth/procurement/register", response_model=AuthLoginResponse)
+    def register_procurement_account(payload: ProcurementAccountRegisterRequest) -> AuthLoginResponse:
+        username = _normalize_account_username(payload.username)
+        if not username:
+            raise HTTPException(status_code=400, detail="登录账号不能为空")
+        _ensure_account_username_available(username)
+        password_hash = _hash_required_account_password(payload.password, "注册采购账号时必须填写密码")
+        display_name = (
+            str(payload.contact_name or "").strip()
+            or str(payload.company_name or "").strip()
+            or username
+        )
+        try:
+            user_id = get_db().upsert_auth_user(
+                username=username,
+                password_hash=password_hash,
+                role="procurement",
+                display_name=display_name,
+                market_scope=payload.market_scope,
+                is_active=True,
+            )
+            get_db().replace_procurement_user_suppliers(user_id, [])
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        created_user = get_auth_user_by_id(user_id)
+        if not created_user:
+            raise HTTPException(status_code=500, detail="采购账号注册成功但返回数据缺失")
+        token, expires_in = create_access_token(
+            user_id=int(created_user["id"]),
+            username=str(created_user["username"]),
+            role=str(created_user["role"]),
+            supplier_id=None,
+            display_name=created_user.get("display_name"),
+        )
+        get_db().touch_auth_user_login(int(created_user["id"]))
+        latest_user = get_auth_user_by_id(int(created_user["id"])) or created_user
+        return AuthLoginResponse(access_token=token, expires_in=expires_in, user=_build_auth_user_item(latest_user))
+
     @app.get("/api/auth/me", response_model=AuthMeResponse)
     def auth_me(current_user: dict = Depends(require_authenticated_user)) -> AuthMeResponse:
         return AuthMeResponse(user=_build_auth_user_item(current_user))
@@ -2247,8 +2384,13 @@ def create_app() -> FastAPI:
         if not username:
             raise HTTPException(status_code=400, detail="登录账号不能为空")
         supplier_id = payload.supplier_id if payload.role == "supplier" else None
+        procurement_supplier_ids = _normalize_supplier_id_list(payload.procurement_supplier_ids)
         if payload.role == "supplier" and supplier_id is None:
             raise HTTPException(status_code=400, detail="供应商账号必须绑定供应商")
+        if payload.role == "procurement":
+            _validate_procurement_supplier_ids(procurement_supplier_ids)
+        elif procurement_supplier_ids:
+            raise HTTPException(status_code=400, detail="只有采购账号可以绑定多家供应商")
         _ensure_account_username_available(username)
         _ensure_supplier_account_available(supplier_id)
         password_hash = _hash_required_account_password(payload.password, "创建账号时必须填写初始密码")
@@ -2259,8 +2401,10 @@ def create_app() -> FastAPI:
                 role=payload.role,
                 supplier_id=supplier_id,
                 display_name=payload.display_name,
+                market_scope=payload.market_scope,
                 is_active=payload.is_active,
             )
+            get_db().replace_procurement_user_suppliers(user_id, procurement_supplier_ids if payload.role == "procurement" else [])
         except ValueError as error:
             raise HTTPException(status_code=400, detail=str(error)) from error
         created_user = get_auth_user_by_id(user_id)
@@ -2292,8 +2436,13 @@ def create_app() -> FastAPI:
         if not username:
             raise HTTPException(status_code=400, detail="登录账号不能为空")
         supplier_id = payload.supplier_id if payload.role == "supplier" else None
+        procurement_supplier_ids = _normalize_supplier_id_list(payload.procurement_supplier_ids)
         if payload.role == "supplier" and supplier_id is None:
             raise HTTPException(status_code=400, detail="供应商账号必须绑定供应商")
+        if payload.role == "procurement":
+            _validate_procurement_supplier_ids(procurement_supplier_ids)
+        elif procurement_supplier_ids:
+            raise HTTPException(status_code=400, detail="只有采购账号可以绑定多家供应商")
         _ensure_account_username_available(username, existing_user_id=user_id)
         _ensure_supplier_account_available(supplier_id, existing_user_id=user_id)
         password_hash = _hash_required_account_password(payload.password, "账号密码不能为空") if payload.password else None
@@ -2305,8 +2454,10 @@ def create_app() -> FastAPI:
                 role=payload.role,
                 supplier_id=supplier_id,
                 display_name=payload.display_name,
+                market_scope=payload.market_scope,
                 is_active=payload.is_active,
             )
+            get_db().replace_procurement_user_suppliers(updated_user_id, procurement_supplier_ids if payload.role == "procurement" else [])
         except ValueError as error:
             raise HTTPException(status_code=400, detail=str(error)) from error
         updated_user = get_auth_user_by_id(updated_user_id)
@@ -2334,9 +2485,12 @@ def create_app() -> FastAPI:
     ) -> ProductSupplierQuotesResponse:
         decoded_key = unquote(identity_key)
         supplier_scope = None
-        if not is_admin_user(current_user):
+        supplier_scope_ids: list[int] | None = None
+        if is_procurement_user(current_user):
+            supplier_scope_ids = get_procurement_supplier_ids(current_user)
+        elif not is_admin_user(current_user):
             supplier_scope = ensure_supplier_access(current_user, int(current_user.get("supplier_id") or 0))
-        return ProductSupplierQuotesResponse(**_build_product_supplier_quotes_response(decoded_key, supplier_scope))
+        return ProductSupplierQuotesResponse(**_build_product_supplier_quotes_response(decoded_key, supplier_scope, supplier_scope_ids))
 
     @app.post("/api/supplier-registration-requests", response_model=SupplierRegistrationRequestItem)
     def create_supplier_registration_request(
@@ -2453,15 +2607,127 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=500, detail="注册申请驳回成功但返回数据缺失")
         return SupplierRegistrationRequestItem(**_build_supplier_registration_request_item(updated_row))
 
+    @app.post("/api/procurement-registration-requests", response_model=ProcurementRegistrationRequestItem)
+    def create_procurement_registration_request(
+        payload: ProcurementRegistrationCreateRequest,
+    ) -> ProcurementRegistrationRequestItem:
+        try:
+            request_id = get_db().create_procurement_registration_request(
+                company_name=payload.company_name,
+                contact_name=payload.contact_name,
+                contact_phone=payload.contact_phone,
+                username=payload.username,
+                market_scope=payload.market_scope,
+                requested_supplier_names=payload.requested_supplier_names,
+            )
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        rows = _sanitize_dataframe(get_db().get_procurement_registration_requests())
+        request_row = next((item for item in rows if int(item.get("id") or 0) == request_id), None)
+        if not request_row:
+            raise HTTPException(status_code=500, detail="采购注册申请创建成功但返回数据缺失")
+        return ProcurementRegistrationRequestItem(**_build_procurement_registration_request_item(request_row))
+
+    @app.get("/api/procurement-registration-requests", response_model=ProcurementRegistrationRequestListResponse)
+    def procurement_registration_requests(
+        status: str | None = Query(default=None),
+        keyword: str | None = Query(default=None),
+        current_user: dict = Depends(require_admin_user),
+    ) -> ProcurementRegistrationRequestListResponse:
+        rows = _sanitize_dataframe(
+            get_db().get_procurement_registration_requests(status=status, keyword=keyword)
+        )
+        return ProcurementRegistrationRequestListResponse(
+            items=[ProcurementRegistrationRequestItem(**_build_procurement_registration_request_item(row)) for row in rows]
+        )
+
+    @app.post("/api/procurement-registration-requests/{request_id}/approve", response_model=ProcurementRegistrationRequestItem)
+    def approve_procurement_registration_request(
+        request_id: int,
+        payload: ProcurementRegistrationReviewRequest,
+        current_user: dict = Depends(require_admin_user),
+    ) -> ProcurementRegistrationRequestItem:
+        request_rows = _sanitize_dataframe(get_db().get_procurement_registration_requests())
+        request_row = next((item for item in request_rows if int(item.get("id") or 0) == int(request_id)), None)
+        if not request_row:
+            raise HTTPException(status_code=404, detail="未找到采购注册申请")
+        if str(request_row.get("status") or "pending").strip().lower() != "pending":
+            raise HTTPException(status_code=400, detail="该采购注册申请已处理")
+
+        account_username = _normalize_account_username(str(request_row.get("username") or ""))
+        if not account_username:
+            raise HTTPException(status_code=400, detail="采购注册申请缺少登录账号")
+        _ensure_account_username_available(account_username)
+        procurement_supplier_ids = _normalize_supplier_id_list(payload.procurement_supplier_ids)
+        _validate_procurement_supplier_ids(procurement_supplier_ids)
+        password_hash = _hash_required_account_password(payload.account_password, "通过采购注册申请时必须填写初始密码")
+        market_scope = payload.market_scope if payload.market_scope is not None else request_row.get("market_scope")
+        display_name = (
+            payload.display_name
+            or str(request_row.get("contact_name") or "").strip()
+            or str(request_row.get("company_name") or "").strip()
+            or account_username
+        )
+        try:
+            auth_user_id = get_db().upsert_auth_user(
+                username=account_username,
+                password_hash=password_hash,
+                role="procurement",
+                display_name=display_name,
+                market_scope=market_scope,
+                is_active=payload.account_is_active,
+            )
+            get_db().replace_procurement_user_suppliers(auth_user_id, procurement_supplier_ids)
+            updated_request_id = get_db().update_procurement_registration_request(
+                request_id,
+                status="approved",
+                review_notes=payload.review_notes,
+                reviewed_by=get_actor_display_name(current_user),
+                auth_user_id=auth_user_id,
+            )
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        if updated_request_id is None:
+            raise HTTPException(status_code=404, detail="未找到采购注册申请")
+        rows = _sanitize_dataframe(get_db().get_procurement_registration_requests())
+        updated_row = next((item for item in rows if int(item.get("id") or 0) == int(updated_request_id)), None)
+        if not updated_row:
+            raise HTTPException(status_code=500, detail="采购注册申请审核成功但返回数据缺失")
+        return ProcurementRegistrationRequestItem(**_build_procurement_registration_request_item(updated_row))
+
+    @app.post("/api/procurement-registration-requests/{request_id}/reject", response_model=ProcurementRegistrationRequestItem)
+    def reject_procurement_registration_request(
+        request_id: int,
+        payload: ProcurementRegistrationReviewRequest,
+        current_user: dict = Depends(require_admin_user),
+    ) -> ProcurementRegistrationRequestItem:
+        request_rows = _sanitize_dataframe(get_db().get_procurement_registration_requests())
+        request_row = next((item for item in request_rows if int(item.get("id") or 0) == int(request_id)), None)
+        if not request_row:
+            raise HTTPException(status_code=404, detail="未找到采购注册申请")
+        if str(request_row.get("status") or "pending").strip().lower() != "pending":
+            raise HTTPException(status_code=400, detail="该采购注册申请已处理")
+        updated_request_id = get_db().update_procurement_registration_request(
+            request_id,
+            status="rejected",
+            review_notes=payload.review_notes,
+            reviewed_by=get_actor_display_name(current_user),
+        )
+        if updated_request_id is None:
+            raise HTTPException(status_code=404, detail="未找到采购注册申请")
+        rows = _sanitize_dataframe(get_db().get_procurement_registration_requests())
+        updated_row = next((item for item in rows if int(item.get("id") or 0) == int(updated_request_id)), None)
+        if not updated_row:
+            raise HTTPException(status_code=500, detail="采购注册申请驳回成功但返回数据缺失")
+        return ProcurementRegistrationRequestItem(**_build_procurement_registration_request_item(updated_row))
+
     @app.get("/api/suppliers", response_model=SupplierListResponse)
     def suppliers(
         active_only: bool = Query(default=True),
         current_user: dict = Depends(require_authenticated_user),
     ) -> SupplierListResponse:
         items = _sanitize_dataframe(get_db().get_suppliers(active_only=active_only))
-        if not is_admin_user(current_user):
-            supplier_scope = ensure_supplier_access(current_user, int(current_user.get("supplier_id") or 0))
-            items = [item for item in items if int(item.get("id") or 0) == supplier_scope]
+        items = _filter_suppliers_by_current_user(current_user, items)
         return SupplierListResponse(items=items)
 
     @app.get("/api/suppliers/overview", response_model=SupplierOverviewResponse)
@@ -2470,15 +2736,21 @@ def create_app() -> FastAPI:
         current_user: dict = Depends(require_authenticated_user),
     ) -> SupplierOverviewResponse:
         supplier_scope = None
-        if not is_admin_user(current_user):
+        supplier_scope_ids: list[int] | None = None
+        if is_procurement_user(current_user):
+            supplier_scope_ids = get_procurement_supplier_ids(current_user)
+        elif not is_admin_user(current_user):
             supplier_scope = ensure_supplier_access(current_user, int(current_user.get("supplier_id") or 0))
-        return SupplierOverviewResponse(**_build_supplier_overview_response(recent_limit=limit, supplier_id=supplier_scope))
+        return SupplierOverviewResponse(
+            **_build_supplier_overview_response(recent_limit=limit, supplier_id=supplier_scope, supplier_ids=supplier_scope_ids)
+        )
 
     @app.post("/api/suppliers", response_model=SupplierItem)
     def create_supplier(
         payload: SupplierCreateRequest,
-        current_user: dict = Depends(require_admin_user),
+        current_user: dict = Depends(require_authenticated_user),
     ) -> SupplierItem:
+        _require_procurement_or_admin(current_user)
         account_username = _normalize_account_username(payload.account_username)
         account_password_hash = None
         if account_username:
@@ -2506,6 +2778,9 @@ def create_app() -> FastAPI:
                 )
         except ValueError as error:
             raise HTTPException(status_code=400, detail=str(error)) from error
+        if is_procurement_user(current_user):
+            scoped_supplier_ids = sorted({*get_procurement_supplier_ids(current_user), int(supplier_id)})
+            get_db().replace_procurement_user_suppliers(int(current_user.get("id") or 0), scoped_supplier_ids)
         supplier_df = get_db().get_suppliers(active_only=False)
         supplier_rows = _sanitize_dataframe(supplier_df)
         supplier_row = next((item for item in supplier_rows if int(item.get("id") or 0) == supplier_id), None)
@@ -2517,8 +2792,11 @@ def create_app() -> FastAPI:
     def update_supplier(
         supplier_id: int,
         payload: SupplierUpdateRequest,
-        current_user: dict = Depends(require_admin_user),
+        current_user: dict = Depends(require_authenticated_user),
     ) -> SupplierItem:
+        _require_procurement_or_admin(current_user)
+        if is_procurement_user(current_user) and int(supplier_id) not in set(get_procurement_supplier_ids(current_user)):
+            raise HTTPException(status_code=403, detail="当前账号无权修改该供应商")
         existing_auth_rows = get_db().get_auth_user_by_supplier_id(supplier_id)
         existing_auth_user = existing_auth_rows.iloc[0].to_dict() if not existing_auth_rows.empty else None
         account_username = _normalize_account_username(payload.account_username)

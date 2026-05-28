@@ -20,64 +20,48 @@
         </div>
       </div>
       <div class="supplier-portal-login-card supplier-portal-auth-card" data-testid="supplier-login-form">
-        <div class="supplier-portal-auth-tabs">
-          <button type="button" :class="{ active: authMode === 'login' }" @click="setAuthMode('login')">登录</button>
-          <button type="button" :class="{ active: authMode === 'register' }" @click="setAuthMode('register')">注册</button>
+        <div class="supplier-portal-auth-note">
+          <div>
+            <strong>账号由采购分配</strong>
+            <small>请联系采购或超级管理员开通供应商账号。</small>
+          </div>
         </div>
 
-        <template v-if="authMode === 'login'">
-          <strong>账号登录</strong>
-          <el-input v-model="authForm.username" data-testid="auth-username-input" placeholder="账号" />
-          <el-input
-            v-model="authForm.password"
-            data-testid="auth-password-input"
-            type="password"
-            show-password
-            placeholder="密码"
-            @keyup.enter="submitAuthLogin"
-          />
-          <p v-if="authError" class="supplier-portal-error">{{ authError }}</p>
-          <el-button type="primary" data-testid="auth-login-button" :loading="authSubmitting" @click="submitAuthLogin">
-            登录门户
-          </el-button>
-          <div class="supplier-portal-auth-foot">
-            <button type="button" @click="setAuthMode('register')">申请账号</button>
-            <button type="button" @click="showPasswordHelp">忘记密码</button>
-          </div>
-        </template>
-
-        <template v-else-if="registrationSubmitted">
-          <strong>申请已提交，等待审核</strong>
-          <small class="supplier-portal-form-tip">管理员审核并开通账号后才能登录；当前不会立即生成可用密码。</small>
-          <div class="supplier-portal-workbench-strip">
-            <article class="supplier-portal-workbench-card">
-              <span>申请账号</span>
-              <strong>{{ lastRegistrationUsername || '已提交' }}</strong>
-              <small>请等待管理员审核，审核通过后再回到登录页。</small>
-            </article>
-          </div>
-          <div class="supplier-portal-auth-foot">
-            <button type="button" @click="setAuthMode('login')">返回登录</button>
-            <button type="button" @click="resetRegistrationForm">继续提交新申请</button>
-          </div>
-        </template>
-
-        <template v-else>
-          <strong>注册申请</strong>
-          <el-input v-model="registerForm.supplierName" data-testid="supplier-register-name" placeholder="供应商名称" />
-          <el-input v-model="registerForm.contactName" data-testid="supplier-register-contact" placeholder="联系人" />
-          <el-input v-model="registerForm.contactPhone" data-testid="supplier-register-phone" placeholder="手机号" />
-          <el-input v-model="registerForm.username" data-testid="supplier-register-username" placeholder="登录账号" />
-          <p v-if="authError" class="supplier-portal-error">{{ authError }}</p>
-          <el-button type="primary" data-testid="supplier-register-submit" :loading="authSubmitting" @click="submitRegisterRequest">提交申请</el-button>
-          <div class="supplier-portal-auth-foot">
-            <button type="button" @click="setAuthMode('login')">已有账号，去登录</button>
-          </div>
-        </template>
+        <strong>账号登录</strong>
+        <el-input v-model="authForm.username" data-testid="auth-username-input" placeholder="账号" />
+        <el-input
+          v-model="authForm.password"
+          data-testid="auth-password-input"
+          type="password"
+          show-password
+          placeholder="密码"
+          @keyup.enter="submitAuthLogin"
+        />
+        <p v-if="authError" class="supplier-portal-error">{{ authError }}</p>
+        <el-button type="primary" data-testid="auth-login-button" :loading="authSubmitting" @click="submitAuthLogin">
+          登录门户
+        </el-button>
+        <div class="supplier-portal-auth-foot">
+          <button type="button" @click="showPasswordHelp">忘记密码</button>
+        </div>
       </div>
     </main>
 
-    <template v-else>
+    <el-dialog v-model="passwordResetVisible" title="重置密码" width="min(92vw, 420px)">
+      <div class="supplier-portal-reset-form">
+        <small>输入账号、当前密码和新密码，验证通过后直接更新密码并登录。</small>
+        <el-input v-model="passwordResetForm.username" placeholder="账号" autocomplete="username" />
+        <el-input v-model="passwordResetForm.current_password" type="password" show-password placeholder="当前密码" autocomplete="current-password" />
+        <el-input v-model="passwordResetForm.new_password" type="password" show-password placeholder="新密码，至少 8 位" autocomplete="new-password" @keyup.enter="submitPasswordReset" />
+        <p v-if="passwordResetError" class="supplier-portal-error">{{ passwordResetError }}</p>
+        <div class="supplier-portal-auth-foot">
+          <el-button plain @click="passwordResetVisible = false">取消</el-button>
+          <el-button type="primary" :loading="passwordResetSubmitting" @click="submitPasswordReset">确认重置</el-button>
+        </div>
+      </div>
+    </el-dialog>
+
+    <template v-if="isAuthenticated || authRestoring">
     <header class="panel supplier-portal-topbar">
       <div class="supplier-portal-brand">
         <div class="supplier-portal-brand-mark">报</div>
@@ -152,68 +136,36 @@
               <div class="supplier-portal-auth-note">
                 <div>
                   <strong>还没有账号？</strong>
-                  <small>提交申请后，管理员开通即可登录。</small>
+                  <small>账号由采购在后台分配，拿到账号后即可登录。</small>
                 </div>
-                <button type="button" @click="setAuthMode('register')">申请账号</button>
               </div>
             </div>
 
             <div class="supplier-portal-login-card" data-testid="supplier-login-form">
-              <div class="supplier-portal-auth-tabs">
-                <button type="button" :class="{ active: authMode === 'login' }" @click="setAuthMode('login')">登录</button>
-                <button type="button" :class="{ active: authMode === 'register' }" @click="setAuthMode('register')">注册</button>
+              <div class="supplier-portal-auth-note">
+                <div>
+                  <strong>账号由采购分配</strong>
+                  <small>请联系采购或超级管理员开通供应商账号。</small>
+                </div>
               </div>
 
-              <template v-if="authMode === 'login'">
-                <strong>账号登录</strong>
-                <el-input v-model="authForm.username" data-testid="auth-username-input" placeholder="账号" />
-                <el-input
-                  v-model="authForm.password"
-                  data-testid="auth-password-input"
-                  type="password"
-                  show-password
-                  placeholder="密码"
-                  @keyup.enter="submitAuthLogin"
-                />
-                <p v-if="authError" class="supplier-portal-error">{{ authError }}</p>
-                <el-button type="primary" data-testid="auth-login-button" :loading="authSubmitting" @click="submitAuthLogin">
-                  登录
-                </el-button>
-                <div class="supplier-portal-auth-foot">
-                  <button type="button" @click="setAuthMode('register')">申请账号</button>
-                  <button type="button" @click="showPasswordHelp">忘记密码</button>
-                </div>
-              </template>
-
-              <template v-else-if="registrationSubmitted">
-                <strong>申请已提交，等待审核</strong>
-                <small class="supplier-portal-form-tip">管理员审核并开通账号后才能登录；当前不会立即生成可用密码。</small>
-                <div class="supplier-portal-workbench-strip">
-                  <article class="supplier-portal-workbench-card">
-                    <span>申请账号</span>
-                    <strong>{{ lastRegistrationUsername || '已提交' }}</strong>
-                    <small>请等待管理员审核，审核通过后再回到登录页。</small>
-                  </article>
-                </div>
-                <div class="supplier-portal-auth-foot">
-                  <button type="button" @click="setAuthMode('login')">返回登录</button>
-                  <button type="button" @click="resetRegistrationForm">继续提交新申请</button>
-                </div>
-              </template>
-
-              <template v-else>
-                <strong>注册申请</strong>
-                <small class="supplier-portal-form-tip">提交资料后由管理员开通账号。</small>
-                <el-input v-model="registerForm.supplierName" data-testid="supplier-register-name" placeholder="供应商名称" />
-                <el-input v-model="registerForm.contactName" data-testid="supplier-register-contact" placeholder="联系人" />
-                <el-input v-model="registerForm.contactPhone" data-testid="supplier-register-phone" placeholder="手机号" />
-                <el-input v-model="registerForm.username" data-testid="supplier-register-username" placeholder="登录账号" />
-                <p v-if="authError" class="supplier-portal-error">{{ authError }}</p>
-                <el-button type="primary" data-testid="supplier-register-submit" :loading="authSubmitting" @click="submitRegisterRequest">提交申请</el-button>
-                <div class="supplier-portal-auth-foot">
-                  <button type="button" @click="setAuthMode('login')">已有账号，去登录</button>
-                </div>
-              </template>
+              <strong>账号登录</strong>
+              <el-input v-model="authForm.username" data-testid="auth-username-input" placeholder="账号" />
+              <el-input
+                v-model="authForm.password"
+                data-testid="auth-password-input"
+                type="password"
+                show-password
+                placeholder="密码"
+                @keyup.enter="submitAuthLogin"
+              />
+              <p v-if="authError" class="supplier-portal-error">{{ authError }}</p>
+              <el-button type="primary" data-testid="auth-login-button" :loading="authSubmitting" @click="submitAuthLogin">
+                登录
+              </el-button>
+              <div class="supplier-portal-auth-foot">
+                <button type="button" @click="showPasswordHelp">忘记密码</button>
+              </div>
             </div>
           </div>
         </template>
@@ -342,13 +294,13 @@ import { ElMessage } from 'element-plus/es/components/message/index.mjs'
 
 import {
   clearAuthSession,
-  createSupplierRegistrationRequest,
   extractApiErrorDetail,
   fetchCurrentUser,
   fetchLocationOptions,
   fetchProductOptions,
   login,
   readAuthSession,
+  resetAuthPassword,
   writeAuthSession,
 } from './api'
 import SupplierAdminPanel from './components/SupplierAdminPanel.vue'
@@ -358,7 +310,6 @@ import './supplier-portal.css'
 
 const MAIN_APP_PATH = '/'
 const SUPPLIER_BACKEND_PATH = '/supplier-backend'
-const ACCOUNT_USERNAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.@-]{2,63}$/
 const { isMobileViewport } = useViewport()
 
 const authSession = ref<AuthLoginResponse | null>(readAuthSession())
@@ -366,15 +317,14 @@ const authSubmitting = ref(false)
 const authRestoring = ref(false)
 const portalContextLoading = ref(false)
 const authError = ref('')
-const authMode = ref<'login' | 'register'>('login')
 const authForm = reactive({ username: '', password: '' })
-const registrationSubmitted = ref(false)
-const lastRegistrationUsername = ref('')
-const registerForm = reactive({
-  supplierName: '',
-  contactName: '',
-  contactPhone: '',
+const passwordResetVisible = ref(false)
+const passwordResetSubmitting = ref(false)
+const passwordResetError = ref('')
+const passwordResetForm = reactive({
   username: '',
+  current_password: '',
+  new_password: '',
 })
 const productOptions = ref<ProductOptionItem[]>([])
 const selectedIdentityKey = ref('')
@@ -501,7 +451,7 @@ const portalScopeCards = computed(() => {
     {
       key: supplierName ? 'quote' as const : 'backend' as const,
       label: '下一步',
-      value: supplierName ? '继续录价' : '申请绑定',
+      value: supplierName ? '继续录价' : '等待绑定',
       detail: supplierName ? '回到报价表单填写当前商品' : '请联系管理员完成绑定后再录价',
       tone: 'neutral',
     },
@@ -572,11 +522,6 @@ function applyAuthSession(session: AuthLoginResponse | null) {
   } else {
     clearAuthSession()
   }
-}
-
-function setAuthMode(mode: 'login' | 'register') {
-  authMode.value = mode
-  authError.value = ''
 }
 
 function backToMainWorkspace() {
@@ -759,52 +704,45 @@ async function submitAuthLogin() {
   }
 }
 
-function submitRegisterRequest() {
-  authError.value = ''
-  registrationSubmitted.value = false
-  const supplierName = registerForm.supplierName.trim()
-  const contactName = registerForm.contactName.trim()
-  const contactPhone = registerForm.contactPhone.trim()
-  const username = registerForm.username.trim()
-  if (!supplierName || !contactPhone || !username) {
-    authError.value = '请填写供应商名称、手机号和登录账号'
-    return
-  }
-  if (!ACCOUNT_USERNAME_PATTERN.test(username)) {
-    authError.value = '登录账号需为 3-64 位，只能包含字母、数字、下划线、中划线、点或 @'
-    return
-  }
-  authSubmitting.value = true
-  createSupplierRegistrationRequest({
-    company_name: supplierName,
-    contact_name: contactName || undefined,
-    contact_phone: contactPhone,
-    username,
-  }).then(() => {
-    ElMessage.success('注册申请已提交，请等待管理员审核开通')
-    registrationSubmitted.value = false
-    authMode.value = 'login'
-    lastRegistrationUsername.value = username
-    authForm.username = username
-    registerForm.supplierName = ''
-    registerForm.contactName = ''
-    registerForm.contactPhone = ''
-    registerForm.username = ''
-  }).catch((error) => {
-    authError.value = extractApiErrorDetail(error) || '注册申请提交失败'
-  }).finally(() => {
-    authSubmitting.value = false
-  })
-}
-
-function resetRegistrationForm() {
-  registrationSubmitted.value = false
-  authError.value = ''
-  authMode.value = 'register'
-}
-
 function showPasswordHelp() {
-  ElMessage.info('请联系管理员重置密码')
+  passwordResetError.value = ''
+  passwordResetForm.username = authForm.username.trim()
+  passwordResetForm.current_password = ''
+  passwordResetForm.new_password = ''
+  passwordResetVisible.value = true
+}
+
+async function submitPasswordReset() {
+  const username = passwordResetForm.username.trim()
+  const currentPassword = passwordResetForm.current_password
+  const newPassword = passwordResetForm.new_password
+  if (!username || !currentPassword || !newPassword) {
+    passwordResetError.value = '请填写账号、当前密码和新密码'
+    return
+  }
+  if (newPassword.length < 8) {
+    passwordResetError.value = '新密码至少 8 位'
+    return
+  }
+  passwordResetSubmitting.value = true
+  passwordResetError.value = ''
+  try {
+    const session = await resetAuthPassword({
+      username,
+      current_password: currentPassword,
+      new_password: newPassword,
+    })
+    applyAuthSession(session)
+    authForm.username = username
+    authForm.password = ''
+    passwordResetVisible.value = false
+    await loadPortalContext(true)
+    ElMessage.success('密码已重置')
+  } catch (error) {
+    passwordResetError.value = extractApiErrorDetail(error) || '密码重置失败'
+  } finally {
+    passwordResetSubmitting.value = false
+  }
 }
 
 function logoutAuthSession() {

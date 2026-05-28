@@ -104,6 +104,9 @@ LOCATION_SPECIAL_CITY_PREFIXES = (
     "平凉",
     "南昌",
 )
+ZHENGZHOU_MONITOR_SOURCE_MARKERS = ("菜篮子监测", "zzny.zhengzhou.gov.cn")
+ZHENGZHOU_MONITOR_PROVINCE = "河南省"
+ZHENGZHOU_MONITOR_CITY = "郑州市"
 QUOTE_EXPORT_PRIORITY_COLUMNS = [
     "group_name",
     "site_name",
@@ -582,6 +585,43 @@ def _normalize_explicit_city(value: Any) -> str | None:
     if re.search(r"(市场|批发|物流|交易|农产品|农副产品|海吉星|国际|有限公司)", text):
         return None
     return None
+
+
+def _is_zhengzhou_monitor_source_row(row: pd.Series) -> bool:
+    for field_name in ("source_name", "site_name", "source_url", "market_name", "group_name"):
+        text = _normalize_location_text(row.get(field_name))
+        if not text:
+            continue
+        lowered = text.lower()
+        if any(marker in text or marker in lowered for marker in ZHENGZHOU_MONITOR_SOURCE_MARKERS):
+            return True
+    return False
+
+
+def _is_zhengzhou_monitor_scope_allowed(selected_province: str | None, selected_city: str | None) -> bool:
+    normalized_city = _normalize_explicit_city(selected_city)
+    if normalized_city:
+        return normalized_city == ZHENGZHOU_MONITOR_CITY
+    normalized_province = _normalize_explicit_province(selected_province)
+    if normalized_province:
+        return normalized_province == ZHENGZHOU_MONITOR_PROVINCE
+    return False
+
+
+def _apply_zhengzhou_monitor_scope(
+    df: pd.DataFrame,
+    *,
+    selected_province: str | None,
+    selected_city: str | None,
+) -> pd.DataFrame:
+    if df.empty:
+        return df.copy()
+    monitor_mask = df.apply(_is_zhengzhou_monitor_source_row, axis=1)
+    if not monitor_mask.any():
+        return df
+    if _is_zhengzhou_monitor_scope_allowed(selected_province, selected_city):
+        return df
+    return df[~monitor_mask].copy()
 
 
 def _is_valid_city_candidate(candidate: str | None) -> bool:
@@ -1472,6 +1512,13 @@ def compute_cross_site_price_summary(
     )
     if latest.empty:
         return pd.DataFrame()
+    latest = _apply_zhengzhou_monitor_scope(
+        latest,
+        selected_province=selected_province,
+        selected_city=selected_city,
+    )
+    if latest.empty:
+        return pd.DataFrame()
 
     latest = apply_location_priority(
         latest.copy(),
@@ -1917,6 +1964,13 @@ def build_single_product_selector_options(
     if latest.empty:
         return pd.DataFrame()
     latest = _prepare_trend_display_rows(latest)
+    latest = _apply_zhengzhou_monitor_scope(
+        latest,
+        selected_province=selected_province,
+        selected_city=selected_city,
+    )
+    if latest.empty:
+        return pd.DataFrame()
     latest = apply_location_priority(
         latest,
         selected_province=selected_province,
@@ -2053,6 +2107,13 @@ def _build_single_product_latest_snapshot(
     base = _filter_single_product_history(df, identity_key)
     if base.empty:
         return pd.DataFrame()
+    base = _apply_zhengzhou_monitor_scope(
+        base,
+        selected_province=selected_province,
+        selected_city=selected_city,
+    )
+    if base.empty:
+        return pd.DataFrame()
 
     base["captured_at"] = pd.to_datetime(base["captured_at"], errors="coerce")
     base = base.dropna(subset=["captured_at"])
@@ -2139,6 +2200,13 @@ def build_cross_market_product_trend(
     selected_city: str | None = None,
 ) -> pd.DataFrame:
     base = _filter_single_product_history(df, identity_key)
+    if base.empty:
+        return pd.DataFrame()
+    base = _apply_zhengzhou_monitor_scope(
+        base,
+        selected_province=selected_province,
+        selected_city=selected_city,
+    )
     if base.empty:
         return pd.DataFrame()
     base["captured_at"] = pd.to_datetime(base["captured_at"], errors="coerce")
