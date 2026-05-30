@@ -7,11 +7,15 @@ from crawler.requests_fetcher import RequestsFetcher
 class DummyDatabase:
     def __init__(self):
         self.failed_records = []
+        self.product_records = []
+        self.price_records = []
 
     def upsert_product(self, **kwargs):
+        self.product_records.append(kwargs)
         return 1
 
     def insert_price_record(self, **kwargs):
+        self.price_records.append(kwargs)
         return 1
 
     def insert_failed_crawl_record(self, **kwargs):
@@ -481,6 +485,52 @@ def test_crawl_source_uses_liancai_h5_batch_strategy(monkeypatch):
     assert results[0]["product_name"] == "绿包菜 青甘蓝 10斤"
 
 
+def test_crawl_source_uses_nanjing_zhongcai_public_batch_strategy(monkeypatch):
+    rule = {
+        "site_name": "南京众彩",
+        "domains": ["www.njnfwl.com"],
+        "strategy": "nanjing_zhongcai_public_batch",
+        "base_url": "https://www.njnfwl.com",
+    }
+    service = PriceCrawlerService(DummyDatabase(), [rule], fetcher=RequestsFetcher(), fallback_to_playwright=True)
+
+    monkeypatch.setattr(
+        service.public_source_crawler,
+        "fetch_nanjing_zhongcai_public",
+        lambda product, site_rule=None: [
+            {
+                "site_name": "南京众彩 | 蔬菜",
+                "product_name": "青菜",
+                "current_price": 2.8,
+                "original_price": 3.2,
+                "promotion_text": "2026年5月28日蔬菜价格参考表 | 图片OCR",
+                "currency": "CNY",
+                "extra_fields": {
+                    "group_name": "南京众彩",
+                    "category": "蔬菜",
+                    "spec_text": "价格参考表",
+                    "compare_key": "青菜",
+                },
+            }
+        ],
+    )
+
+    results = service.crawl_source(
+        {
+            "url": "https://www.njnfwl.com/list-eqpn3l3g/shucaijiage/1/10",
+            "product_key": "nanjing-zhongcai-vegetable-price",
+            "product_name": "南京众彩·蔬菜价格参考表",
+            "source_type": "batch",
+            "category": "蔬菜",
+        }
+    )
+
+    assert len(results) == 1
+    assert results[0]["source_strategy"] == "nanjing_zhongcai_public_batch"
+    assert results[0]["site_name"] == "南京众彩 | 蔬菜"
+    assert results[0]["product_name"] == "青菜"
+
+
 def test_crawl_source_uses_liancai_app_gateway_batch_strategy(monkeypatch):
     rule = {
         "site_name": "莲菜网App",
@@ -529,3 +579,82 @@ def test_crawl_source_uses_liancai_app_gateway_batch_strategy(monkeypatch):
     assert results[0]["source_strategy"] == "liancai_app_gateway_batch"
     assert results[0]["site_name"] == "莲菜网App | 干调类"
     assert results[0]["product_name"] == "花椒1斤-豫佐味"
+
+
+def test_crawl_source_uses_meicai_app_gateway_batch_strategy(monkeypatch):
+    rule = {
+        "site_name": "美菜网App",
+        "domains": ["mall-entrance.yunshanmeicai.com"],
+        "strategy": "meicai_app_gateway_batch",
+        "gateway_base_url": "https://mall-entrance.yunshanmeicai.com",
+    }
+    service = PriceCrawlerService(DummyDatabase(), [rule], fetcher=RequestsFetcher(), fallback_to_playwright=True)
+
+    monkeypatch.setattr(
+        service.public_source_crawler,
+        "fetch_meicai_app_gateway",
+        lambda product, site_rule=None: [
+            {
+                "site_name": "美菜网App | 推荐商品",
+                "product_name": "青菜 约500g",
+                "current_price": 2.8,
+                "original_price": None,
+                "promotion_text": "美菜网App | 接口:xb_feed | 页码:1",
+                "currency": "CNY",
+                "extra_fields": {
+                    "group_name": "美菜网",
+                    "category": "蔬菜",
+                    "spec_text": "元/斤",
+                    "compare_key": "青菜 约500g",
+                    "market_name": "南京美菜网",
+                    "region_label": "南京市",
+                    "province": "江苏省",
+                    "city": "南京市",
+                    "product_series": "sku-1",
+                    "brand": "本地",
+                    "cover": "https://img.example/greens.jpg",
+                    "meicai_sku_id": "sku-1",
+                    "meicai_spu_id": "spu-1",
+                    "liancai_top_category": "蔬菜类",
+                    "liancai_subcategory": "叶菜类",
+                    "liancai_mapping_source": "meicai_sale_c2_id",
+                    "meicai_internal_category": "叶菜类",
+                    "meicai_internal_market_category": "蔬菜类",
+                    "meicai_internal_mapping_source": "meicai_sale_c2_id",
+                    "meicai_internal_mapping_confidence": 0.78,
+                },
+            }
+        ],
+    )
+
+    results = service.crawl_source(
+        {
+            "url": "https://mall-entrance.yunshanmeicai.com",
+            "product_key": "meicai-app-feed",
+            "product_name": "美菜网App·推荐商品",
+            "source_type": "batch",
+            "category": "蔬菜",
+        }
+    )
+
+    assert len(results) == 1
+    assert results[0]["source_strategy"] == "meicai_app_gateway_batch"
+    assert results[0]["site_name"] == "美菜网App | 推荐商品"
+    assert results[0]["product_name"] == "青菜 约500g"
+    assert results[0]["image_url"] == "https://img.example/greens.jpg"
+    assert service.database.product_records[0]["category"] == "蔬菜"
+    assert service.database.product_records[0]["brand"] == "本地"
+    assert service.database.product_records[0]["product_series"] == "sku-1"
+    assert service.database.product_records[0]["spec_text"] == "元/斤"
+    assert service.database.product_records[0]["compare_key"] == "青菜 约500g"
+    assert service.database.product_records[0]["market_name"] == "南京美菜网"
+    assert service.database.product_records[0]["region_label"] == "南京市"
+    assert service.database.product_records[0]["province"] == "江苏省"
+    assert service.database.product_records[0]["city"] == "南京市"
+    assert service.database.product_records[0]["image_url"] == "https://img.example/greens.jpg"
+    assert service.database.product_records[0]["liancai_top_category"] == "蔬菜类"
+    assert service.database.product_records[0]["liancai_subcategory"] == "叶菜类"
+    assert service.database.product_records[0]["liancai_mapping_source"] == "meicai_sale_c2_id"
+    assert service.database.price_records[0]["unit_name"] == "g"
+    assert service.database.price_records[0]["unit_value"] == 500.0
+    assert service.database.price_records[0]["unit_price"] == 0.56

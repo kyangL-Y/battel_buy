@@ -18,7 +18,9 @@ from crawler.source_strategies import (
     HnnhgscBatchSourceStrategy,
     LiancaiAppGatewayBatchSourceStrategy,
     LiancaiH5BatchSourceStrategy,
+    MeicaiAppGatewayBatchSourceStrategy,
     MoaWholesaleBatchSourceStrategy,
+    NanjingZhongcaiPublicBatchSourceStrategy,
     PfscChartBatchSourceStrategy,
     SingleSourceStrategy,
     ZznyClzArticleBatchSourceStrategy,
@@ -49,7 +51,25 @@ def build_success_raw_payload(
     metadata: dict[str, Any],
     site_name: str | None = None,
 ) -> dict[str, Any]:
-    return {}
+    return {
+        "site_name": site_name,
+        "parsed": {
+            key: value
+            for key, value in parsed.items()
+            if key
+            in {
+                "site_name",
+                "product_name",
+                "current_price",
+                "original_price",
+                "promotion_text",
+                "currency",
+                "availability",
+                "extra_fields",
+            }
+        },
+        "metadata": metadata,
+    }
 
 
 def _compact_key_part(value: Any) -> str:
@@ -100,8 +120,10 @@ class PriceCrawlerService:
             HenanFgwPriceBatchSourceStrategy(),
             ZznyClzArticleBatchSourceStrategy(),
             CnhnbMarketBatchSourceStrategy(),
+            NanjingZhongcaiPublicBatchSourceStrategy(),
             LiancaiAppGatewayBatchSourceStrategy(),
             LiancaiH5BatchSourceStrategy(),
+            MeicaiAppGatewayBatchSourceStrategy(),
             ApiBatchSourceStrategy(),
             BrowserAssistedSourceStrategy(),
             SingleSourceStrategy(),
@@ -439,7 +461,10 @@ class PriceCrawlerService:
         liancai_brand_id = extra_fields.get("liancai_brand_id")
         liancai_brand_name = extra_fields.get("liancai_brand_name")
         liancai_mapping_source = extra_fields.get("liancai_mapping_source")
-        image_url = normalize_liancai_image_url(extra_fields.get("cover")) if str(site_name or "").startswith("莲菜网") else None
+        if str(site_name or "").startswith("莲菜网"):
+            image_url = normalize_liancai_image_url(extra_fields.get("cover"))
+        else:
+            image_url = str(extra_fields.get("cover") or extra_fields.get("image_url") or "").strip() or None
         product_key = product_key_override or product.get("product_key") or url
 
         captured_at = datetime.now().isoformat(timespec="seconds")
@@ -474,6 +499,7 @@ class PriceCrawlerService:
             "unit_value": metadata.get("unit_value"),
             "unit_price": metadata.get("unit_price"),
             "jin_price": metadata.get("jin_price"),
+            "image_url": image_url,
             "fetch_mode": fetch_metadata.get("fetch_mode"),
             "status_code": fetch_result.status_code,
             "suggestion": fetch_metadata.get("suggestion"),
@@ -1344,6 +1370,46 @@ class PriceCrawlerService:
         self.logger.info("惠农网行情批量抓取成功: %s | 条数=%s", product["url"], len(results))
         return results
 
+    def _crawl_nanjing_zhongcai_public_source(
+        self,
+        product: dict[str, Any],
+        site_rule: dict | None = None,
+    ) -> list[dict[str, Any]]:
+        site_rule = site_rule or self.parser.find_rule(product["url"])
+        try:
+            parsed_rows = self.public_source_crawler.fetch_nanjing_zhongcai_public(product, site_rule)
+        except Exception as exc:  # noqa: BLE001
+            self.logger.exception("南京众彩公开价格抓取失败: %s", product["url"])
+            return self._build_failed_source_result(
+                product,
+                site_rule,
+                str(exc),
+                "requests",
+                "南京众彩官网价格表为图片；请安装 Tesseract OCR，或接入授权 OCR 服务后重试。",
+            )
+
+        if not parsed_rows:
+            return self._build_failed_source_result(
+                product,
+                site_rule,
+                "南京众彩未返回可用价格行",
+                "requests",
+                "当前未从南京众彩价格参考表解析到商品价格，请检查栏目、图片或 OCR 输出。",
+            )
+
+        crawl_rows = self._build_custom_batch_results(
+            product,
+            parsed_rows,
+            {
+                "fetch_mode": "requests",
+                "fallback_used": False,
+                "preferred_fetch_mode": (site_rule or {}).get("preferred_fetch_mode"),
+            },
+            self._build_named_batch_key,
+        )
+        self.logger.info("南京众彩公开价格批量抓取成功: %s | 条数=%s", product["url"], len(crawl_rows))
+        return crawl_rows
+
     def _crawl_liancai_h5_source(
         self,
         product: dict[str, Any],
@@ -1427,6 +1493,49 @@ class PriceCrawlerService:
         self.logger.info("莲菜网App网关批量抓取成功: %s | 条数=%s", product["url"], len(results))
         return results
 
+    def _crawl_meicai_app_gateway_source(
+        self,
+        product: dict[str, Any],
+        site_rule: dict | None = None,
+    ) -> list[dict[str, Any]]:
+        try:
+            parsed_items = self.public_source_crawler.fetch_meicai_app_gateway(product, site_rule)
+        except Exception as exc:
+            self.logger.exception("美菜网App网关抓取失败: %s", product["url"])
+            self._record_failed_crawl(
+                product,
+                fetch_mode="app_gateway",
+                error=str(exc),
+                suggestion="请检查美菜登录态 headers/common body 环境变量，或确认接口没有返回加密 data。",
+                fallback_used=False,
+                raw_payload={},
+            )
+            return []
+
+        results = self._build_custom_batch_results(
+            product,
+            parsed_items,
+            {
+                "fetch_mode": "app_gateway",
+                "fallback_used": False,
+                "preferred_fetch_mode": (site_rule or {}).get("preferred_fetch_mode"),
+            },
+            self._build_meicai_app_gateway_batch_key,
+        )
+        if not results:
+            self._record_failed_crawl(
+                product,
+                fetch_mode="app_gateway",
+                error="美菜网App网关未返回可用商品",
+                suggestion="请检查 endpoint、module_key、city_id、area_id 或账号状态。",
+                fallback_used=False,
+                raw_payload={"parsed_count": len(parsed_items)},
+            )
+            return []
+
+        self.logger.info("美菜网App网关批量抓取成功: %s | 条数=%s", product["url"], len(results))
+        return results
+
     @staticmethod
     def _build_liancai_app_gateway_batch_key(product: dict[str, Any], parsed: dict, index: int) -> str:
         base_key = product.get("product_key") or product.get("url")
@@ -1436,6 +1545,18 @@ class PriceCrawlerService:
             extra_fields.get("compare_key") or parsed.get("product_name"),
             extra_fields.get("liancai_brand_name") or extra_fields.get("brand"),
             extra_fields.get("product_series"),
+            extra_fields.get("spec_text"),
+        ]
+        return _join_compact_key(str(base_key), parts, index)
+
+    @staticmethod
+    def _build_meicai_app_gateway_batch_key(product: dict[str, Any], parsed: dict, index: int) -> str:
+        base_key = product.get("product_key") or product.get("url")
+        extra_fields = parsed.get("extra_fields") or {}
+        parts = [
+            extra_fields.get("group_name") or extra_fields.get("category"),
+            extra_fields.get("compare_key") or parsed.get("product_name"),
+            extra_fields.get("meicai_sku_id") or extra_fields.get("product_series"),
             extra_fields.get("spec_text"),
         ]
         return _join_compact_key(str(base_key), parts, index)

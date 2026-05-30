@@ -126,6 +126,21 @@ class CnhnbMarketBatchSourceStrategy:
         return service._crawl_cnhnb_market_source(product, site_rule)
 
 
+class NanjingZhongcaiPublicBatchSourceStrategy:
+    name = "nanjing_zhongcai_public_batch"
+
+    def matches(self, product: dict[str, Any], site_rule: dict | None) -> bool:
+        return str((site_rule or {}).get("strategy") or "").strip().lower() == self.name
+
+    def crawl(
+        self,
+        service: "PriceCrawlerService",
+        product: dict[str, Any],
+        site_rule: dict | None,
+    ) -> list[dict[str, Any]]:
+        return service._crawl_nanjing_zhongcai_public_source(product, site_rule)
+
+
 class LiancaiH5BatchSourceStrategy:
     name = "liancai_h5_batch"
 
@@ -154,6 +169,21 @@ class LiancaiAppGatewayBatchSourceStrategy:
         site_rule: dict | None,
     ) -> list[dict[str, Any]]:
         return service._crawl_liancai_app_gateway_source(product, site_rule)
+
+
+class MeicaiAppGatewayBatchSourceStrategy:
+    name = "meicai_app_gateway_batch"
+
+    def matches(self, product: dict[str, Any], site_rule: dict | None) -> bool:
+        return str((site_rule or {}).get("strategy") or "").strip().lower() == self.name
+
+    def crawl(
+        self,
+        service: "PriceCrawlerService",
+        product: dict[str, Any],
+        site_rule: dict | None,
+    ) -> list[dict[str, Any]]:
+        return service._crawl_meicai_app_gateway_source(product, site_rule)
 
 
 class ApiBatchSourceStrategy:

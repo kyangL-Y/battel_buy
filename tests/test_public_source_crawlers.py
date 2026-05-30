@@ -1,3 +1,4 @@
+import os
 import subprocess
 
 from crawler.public_source_crawlers import PublicSourceCrawler
@@ -1000,6 +1001,402 @@ def test_build_liancai_h5_rows_maps_subcategory_and_metadata():
     assert "source_item_id" not in result[0]["extra_fields"]
 
 
+def test_build_meicai_app_gateway_rows_maps_xbfeed_goods():
+    crawler = PublicSourceCrawler()
+    payload = {
+        "ret": 1,
+        "code": 1,
+        "data": {
+            "rows": [
+                {
+                    "goodsRows": {
+                        "skuBase": {
+                            "skuName": "青菜 约500g",
+                            "skuId": "sku-1",
+                            "spuId": "spu-1",
+                            "saleC1Id": "6506",
+                            "saleC2Id": "6515",
+                            "biName": "青菜",
+                            "biAliasName": "小白菜",
+                            "brandName": "本地",
+                        },
+                        "skuPrice": {"minPrice": "2.80", "priceUnit": "元/斤"},
+                        "skuImg": {"imgUrl": "https://img.example/greens.jpg"},
+                    }
+                }
+            ]
+        },
+        "encryption": {"type": 1},
+    }
+
+    goods_rows = PublicSourceCrawler.extract_meicai_goods_rows(payload)
+    result = crawler.build_meicai_app_gateway_rows(
+        goods_rows,
+        {"category": "蔬菜"},
+        page=1,
+        endpoint_name="xb_feed",
+        city_id="17",
+        area_id="4402",
+    )
+
+    assert len(result) == 1
+    assert result[0]["site_name"] == "美菜网App | 推荐商品"
+    assert result[0]["product_name"] == "青菜 约500g"
+    assert result[0]["current_price"] == 2.8
+    assert result[0]["extra_fields"]["group_name"] == "美菜网"
+    assert result[0]["extra_fields"]["category"] == "青菜"
+    assert result[0]["extra_fields"]["spec_text"] == "元/斤"
+    assert result[0]["extra_fields"]["meicai_mapping_source"] == "meicai_app_gateway_xb_feed"
+    assert result[0]["extra_fields"]["meicai_sku_id"] == "sku-1"
+    assert result[0]["extra_fields"]["meicai_spu_id"] == "spu-1"
+    assert result[0]["extra_fields"]["meicai_bi_name"] == "青菜"
+    assert result[0]["extra_fields"]["meicai_bi_alias_name"] == "小白菜"
+    assert result[0]["extra_fields"]["meicai_config_category"] == "蔬菜"
+    assert result[0]["extra_fields"]["liancai_top_category"] == "蔬菜类"
+    assert result[0]["extra_fields"]["liancai_subcategory"] == "叶菜类"
+    assert result[0]["extra_fields"]["liancai_mapping_source"] == "meicai_sale_c2_id"
+    assert result[0]["extra_fields"]["meicai_internal_category"] == "叶菜类"
+    assert result[0]["extra_fields"]["meicai_internal_market_category"] == "蔬菜类"
+    assert result[0]["extra_fields"]["meicai_internal_mapping_source"] == "meicai_sale_c2_id"
+    assert result[0]["extra_fields"]["meicai_internal_mapping_confidence"] == 0.78
+    assert result[0]["extra_fields"]["cover"] == "https://img.example/greens.jpg"
+
+
+def test_meicai_payload_encryption_detection_blocks_cipher_data():
+    assert PublicSourceCrawler._meicai_payload_is_encrypted(
+        {"data": "ciphertext", "encryption": {"type": 3}}
+    )
+    assert not PublicSourceCrawler._meicai_payload_is_encrypted(
+        {"data": {"rows": []}, "encryption": {"type": 1}}
+    )
+
+
+def test_extract_meicai_goods_rows_reads_runtime_refeactor_skus():
+    payload = {
+        "data": {
+            "data": {
+                "refeactorSkus": [
+                    {
+                        "skuBase": {"skuName": "韭菜 去根", "skuId": "sku-runtime"},
+                        "selectedSsu": {
+                            "ssuFormat": "2斤",
+                            "ssuPrice": {"unitPrice": "3.20"},
+                        },
+                    }
+                ]
+            }
+        }
+    }
+
+    goods_rows = PublicSourceCrawler.extract_meicai_goods_rows(payload)
+    result = PublicSourceCrawler().build_meicai_app_gateway_rows(
+        goods_rows,
+        {"category": "蔬果豆类 / 粗加工蔬菜"},
+        page=1,
+        endpoint_name="class_products_runtime",
+        city_id="17",
+        area_id="4402",
+    )
+
+    assert len(result) == 1
+    assert result[0]["product_name"] == "韭菜 去根"
+    assert result[0]["current_price"] == 3.2
+    assert result[0]["extra_fields"]["spec_text"] == "2斤"
+    assert result[0]["extra_fields"]["meicai_sku_id"] == "sku-runtime"
+
+
+def test_build_meicai_app_gateway_rows_prefers_sale_category_name_over_bi_name():
+    crawler = PublicSourceCrawler()
+    result = crawler.build_meicai_app_gateway_rows(
+        [
+            {
+                "skuBase": {
+                    "skuName": "红茶",
+                    "skuId": "sku-tea",
+                    "saleC1Name": "酒水饮料",
+                    "saleC2Name": "茶饮料",
+                    "biName": "红茶",
+                },
+                "skuPrice": {"minPrice": "3.50", "priceUnit": "瓶"},
+            }
+        ],
+        {"category": "配置分类"},
+        page=1,
+        endpoint_name="xb_feed",
+        city_id="17",
+        area_id="4402",
+    )
+
+    assert result[0]["extra_fields"]["category"] == "茶饮料"
+    assert result[0]["extra_fields"]["meicai_sale_c1_name"] == "酒水饮料"
+    assert result[0]["extra_fields"]["meicai_sale_c2_name"] == "茶饮料"
+    assert result[0]["extra_fields"]["meicai_bi_name"] == "红茶"
+
+
+def test_fetch_meicai_app_gateway_switches_address_context(monkeypatch):
+    observed: dict[str, object] = {}
+
+    class FakeMeicaiClient:
+        def __init__(self, **kwargs):
+            observed["init"] = kwargs
+
+        def change_address(self, body_payload):
+            observed["address"] = body_payload
+            return {"ret": 1, "code": 1, "data": {}}
+
+        def xb_feed(self, **kwargs):
+            observed["feed"] = kwargs
+            return {
+                "ret": 1,
+                "code": 1,
+                "data": {
+                    "rows": [
+                        {
+                            "goodsRows": {
+                                "skuBase": {"skuName": "青菜", "skuId": "sku-1"},
+                                "skuPrice": {"minPrice": "2.80", "priceUnit": "斤"},
+                            }
+                        }
+                    ]
+                },
+                "encryption": {"type": 1},
+            }
+
+    monkeypatch.setattr("crawler.public_source_crawlers.MeicaiAppGatewayClient", FakeMeicaiClient)
+    monkeypatch.setenv(
+        "MEICAI_ADDRESS_CONTEXT",
+        '{"request_body":{"locationTo":"encrypted-location","city_id":"18","area_id":"5001","salt_sign":"signed"}}',
+    )
+    monkeypatch.delenv("MEICAI_REQUEST_HEADERS", raising=False)
+    monkeypatch.delenv("MEICAI_COMMON_BODY", raising=False)
+
+    crawler = PublicSourceCrawler()
+    result = crawler.fetch_meicai_app_gateway(
+        {"category": "蔬菜"},
+        {
+            "gateway_base_url": "https://mall-entrance.yunshanmeicai.com",
+            "max_pages": 1,
+            "page_size": 20,
+        },
+    )
+
+    assert observed["address"] == {
+        "locationTo": "encrypted-location",
+        "city_id": "18",
+        "area_id": "5001",
+        "salt_sign": "signed",
+    }
+    assert observed["feed"]["city_id"] == "18"
+    assert observed["feed"]["area_id"] == "5001"
+    assert result[0]["product_name"] == "青菜"
+
+
+def test_fetch_meicai_app_gateway_uses_configured_category_filters(monkeypatch):
+    observed_feeds: list[dict[str, object]] = []
+
+    class FakeMeicaiClient:
+        def __init__(self, **kwargs):
+            pass
+
+        def xb_feed(self, **kwargs):
+            observed_feeds.append(kwargs)
+            return {
+                "ret": 1,
+                "code": 1,
+                "data": {
+                    "rows": [
+                        {
+                            "goodsRows": {
+                                "skuBase": {
+                                    "skuName": f"商品{len(observed_feeds)}",
+                                    "skuId": f"sku-{len(observed_feeds)}",
+                                },
+                                "skuPrice": {"minPrice": "2.80", "priceUnit": "斤"},
+                            }
+                        }
+                    ]
+                },
+                "encryption": {"type": 1},
+            }
+
+    monkeypatch.setattr("crawler.public_source_crawlers.MeicaiAppGatewayClient", FakeMeicaiClient)
+    monkeypatch.delenv("MEICAI_ADDRESS_CONTEXT", raising=False)
+    monkeypatch.delenv("MEICAI_REQUEST_HEADERS", raising=False)
+    monkeypatch.delenv("MEICAI_COMMON_BODY", raising=False)
+
+    crawler = PublicSourceCrawler()
+    result = crawler.fetch_meicai_app_gateway(
+        {"category": "推荐商品"},
+        {
+            "max_pages": 1,
+            "page_size": 20,
+            "category_filters": [
+                {"category": "蔬菜", "class1_id": "6506", "class2_id": ""},
+                {"category": "酒水饮料", "class1_id": "6511", "class2_id": ""},
+            ],
+        },
+    )
+
+    assert [feed["class1_id"] for feed in observed_feeds] == ["6506", "6511"]
+    assert [row["extra_fields"]["category"] for row in result] == ["蔬菜", "酒水饮料"]
+
+
+def test_fetch_meicai_app_gateway_uses_sale_class_tree_filters(tmp_path, monkeypatch):
+    observed_feeds: list[dict[str, object]] = []
+    tree_path = tmp_path / "meicai_sale_class_tree.json"
+    tree_path.write_text(
+        """
+        {
+          "flat": [
+            {"saleC1Id": "6506", "saleC1Name": "蔬果豆类", "saleC2Id": "6515", "saleC2Name": "叶菜花菜"},
+            {"saleC1Id": "6506", "saleC1Name": "蔬果豆类", "saleC2Id": "6205", "saleC2Name": "葱姜蒜"}
+          ]
+        }
+        """,
+        encoding="utf-8",
+    )
+
+    class FakeMeicaiClient:
+        def __init__(self, **kwargs):
+            pass
+
+        def xb_feed(self, **kwargs):
+            observed_feeds.append(kwargs)
+            category_suffix = kwargs["class2_id"]
+            return {
+                "ret": 1,
+                "code": 1,
+                "data": {
+                    "rows": [
+                        {
+                            "goodsRows": {
+                                "skuBase": {
+                                    "skuName": f"商品{category_suffix}",
+                                    "skuId": f"sku-{category_suffix}",
+                                },
+                                "skuPrice": {"minPrice": "2.80", "priceUnit": "斤"},
+                            }
+                        }
+                    ]
+                },
+                "encryption": {"type": 1},
+            }
+
+    monkeypatch.setattr("crawler.public_source_crawlers.MeicaiAppGatewayClient", FakeMeicaiClient)
+    monkeypatch.delenv("MEICAI_ADDRESS_CONTEXT", raising=False)
+    monkeypatch.delenv("MEICAI_REQUEST_HEADERS", raising=False)
+    monkeypatch.delenv("MEICAI_COMMON_BODY", raising=False)
+
+    crawler = PublicSourceCrawler()
+    result = crawler.fetch_meicai_app_gateway(
+        {"category": "推荐商品"},
+        {
+            "max_pages": 1,
+            "page_size": 20,
+            "sale_class_tree_path": str(tree_path),
+            "category_filters": [
+                {"category": "不应使用", "class1_id": "-1", "class2_id": ""},
+            ],
+        },
+    )
+
+    assert [(feed["class1_id"], feed["class2_id"]) for feed in observed_feeds] == [
+        ("6506", "6515"),
+        ("6506", "6205"),
+    ]
+    assert [row["extra_fields"]["category"] for row in result] == [
+        "蔬果豆类 / 叶菜花菜",
+        "蔬果豆类 / 葱姜蒜",
+    ]
+
+
+def test_fetch_meicai_app_gateway_uses_class_products_like_liancai_goodslist(tmp_path, monkeypatch):
+    observed_class_pages: list[dict[str, object]] = []
+    tree_path = tmp_path / "meicai_sale_class_tree.json"
+    tree_path.write_text(
+        """
+        {
+          "flat": [
+            {"saleC1Id": "6202", "saleC1Name": "蔬果豆类", "saleC2Id": "19835", "saleC2Name": "叶菜花菜"}
+          ]
+        }
+        """,
+        encoding="utf-8",
+    )
+
+    class FakeMeicaiClient:
+        def __init__(self, **kwargs):
+            pass
+
+        def class_products(self, **kwargs):
+            observed_class_pages.append(kwargs)
+            page = int(kwargs["page"])
+            if page > 2:
+                return {"ret": 1, "code": 1, "data": {"list": []}, "encryption": {"type": 1}}
+            return {
+                "ret": 1,
+                "code": 1,
+                "data": {
+                    "list": [
+                        {
+                            "skuBase": {
+                                "skuName": f"叶菜{page}",
+                                "skuId": f"sku-leaf-{page}",
+                                "saleC1Name": "蔬果豆类",
+                                "saleC2Name": "叶菜花菜",
+                            },
+                            "skuPrice": {"minPrice": "2.80", "priceUnit": "斤"},
+                        }
+                    ]
+                },
+                "encryption": {"type": 1},
+            }
+
+    monkeypatch.setattr("crawler.public_source_crawlers.MeicaiAppGatewayClient", FakeMeicaiClient)
+    monkeypatch.delenv("MEICAI_ADDRESS_CONTEXT", raising=False)
+    monkeypatch.delenv("MEICAI_REQUEST_HEADERS", raising=False)
+    monkeypatch.delenv("MEICAI_COMMON_BODY", raising=False)
+
+    crawler = PublicSourceCrawler()
+    result = crawler.fetch_meicai_app_gateway(
+        {"category": "推荐商品"},
+        {
+            "endpoint": "class_products",
+            "max_pages": 3,
+            "page_size": 1,
+            "sale_class_tree_path": str(tree_path),
+        },
+    )
+
+    assert [
+        (page["page"], page["page_size"], page["sale_c1_id"], page["sale_c2_id"])
+        for page in observed_class_pages
+    ] == [
+        (1, 1, "6202", "19835"),
+        (2, 1, "6202", "19835"),
+        (3, 1, "6202", "19835"),
+    ]
+    assert [row["product_name"] for row in result] == ["叶菜1", "叶菜2"]
+    assert result[0]["extra_fields"]["meicai_mapping_source"] == "meicai_app_gateway_class_products"
+
+
+def test_load_env_file_if_configured_preserves_existing_environment(tmp_path, monkeypatch):
+    secret_file = tmp_path / "meicai.env"
+    secret_file.write_text(
+        'MEICAI_REQUEST_HEADERS={"Device-Token":"from-file"}\n'
+        'MEICAI_COMMON_BODY={"tickets":"from-file"}\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("MEICAI_SECRET_ENV_FILE", str(secret_file))
+    monkeypatch.setenv("MEICAI_REQUEST_HEADERS", '{"Device-Token":"from-env"}')
+    monkeypatch.delenv("MEICAI_COMMON_BODY", raising=False)
+
+    PublicSourceCrawler._load_env_file_if_configured("MEICAI_SECRET_ENV_FILE")
+
+    assert os.environ["MEICAI_REQUEST_HEADERS"] == '{"Device-Token":"from-env"}'
+    assert os.environ["MEICAI_COMMON_BODY"] == '{"tickets":"from-file"}'
+
+
 def test_build_cnhnb_rows_skips_agricultural_inputs():
     crawler = PublicSourceCrawler()
     state = {
@@ -1041,3 +1438,73 @@ def test_build_cnhnb_rows_skips_agricultural_inputs():
     result = crawler.build_cnhnb_rows(state)
 
     assert [row["product_name"] for row in result] == ["香菇"]
+
+
+def test_extract_nanjing_zhongcai_articles_reads_price_list_entries():
+    html = """
+    <div class="item">
+      <a title="2026年5月28日蔬菜价格参考表" href="/article/2060192666927644672"></a>
+      <div><a href="/article/2060192666927644672"><span>2026年5月28日蔬菜价格参考表</span></a></div>
+      <span>时间：2026-05-29</span>
+    </div>
+    """
+
+    rows = PublicSourceCrawler.extract_nanjing_zhongcai_articles(html, base_url="https://www.njnfwl.com")
+
+    assert rows == [
+        {
+            "title": "2026年5月28日蔬菜价格参考表",
+            "article_url": "https://www.njnfwl.com/article/2060192666927644672",
+            "publish_date": "2026-05-29",
+            "category": "蔬菜",
+        }
+    ]
+
+
+def test_build_nanjing_zhongcai_rows_from_ocr_text():
+    article = {
+        "title": "2026年5月28日蔬菜价格参考表",
+        "article_url": "https://www.njnfwl.com/article/2060192666927644672",
+        "publish_date": "2026-05-29",
+        "category": "蔬菜",
+    }
+    ocr_text = """
+    品名 最高价 最低价 均价
+    青菜 3.20 2.40 2.80
+    土豆 2.60 1.80 2.20
+    此价格仅供参考，不能作为市场交易定价使用
+    """
+
+    rows = PublicSourceCrawler.build_nanjing_zhongcai_rows(
+        ocr_text,
+        article=article,
+        image_url="https://www.njnfwl.com/resources/uploads/price.png",
+    )
+
+    assert [row["product_name"] for row in rows] == ["青菜", "土豆"]
+    assert rows[0]["site_name"] == "南京众彩 | 蔬菜"
+    assert rows[0]["current_price"] == 2.8
+    assert rows[0]["original_price"] == 3.2
+    assert rows[0]["extra_fields"]["market_name"] == "南京农副产品物流中心"
+
+
+def test_build_nanjing_zhongcai_rows_skips_noisy_ocr_names():
+    article = {
+        "title": "2026年5月28日蔬菜价格参考表",
+        "article_url": "https://www.njnfwl.com/article/2060192666927644672",
+        "publish_date": "2026-05-29",
+        "category": "蔬菜",
+    }
+    ocr_text = """
+    u Suet 1.60 1.80 1.70
+    如 KOR ae 14.00 14.50 14.25
+    青菜 3.20 2.40 2.80
+    """
+
+    rows = PublicSourceCrawler.build_nanjing_zhongcai_rows(
+        ocr_text,
+        article=article,
+        image_url="https://www.njnfwl.com/resources/uploads/price.png",
+    )
+
+    assert [row["product_name"] for row in rows] == ["青菜"]

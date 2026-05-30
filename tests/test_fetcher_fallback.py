@@ -504,7 +504,9 @@ def test_success_record_stores_slim_raw_payload(monkeypatch):
     assert result["status"] == "success"
     assert len(service.database.price_records) == 1
     raw_payload = service.database.price_records[0]["raw_payload"]
-    assert raw_payload == {}
+    assert raw_payload["site_name"] == "万邦国际"
+    assert raw_payload["parsed"]["product_name"] == "测试商品"
+    assert raw_payload["metadata"]["compare_key"].startswith("白菜")
 
 
 def test_liancai_success_record_stores_empty_raw_payload(monkeypatch):
@@ -541,7 +543,8 @@ def test_liancai_success_record_stores_empty_raw_payload(monkeypatch):
 
     assert result["status"] == "success"
     raw_payload = service.database.price_records[0]["raw_payload"]
-    assert raw_payload == {}
+    assert raw_payload["site_name"] == "莲菜网App | 干调类"
+    assert raw_payload["parsed"]["extra_fields"]["cover"] == "https://example.com/cover.jpg"
 
 
 def test_batch_api_source_creates_multiple_records(monkeypatch):

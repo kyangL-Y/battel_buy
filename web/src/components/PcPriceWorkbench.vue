@@ -1311,6 +1311,14 @@
 
 
 
+          <div class="pcw-summary-main">
+
+
+
+
+
+
+
           <section class="pcw-card pcw-table-card">
 
 
@@ -1810,6 +1818,41 @@
 
 
 
+          <section class="pcw-card pcw-summary-brief">
+              <div class="pcw-card-head">
+                <h2>今日处理与来源动态</h2>
+                <button type="button" @click="handleNavSelect('purchase')">去执行 ›</button>
+              </div>
+              <div class="pcw-summary-brief-grid">
+                <div class="pcw-summary-action-grid">
+                  <button
+                    v-for="item in summaryActionCards"
+                    :key="`${item.label}-${item.title}`"
+                    type="button"
+                    class="pcw-summary-action-card"
+                    @click="openWorkbenchActionSection(item.section, item.identityKey)"
+                  >
+                    <span>{{ item.label }}</span>
+                    <strong>{{ item.title }}</strong>
+                    <small>{{ item.detail }}</small>
+                  </button>
+                </div>
+                <div class="pcw-summary-brief-timeline">
+                  <div class="pcw-summary-brief-subhead">
+                    <strong>来源动态</strong>
+                    <button type="button" @click="openActionPanel('来源动态', timelineRows.map((item) => `${item.time} ${item.text}`), 'market')">查看明细 ›</button>
+                  </div>
+                  <div v-if="!timelineRows.length" class="pcw-panel-empty compact">
+                    <strong>暂无来源动态</strong>
+                    <span>真实来源同步后会生成价格变化记录。</span>
+                  </div>
+                  <p v-for="item in timelineRows.slice(0, 4)" :key="item.time"><span>{{ item.time }}</span>{{ item.text }}</p>
+                </div>
+              </div>
+          </section>
+
+          </div>
+
           <aside v-if="currentSection === 'summary'" class="pcw-right">
 
 
@@ -1818,264 +1861,7 @@
 
 
 
-            <section v-if="quoteRows.length" class="pcw-card pcw-quotes">
-
-
-
-
-
-
-
-              <div class="pcw-card-head">
-
-
-
-
-
-
-
-                <h2>今日报价（{{ selectedProductName || '真实商品' }}）</h2>
-
-
-
-
-
-
-
-                <button type="button" @click="handleNavSelect('quotes')">更多报价 ›</button>
-
-
-
-
-
-
-
-              </div>
-
-
-
-
-
-
-
-              <table class="pcw-right-table">
-
-
-
-
-
-
-
-                <thead>
-
-
-
-
-
-
-
-                  <tr>
-
-
-
-
-
-
-
-                    <th>供应商/来源</th>
-
-
-
-
-
-
-
-                    <th>报价</th>
-
-
-
-
-
-
-
-                    <th>操作</th>
-
-
-
-
-
-
-
-                  </tr>
-
-
-
-
-
-
-
-                </thead>
-
-
-
-
-
-
-
-                <tbody>
-
-
-
-
-
-
-
-                  <tr v-if="!quoteRows.length" class="pcw-empty-row compact">
-
-
-
-
-
-
-
-                    <td colspan="3">
-
-
-
-
-
-
-
-                      <div class="pcw-empty-state">
-
-
-
-
-
-
-
-                        <strong>等待真实报价</strong>
-
-
-
-
-
-
-
-                        <span>供应商报价同步后会显示最低价和来源。</span>
-
-
-
-
-
-
-
-                      </div>
-
-
-
-
-
-
-
-                    </td>
-
-
-
-
-
-
-
-                  </tr>
-
-
-
-
-
-
-
-                  <tr v-for="item in quoteRows" :key="item.supplier">
-
-
-
-
-
-
-
-                    <td>
-
-
-
-
-
-
-
-                      <span class="pcw-right-tag">{{ item.tag }}</span>
-
-
-
-
-
-
-
-                      <strong>{{ item.supplier }}</strong>
-
-
-
-
-
-
-
-                    </td>
-
-
-
-
-
-
-
-                    <td>{{ item.price }}</td>
-
-
-
-
-
-
-
-                    <td><button type="button" class="pcw-link" @click="handleNavSelect('purchase')">采购</button></td>
-
-
-
-
-
-
-
-                  </tr>
-
-
-
-
-
-
-
-                </tbody>
-
-
-
-
-
-
-
-              </table>
-
-
-
-
-
-
-
-            </section>
-            <section v-else class="pcw-card pcw-summary-side-fill">
+            <section class="pcw-card pcw-summary-side-fill">
               <div class="pcw-card-head">
                 <h2>经营侧边栏</h2>
                 <button type="button" @click="handleNavSelect('purchase')">去执行 ›</button>
@@ -2085,7 +1871,7 @@
                   <span>当前地区</span>
                   <strong>{{ displayLocationLabel }}</strong>
                 </div>
-                <p>先看商品池、报价覆盖和价差机会，再决定去采购还是去趋势页。</p>
+                <p>先看覆盖、价差和待处理项。</p>
               </div>
               <div class="pcw-summary-side-metrics">
                 <article>
@@ -2105,25 +1891,12 @@
                   <strong>{{ summaryAdviceRows.length }}</strong>
                 </article>
               </div>
-              <div class="pcw-summary-side-grid">
-                <button
-                  v-for="item in summaryActionCards"
-                  :key="`side-${item.label}-${item.title}`"
-                  type="button"
-                  class="pcw-summary-side-card"
-                  @click="openWorkbenchActionSection(item.section, item.identityKey)"
-                >
-                  <span>{{ item.label }}</span>
-                  <strong>{{ item.title }}</strong>
-                  <small>{{ item.detail }}</small>
-                </button>
-              </div>
               <div class="pcw-summary-side-block">
                 <div class="pcw-summary-side-block-head">
                   <span>处理建议</span>
                   <button type="button" @click="handleNavSelect('purchase')">去采购 ›</button>
                 </div>
-                <p v-for="(item, index) in summaryAdviceRows.slice(0, 3)" :key="`advice-${index}-${item}`">
+                <p v-for="(item, index) in summaryAdviceRows.slice(0, 2)" :key="`advice-${index}-${item}`">
                   {{ item }}
                 </p>
               </div>
@@ -5128,7 +4901,7 @@
                   <span>{{ item.source }} · {{ item.time }}</span>
                   <b>{{ item.price }}</b>
                 </button>
-                <p v-if="!purchaseTrendCarryRows.length">先从汇总行情选择商品，再进入趋势页确认真实来源。</p>
+                <p v-if="!purchaseTrendCarryRows.length">先从汇总行情选择商品，再查看历史行情确认真实来源。</p>
               </section>
             </div>
           </section>
@@ -5231,7 +5004,7 @@
 
 
 
-              <p class="pcw-module-table-note">模块下方展示真实数据明细，表格与右侧面板联动更新。</p>
+              <p class="pcw-module-table-note">下方展示真实数据明细，表格与右侧面板联动更新。</p>
 
 
 
@@ -6352,7 +6125,7 @@
 
 
 
-        <section v-if="currentSection === 'summary'" class="pcw-bottom">
+        <section v-if="currentSection === 'summary' && alerts.length" class="pcw-bottom">
 
 
 
@@ -6360,148 +6133,7 @@
 
 
 
-          <section v-if="timelineRows.length" class="pcw-card pcw-timeline">
-
-
-
-
-
-
-
-            <div class="pcw-card-head">
-
-
-
-
-
-
-
-              <h2>来源动态</h2>
-
-
-
-
-
-
-
-              <button type="button" @click="openActionPanel('来源动态', timelineRows.map((item) => `${item.time} ${item.text}`), 'market')">查看明细 ›</button>
-
-
-
-
-
-
-
-            </div>
-
-
-
-
-
-
-
-            <div v-if="!timelineRows.length" class="pcw-panel-empty compact">
-
-
-
-
-
-
-
-              <strong>暂无来源动态</strong>
-
-
-
-
-
-
-
-              <span>真实来源同步后会生成价格变化记录。</span>
-
-
-
-
-
-
-
-            </div>
-
-
-
-
-
-
-
-            <p v-for="item in timelineRows" :key="item.time"><span>{{ item.time }}</span>{{ item.text }}</p>
-
-
-
-
-
-
-
-          </section>
-
-
-
-
-
-
-
-          <section class="pcw-card pcw-summary-actions">
-            <div class="pcw-card-head">
-              <h2>今天先处理这几项</h2>
-              <button type="button" @click="handleNavSelect('purchase')">去执行 ›</button>
-            </div>
-            <div class="pcw-summary-action-grid">
-              <button
-                v-for="item in summaryActionCards"
-                :key="`${item.label}-${item.title}`"
-                type="button"
-                class="pcw-summary-action-card"
-                @click="openWorkbenchActionSection(item.section, item.identityKey)"
-              >
-                <span>{{ item.label }}</span>
-                <strong>{{ item.title }}</strong>
-                <small>{{ item.detail }}</small>
-              </button>
-            </div>
-          </section>
-
-          <section class="pcw-card pcw-summary-opportunities">
-            <div class="pcw-card-head">
-              <h2>价差机会</h2>
-              <button type="button" @click="handleNavSelect('trend')">看趋势 ›</button>
-            </div>
-            <div v-if="!summaryOpportunityRows.length" class="pcw-panel-empty compact">
-              <strong>暂无可复核机会</strong>
-              <span>当前筛选结果还没有足够的价差或报价覆盖。</span>
-            </div>
-            <button
-              v-for="item in summaryOpportunityRows"
-              :key="`${item.identityKey}-${item.name}`"
-              type="button"
-              class="pcw-summary-opportunity"
-              @click="openWorkbenchActionSection('trend', item.identityKey)"
-            >
-              <div>
-                <strong>{{ item.name }}</strong>
-                <small>{{ item.market }} · {{ item.quotes }} 条报价</small>
-              </div>
-              <div class="pcw-summary-opportunity-metrics">
-                <b>{{ item.low }}</b>
-                <span>价差 {{ item.spread }}</span>
-              </div>
-            </button>
-          </section>
-
-
-
-
-
-
-
-          <section v-if="alerts.length" class="pcw-card pcw-alerts">
+          <section class="pcw-card pcw-alerts">
 
 
 
@@ -10687,7 +10319,7 @@ async function handleModuleFilterFocus() {
 
 
 
-    actionFeedback.value = '当前模块暂无可展开筛选项'
+    actionFeedback.value = '当前暂无可展开筛选项'
 
 
 
@@ -10703,7 +10335,7 @@ async function handleModuleFilterFocus() {
 
 
 
-      if (actionFeedback.value === '当前模块暂无可展开筛选项') actionFeedback.value = ''
+      if (actionFeedback.value === '当前暂无可展开筛选项') actionFeedback.value = ''
 
 
 
@@ -14599,7 +14231,7 @@ const quoteEmptyActionCards = computed(() => {
 
 const quoteEmptyWorkflowRows = computed(() => [
   selectedProductName.value ? `${selectedProductName.value} 当前未命中供应商报价记录。` : '当前筛选条件未命中供应商报价记录。',
-  trendQuoteRows.value.length ? `已有 ${trendQuoteRows.value.length} 条趋势报价，可先进入单品趋势复核。` : '趋势报价和供应商报价都为空时，只保留入库待办。',
+  trendQuoteRows.value.length ? `已有 ${trendQuoteRows.value.length} 条历史报价，可先复核价格走势。` : '历史行情和供应商报价都为空时，只保留入库待办。',
   '补齐供应商、报价、单位和状态后，报价记录表格会自动展开。',
 ])
 
@@ -14635,7 +14267,7 @@ const purchaseEmptyActions = computed(() => {
 
 const purchaseEmptyBlockers = computed(() => [
   focusedSupplierQuotes.value.length ? `当前商品已有 ${focusedSupplierQuotes.value.length} 条报价，但还没有有效可采购报价。` : '当前商品没有供应商可下单报价。',
-  trendChartRows.value.length ? `趋势页已有 ${trendChartRows.value.length} 个真实/快照点，可先复核价格方向。` : '趋势链路还未形成可承接价格点。',
+  trendChartRows.value.length ? `已有 ${trendChartRows.value.length} 个真实/快照点，可先复核价格方向。` : '历史行情还未形成可承接价格点。',
   props.planRows?.length ? `采购计划已有 ${props.planRows.length} 条明细，等待报价补齐后执行。` : '采购计划暂未生成可执行明细。',
 ])
 
@@ -18725,7 +18357,7 @@ const trendSuggestions = computed(() => {
 
 
 
-    `当前趋势页已加载 ${rows.length} 条真实记录，可结合最低报价和供应商报价复核采购动作。`,
+    `已加载 ${rows.length} 条真实行情记录，可结合最低报价和供应商报价复核采购动作。`,
 
 
 
@@ -18837,8 +18469,8 @@ const summaryActionCards = computed(() => {
   return [
     {
       label: '默认追踪',
-      title: selectedProductName.value || selectedSummaryRow.value?.product_name || '进入单品趋势',
-      detail: trendChartRows.value.length ? `当前已挂 ${trendChartRows.value.length} 个趋势点` : '先把当前商品的趋势看明白',
+      title: selectedProductName.value || selectedSummaryRow.value?.product_name || '查看单品走势',
+      detail: trendChartRows.value.length ? `已有 ${trendChartRows.value.length} 个价格点` : '先把当前商品的价格走势看明白',
       section: 'trend' as SectionId,
       identityKey: focusedIdentityKey,
     },
@@ -18916,8 +18548,8 @@ const purchaseRunbookSteps = computed(() => {
       title: '确认今天该不该下单',
       detail: trendChartRows.value.length
         ? `已有 ${trendChartRows.value.length} 个趋势点，先看最低价和真实来源。`
-        : '先进入单品趋势看最近走势和来源变化。',
-      actionLabel: '看单品趋势',
+        : '先查看最近走势和来源变化。',
+      actionLabel: '看价格走势',
       section: 'trend' as SectionId,
       identityKey: props.selectedIdentityKey || selectedSummaryRow.value?.price_identity_key || '',
     },
@@ -18946,7 +18578,7 @@ const purchaseExecutionNotes = computed(() => {
   }
   return [
     `${currentProductName} 先补供应商报价，再决定是否今天直接下单。`,
-    '如果最低价来源持续走低，优先在趋势页确认来源是否真实稳定。',
+    '如果最低价来源持续走低，优先确认来源是否真实稳定。',
     '回采购计划前，先把供应商、报价和库存核在一条链上。',
   ]
 })
@@ -30828,8 +30460,19 @@ th{height:36px;background:#f8fafc;color:#64748b;font-size:12px;font-weight:600}t
   align-items: start;
 }
 
+.pcw-summary-main {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
 .pcw-grid-summary-full .pcw-table-card {
-  min-height: 380px !important;
+  min-height: 0 !important;
+}
+
+.pcw-grid-summary-full .pcw-quotes {
+  align-self: start;
+  min-height: 0 !important;
 }
 
 .pcw-grid-summary-full .pcw-table-card td:nth-child(1),
@@ -32196,6 +31839,79 @@ th{height:36px;background:#f8fafc;color:#64748b;font-size:12px;font-weight:600}t
   align-items: start;
 }
 
+.pcw-summary-brief {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-width: 0;
+  overflow: hidden;
+}
+
+.pcw-summary-brief-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(320px, 0.9fr);
+  gap: 12px;
+  min-width: 0;
+  padding: 14px 16px 16px;
+}
+
+.pcw-summary-brief .pcw-summary-action-grid {
+  padding: 0;
+}
+
+.pcw-summary-brief-timeline {
+  display: grid;
+  align-content: start;
+  min-width: 0;
+  padding-left: 12px;
+  border-left: 1px solid #edf1f6;
+}
+
+.pcw-summary-brief-subhead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 26px;
+  margin-bottom: 6px;
+}
+
+.pcw-summary-brief-subhead strong {
+  color: #10203d;
+  font-size: 13px;
+}
+
+.pcw-summary-brief-subhead button {
+  border: 0;
+  background: transparent;
+  color: #2563eb;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.pcw-summary-brief-timeline p {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+  margin: 0;
+  padding: 8px 0;
+  border-bottom: 1px solid #edf1f6;
+  color: #24344d;
+  font-size: 12px;
+}
+
+.pcw-summary-brief-timeline p:last-child {
+  border-bottom: 0;
+}
+
+.pcw-summary-brief-timeline p span {
+  color: #7a899e;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .pcw-summary-actions {
   grid-column: 1 / -1;
 }
@@ -32296,13 +32012,13 @@ th{height:36px;background:#f8fafc;color:#64748b;font-size:12px;font-weight:600}t
 .pcw-summary-side-fill {
   display: grid;
   align-content: start;
-  gap: 12px;
+  gap: 10px;
   overflow: hidden;
 }
 
 .pcw-summary-side-hero {
   display: grid;
-  gap: 8px;
+  gap: 6px;
   padding: 0 14px;
 }
 
@@ -32322,21 +32038,21 @@ th{height:36px;background:#f8fafc;color:#64748b;font-size:12px;font-weight:600}t
   margin: 0;
   color: #64748b;
   font-size: 12px;
-  line-height: 1.5;
+  line-height: 1.35;
 }
 
 .pcw-summary-side-metrics {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
   padding: 0 14px;
 }
 
 .pcw-summary-side-metrics article {
   display: grid;
-  gap: 5px;
+  gap: 4px;
   min-width: 0;
-  padding: 10px 12px;
+  padding: 9px 10px;
   border: 1px solid #dfe7f1;
   border-radius: 12px;
   background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
@@ -32397,9 +32113,9 @@ th{height:36px;background:#f8fafc;color:#64748b;font-size:12px;font-weight:600}t
 
 .pcw-summary-side-block {
   display: grid;
-  gap: 8px;
-  margin: 0 14px 14px;
-  padding-top: 12px;
+  gap: 6px;
+  margin: 0 14px 10px;
+  padding-top: 10px;
   border-top: 1px solid #edf1f6;
 }
 
@@ -32424,9 +32140,13 @@ th{height:36px;background:#f8fafc;color:#64748b;font-size:12px;font-weight:600}t
 }
 
 .pcw-summary-side-block p {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   color: #34445d;
   font-size: 12px;
-  line-height: 1.5;
+  line-height: 1.4;
 }
 
 .pcw-summary-side-opportunity {
@@ -32435,7 +32155,7 @@ th{height:36px;background:#f8fafc;color:#64748b;font-size:12px;font-weight:600}t
   gap: 10px;
   align-items: center;
   width: 100%;
-  padding: 10px 0;
+  padding: 8px 0;
   border: 0;
   border-bottom: 1px solid #edf1f6;
   background: transparent;
@@ -32919,7 +32639,12 @@ th{height:36px;background:#f8fafc;color:#64748b;font-size:12px;font-weight:600}t
 }
 
 @media (max-width: 1100px) {
+  .pcw-grid-summary-full {
+    grid-template-columns: 1fr !important;
+  }
+
   .pcw-summary-action-grid,
+  .pcw-summary-brief-grid,
   .pcw-summary-side-metrics,
   .pcw-summary-side-grid,
   .pcw-summary-opportunities,
@@ -32931,6 +32656,13 @@ th{height:36px;background:#f8fafc;color:#64748b;font-size:12px;font-weight:600}t
   .pcw-purchase-runbook-feed,
   .pcw-purchase-empty-feed {
     grid-template-columns: 1fr;
+  }
+
+  .pcw-summary-brief-timeline {
+    padding-left: 0;
+    padding-top: 12px;
+    border-top: 1px solid #edf1f6;
+    border-left: 0;
   }
 
   .pcw-quotes-empty-grid,
@@ -32956,6 +32688,7 @@ th{height:36px;background:#f8fafc;color:#64748b;font-size:12px;font-weight:600}t
 @media (max-width: 720px) {
   .pcw-bottom,
   .pcw-summary-action-grid,
+  .pcw-summary-brief-grid,
   .pcw-summary-side-metrics,
   .pcw-summary-side-grid,
   .pcw-summary-opportunities,

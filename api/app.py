@@ -769,11 +769,15 @@ def _cached_product_options_payload(
             & options_df["price_identity_label"].fillna("").astype(str).str.strip().ne("")
         ].copy()
         options_df["latest_captured_at"] = pd.to_datetime(options_df["latest_captured_at"], errors="coerce")
+        # Disk-cache JSON turns tuple priorities into lists; pandas cannot sort list values.
+        options_df["location_priority_sort_key"] = options_df["location_priority"].map(
+            lambda priority: tuple(priority) if isinstance(priority, list) else priority
+        )
         options_df = options_df.sort_values(
-            ["location_priority", "latest_captured_at", "price_identity_label"],
+            ["location_priority_sort_key", "latest_captured_at", "price_identity_label"],
             ascending=[True, False, True],
             na_position="last",
-        ).drop(columns=["location_priority"])
+        ).drop(columns=["location_priority", "location_priority_sort_key"])
     if options_df.empty:
         latest_df = get_latest_df()
         latest_df = _filter_by_source_name(latest_df, source_name or None)

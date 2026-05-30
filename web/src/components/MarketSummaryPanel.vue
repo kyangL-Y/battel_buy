@@ -9,7 +9,7 @@
       <div class="panel-header-copy">
         <p class="panel-kicker">实时汇总</p>
         <h2>汇总行情</h2>
-        <p class="panel-hint">按商品聚合报价，点行直接进入单品趋势。</p>
+        <p class="panel-hint">按商品聚合报价，点行查看单品价格走势。</p>
       </div>
       <div class="inline-actions compact-actions market-header-actions">
         <el-input
@@ -675,7 +675,7 @@ const summaryKpis = computed(() => {
     {
       label: '价差偏大',
       value: String(highSpreadCount),
-      detail: '优先点进去看趋势',
+      detail: '优先查看价格走势',
       tone: highSpreadCount ? 'warn' : 'green',
     },
   ]

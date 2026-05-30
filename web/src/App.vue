@@ -3,7 +3,7 @@
   <section v-if="isLegacyMobileLandingEnabled && isMobileViewport && viewMode === 'landing'" class="app-shell market-mobile-home mobile-redesign-home" data-testid="sales-landing-view">
     <header class="mobile-redesign-hero-card">
       <div class="mobile-redesign-topbar">
-        <button type="button" class="mobile-redesign-brand" @click="enterWorkspace('summary')">
+        <button type="button" class="mobile-redesign-brand" @click="openProcurementEntry('summary')">
           <span>采</span>
           <div>
             <strong>采购工作台</strong>
@@ -15,7 +15,10 @@
             <i></i>
             {{ selectedLocationLabel }}
           </button>
-          <button type="button" class="mobile-redesign-alert-dot" aria-label="查看预警消息" @click="enterWorkspace('alerts')">
+          <button type="button" class="mobile-redesign-login-button" aria-label="采购账号登录" @click="openProcurementEntry()">
+            登录
+          </button>
+          <button type="button" class="mobile-redesign-alert-dot" aria-label="查看预警消息" @click="openProcurementEntry('alerts')">
             <b>{{ mobileAlertBadge }}</b>
           </button>
         </div>
@@ -36,8 +39,23 @@
 
       <div class="mobile-redesign-hero-copy">
         <p>TEAM MARKET</p>
-        <h1>今天先看异常，再定采购价。</h1>
-        <small>{{ summaryStatusText }} · {{ crawlResultLabel }}</small>
+        <h1>先登录，再看本团队行情。</h1>
+        <small>{{ summaryStatusText }} · {{ selectedLocationLabel }} · {{ crawlResultLabel }}</small>
+      </div>
+
+      <div class="mobile-redesign-auth-panel">
+        <div class="mobile-redesign-auth-panel-copy">
+          <strong>采购账号登录</strong>
+          <span>一个账号即一个租户，登录后只看绑定地区和已分配供应商。</span>
+        </div>
+        <div class="mobile-redesign-auth-panel-actions">
+          <button type="button" class="primary" @click="openProcurementEntry()">
+            登录采购端
+          </button>
+          <button type="button" @click="openSupplierPortal(false)">
+            供应商入口
+          </button>
+        </div>
       </div>
 
       <div class="mobile-redesign-search" :class="{ loading: summaryLoading || locationLoading }">
@@ -49,23 +67,23 @@
           aria-label="搜索食材关键词"
           placeholder="搜菜名、规格、档口"
           clearable
-          @keyup.enter="enterWorkspace('summary')"
+          @keyup.enter="openProcurementEntry('summary')"
         />
-        <button type="button" data-testid="enter-workspace-button" @click="enterWorkspace('summary')"><span>查行情</span></button>
+        <button type="button" data-testid="enter-workspace-button" @click="openProcurementEntry('summary')"><span>查行情</span></button>
       </div>
 
       <div class="mobile-redesign-command-grid" aria-label="采购快捷入口">
-        <button type="button" class="alert" @click="enterWorkspace('alerts')">
+        <button type="button" class="alert" @click="openProcurementEntry('alerts')">
           <span>价格预警</span>
           <strong>{{ mobileAlertBadge }} 条</strong>
           <small>{{ mobileAlertBadge ? '优先处理异常价' : '暂无紧急异常' }}</small>
         </button>
-        <button type="button" class="market" @click="enterWorkspace('summary')">
+        <button type="button" class="market" @click="openProcurementEntry('summary')">
           <span>行情报价</span>
           <strong>{{ mobileSpotlightRows.length }} 个</strong>
           <small>{{ lowestPriceSignal }}</small>
         </button>
-        <button type="button" class="buy" @click="enterWorkspace('menu')">
+        <button type="button" class="buy" @click="openProcurementEntry('menu')">
           <span>采购计划</span>
           <strong>{{ matchedPlanCount }}/{{ parsedMenuCount || planRows.length || 0 }}</strong>
           <small>{{ pendingPlanCount ? `${pendingPlanCount} 项待确认` : '录菜单生成建议' }}</small>
@@ -80,11 +98,11 @@
             <p>今日裁决</p>
             <h2>{{ mobileAlertBadge ? '先处理价格异常' : '可直接进入采购执行' }}</h2>
           </div>
-          <button type="button" @click="mobileAlertBadge ? enterWorkspace('alerts') : enterWorkspace('menu')">
+          <button type="button" @click="mobileAlertBadge ? openProcurementEntry('alerts') : openProcurementEntry('menu')">
             {{ mobileAlertBadge ? '处理' : '采购' }}
           </button>
         </div>
-        <button type="button" class="mobile-redesign-priority-card is-main" @click="mobileAlertBadge ? enterWorkspace('alerts') : enterWorkspace('menu')">
+        <button type="button" class="mobile-redesign-priority-card is-main" @click="mobileAlertBadge ? openProcurementEntry('alerts') : openProcurementEntry('menu')">
           <p>{{ selectedLocationLabel }}</p>
           <strong>{{ mobileAlertBadge ? `${mobileAlertBadge} 条价格提醒待处理` : '菜单、报价、供应商协同在一个工作流里处理' }}</strong>
           <small>{{ mobileAlertBadge ? '核对异常来源，必要时带商品去供应商报价。' : '录入菜单后自动匹配行情与供应商报价。' }}</small>
@@ -99,8 +117,8 @@
             <small class="mobile-redesign-section-note">保留抓取规格，不强拆斤价，按真实可购买单位展示。</small>
           </div>
           <div class="mobile-redesign-head-actions">
-            <button type="button" class="mobile-trend-shortcut market-mobile-bottom-item" @click="enterWorkspace('trend')">单品</button>
-            <button type="button" @click="enterWorkspace('summary')">全部</button>
+            <button type="button" class="mobile-trend-shortcut market-mobile-bottom-item" @click="openProcurementEntry('trend')">单品</button>
+            <button type="button" @click="openProcurementEntry('summary')">全部</button>
           </div>
         </div>
         <div class="mobile-redesign-product-rail" data-testid="mobile-spotlight-feed">
@@ -133,14 +151,14 @@
             <p>预警队列</p>
             <h2>需要复核的价格</h2>
           </div>
-          <button type="button" @click="enterWorkspace('alerts')">全部</button>
+          <button type="button" @click="openProcurementEntry('alerts')">全部</button>
         </div>
         <div class="mobile-redesign-alert-list">
           <button
             v-for="item in mobileAlertRows.slice(0, 3)"
             :key="`${item.name}-${item.market}`"
             type="button"
-            @click="enterWorkspace('alerts')"
+            @click="openProcurementEntry('alerts')"
           >
             <strong>{{ item.name }}</strong>
             <span>{{ item.market }} · {{ item.current }}</span>
@@ -187,9 +205,9 @@
           </div>
         </div>
         <div class="mobile-redesign-entry-grid">
-          <button type="button" data-testid="mobile-buyer-entry-button" @click="enterWorkspace('menu')">
+          <button type="button" data-testid="mobile-buyer-entry-button" @click="openProcurementEntry('menu')">
             <span>采购端</span>
-            <strong>处理采购</strong>
+            <strong>采购登录</strong>
             <small>菜单、建议、价格核对</small>
           </button>
           <button type="button" data-testid="mobile-supplier-nav-button" @click="openSupplierPortal(false)">
@@ -236,15 +254,15 @@
         <span class="market-mobile-nav-icon home"></span>
         <strong>首页</strong>
       </button>
-      <button type="button" class="market-mobile-bottom-item" aria-label="行情" @click="enterWorkspace('summary')">
+      <button type="button" class="market-mobile-bottom-item" aria-label="行情" @click="openProcurementEntry('summary')">
         <span class="market-mobile-nav-icon market"></span>
         <strong>行情</strong>
       </button>
-      <button type="button" class="market-mobile-bottom-item" aria-label="价格预警" @click="enterWorkspace('alerts')">
+      <button type="button" class="market-mobile-bottom-item" aria-label="价格预警" @click="openProcurementEntry('alerts')">
         <span class="market-mobile-nav-icon alert"></span>
         <strong>预警</strong>
       </button>
-      <button type="button" class="market-mobile-bottom-item" aria-label="采购" @click="enterWorkspace('menu')">
+      <button type="button" class="market-mobile-bottom-item" aria-label="采购" @click="openProcurementEntry('menu')">
         <span class="market-mobile-nav-icon buy"></span>
         <strong>采购</strong>
       </button>
@@ -611,83 +629,79 @@
 
   <section v-else-if="viewMode === 'landing'" class="app-shell platform-choice-shell" data-testid="sales-landing-view">
     <nav class="platform-choice-nav" aria-label="首页导航">
-      <button type="button" class="platform-choice-wordmark" @click="enterWorkspace()">
+      <button type="button" class="platform-choice-wordmark" @click="openProcurementEntry()">
         <span>食</span>
         <strong>食采云</strong>
       </button>
       <div class="platform-choice-nav-links" aria-label="能力导航">
-        <button type="button" @click="enterWorkspace('summary')">行情洞察</button>
-        <button type="button" @click="enterWorkspace('suppliers')">供应商档案</button>
-        <button type="button" @click="enterWorkspace('plan')">采购计划</button>
+        <button type="button" @click="openProcurementEntry('summary')">行情洞察</button>
+        <button type="button" @click="openProcurementEntry('menu')">采购计划</button>
+        <button type="button" @click="openProcurementEntry('alerts')">价格预警</button>
       </div>
       <div class="platform-choice-nav-actions">
         <button type="button" class="platform-choice-pill ghost" @click="openSupplierPortal(false)">供应商入口</button>
-        <button type="button" class="platform-choice-pill solid" @click="enterWorkspace()">进入系统</button>
+        <button type="button" class="platform-choice-pill solid" @click="openProcurementEntry()">采购登录</button>
       </div>
     </nav>
 
     <section class="platform-choice-hero-banner" data-testid="platform-choice-hero">
       <div class="platform-choice-hero-banner-copy">
         <div class="platform-choice-update-badge" data-testid="homepage-local-change-badge">
-          <span>采购业务</span>
-          <strong>整合行情、报价与计划数据</strong>
+          <span>采购端</span>
+          <strong>账号即租户，按采购团队隔离行情、供应商与采购数据</strong>
         </div>
-        <h1>餐饮采购<br><em>业务系统</em></h1>
-        <p>支持行情查询、供应商报价、采购计划与结算处理。</p>
+        <h1>先登录<br><em>再采购</em></h1>
+        <p>采购账号进入自己的市场、供应商和采购计划；供应商账号只进入被分配的报价门户。</p>
         <div class="platform-choice-hero-tags" aria-label="平台能力">
-          <span>实时行情</span>
-          <span>报价比价</span>
-          <span>采购建议</span>
-          <span>供应商门户</span>
+          <span>{{ selectedLocationLabel }}</span>
+          <span>多供应商报价</span>
+          <span>Team 数据隔离</span>
+          <span>采购计划闭环</span>
         </div>
         <div class="platform-choice-hero-banner-actions" aria-label="主要入口">
-          <button type="button" class="platform-choice-pill solid large" data-testid="enter-workspace-button" @click="enterWorkspace()">
-            进入系统
+          <button type="button" class="platform-choice-pill solid large" data-testid="enter-workspace-button" @click="openProcurementEntry()">
+            采购账号登录
           </button>
           <button type="button" class="platform-choice-pill ghost large" data-testid="supplier-choice-button" @click="openSupplierPortal(false)">
             供应商入口
           </button>
         </div>
       </div>
-      <aside class="platform-choice-hero-rail" aria-label="今日采购简报">
-        <div class="platform-choice-rail-header">
-          <span>今日采购简报</span>
-          <strong>可执行</strong>
+      <aside class="platform-choice-hero-rail platform-choice-login-card" aria-label="采购账号登录">
+        <div class="platform-choice-login-head">
+          <span>Procurement Login</span>
+          <strong>采购账号登录</strong>
+          <small>账号由超级管理员分配；一个采购账号就是一个租户。</small>
         </div>
-        <div class="platform-choice-signal-list">
-          <article>
-            <span class="signal-dot green"></span>
-            <div>
-              <strong>价格对比</strong>
-              <small>汇总展示可比价商品与价格差异。</small>
-            </div>
-          </article>
-          <article>
-            <span class="signal-dot amber"></span>
-            <div>
-              <strong>异常价格</strong>
-              <small>异常价格变化统一进入提醒列表。</small>
-            </div>
-          </article>
-          <article>
-            <span class="signal-dot blue"></span>
-            <div>
-              <strong>供应商报价</strong>
-              <small>报价与结算记录可统一追踪。</small>
-            </div>
-          </article>
+        <div v-if="procurementAccountLabel" class="platform-choice-login-session">
+          <span>当前已登录</span>
+          <strong>{{ procurementAccountLabel }}</strong>
+          <small>{{ selectedLocationLabel }} · 可直接进入工作台</small>
+          <div>
+            <button type="button" class="platform-choice-pill solid large" @click="openProcurementEntry()">进入采购端</button>
+            <button type="button" class="platform-choice-pill ghost large" @click="logoutProcurementAuth">退出</button>
+          </div>
         </div>
-        <div class="platform-choice-rail-metrics">
-          <div>
-            <small>决策链路</small>
-            <strong>4步</strong>
-            <span>看行情 → 选好价 → 出计划 → 留台账</span>
-          </div>
-          <div>
-            <small>推荐动作</small>
-            <strong>实时</strong>
-            <span>按市场、分类、商品自动刷新</span>
-          </div>
+        <form v-else class="platform-choice-login-form" @submit.prevent="submitLandingProcurementAuth">
+          <label>
+            <span>采购账号</span>
+            <input v-model="procurementAuthForm.username" type="text" autocomplete="username" placeholder="请输入采购账号" />
+          </label>
+          <label>
+            <span>登录密码</span>
+            <input v-model="procurementAuthForm.password" type="password" autocomplete="current-password" placeholder="请输入密码" />
+          </label>
+          <p v-if="procurementAuthError" class="platform-choice-login-error">{{ procurementAuthError }}</p>
+          <button type="submit" class="platform-choice-login-submit" :disabled="procurementAuthSubmitting">
+            {{ procurementAuthSubmitting ? '登录中' : '登录采购端' }}
+          </button>
+          <button type="button" class="platform-choice-login-secondary" @click="openSupplierPortal(false)">
+            我是供应商，进入报价门户
+          </button>
+        </form>
+        <div class="platform-choice-login-rules" aria-label="账号规则">
+          <span>供应商账号由采购分配</span>
+          <span>采购与供应商按 Team 隔离</span>
         </div>
       </aside>
     </section>
@@ -696,11 +710,11 @@
       <article class="platform-choice-inline-route">
         <div class="platform-choice-inline-route-copy">
           <span>Market Signal</span>
-          <strong>看得懂行情</strong>
-          <p>用清楚的价格趋势和市场对比，帮助客户快速判断今天该不该采购。</p>
+          <strong>先锁定地区</strong>
+          <p>采购账号进入绑定地区，只看对应市场行情，避免不同团队数据混在一起。</p>
           <ul>
             <li>市场汇总</li>
-            <li>趋势追踪</li>
+            <li>地区隔离</li>
           </ul>
         </div>
         <div class="platform-choice-inline-route-meta">
@@ -711,11 +725,11 @@
       <article class="platform-choice-inline-route">
         <div class="platform-choice-inline-route-copy">
           <span>Supplier Quote</span>
-          <strong>选得到好价</strong>
-          <p>把供应商报价集中展示，减少反复询价，让采购选择更直接。</p>
+          <strong>再对比报价</strong>
+          <p>同一采购 Team 下可绑定多家供应商，报价、规格和可购买单位原样保留。</p>
           <ul>
             <li>报价比对</li>
-            <li>历史留痕</li>
+            <li>多供应商</li>
           </ul>
         </div>
         <div class="platform-choice-inline-route-meta">
@@ -726,11 +740,11 @@
       <article class="platform-choice-inline-route">
         <div class="platform-choice-inline-route-copy">
           <span>Procurement Flow</span>
-          <strong>协同更省心</strong>
-          <p>采购方和供应商在同一平台完成沟通、报价和后续跟进。</p>
+          <strong>最后生成计划</strong>
+          <p>菜单、行情、供应商报价和采购建议在采购工作台里闭环处理。</p>
           <ul>
             <li>菜单采购</li>
-            <li>结算台账</li>
+            <li>建议复核</li>
           </ul>
         </div>
         <div class="platform-choice-inline-route-meta">
@@ -834,7 +848,7 @@
       </label>
       <p v-if="procurementAuthError" class="market-auth-error">{{ procurementAuthError }}</p>
       <div class="market-auth-actions">
-        <button type="button" @click="procurementAuthVisible = false">取消</button>
+        <button type="button" @click="closeProcurementAuthDialog">取消</button>
         <button type="button" class="primary" :disabled="procurementAuthSubmitting" @click="submitProcurementAuth">
           {{ procurementAuthSubmitting ? '登录中' : '登录采购端' }}
         </button>
@@ -1097,6 +1111,7 @@ const procurementAuthForm = reactive({
   username: '',
   password: '',
 })
+const pendingProcurementEntryTab = ref<(typeof tabs)[number]['key'] | ''>('')
 const imagePreviewVisible = ref(false)
 const imagePreviewUrl = ref('')
 const imagePreviewTitle = ref('')
@@ -1305,6 +1320,11 @@ const selectedLocationLabel = computed(() => {
   if (filters.city) return filters.city
   if (filters.province === '河南省') return '河南本地市场'
   return filters.province || '河南本地市场'
+})
+const procurementAccountLabel = computed(() => {
+  const user = authSession.value?.user
+  if (!user || (user.role !== 'admin' && user.role !== 'procurement')) return ''
+  return user.display_name || user.username
 })
 const mobileLocationFallbackOptions = ['河南本地市场', '郑州市', '河南省', '北京', '上海市', '全国']
 const mobileLocationOptions = computed(() => {
@@ -3702,11 +3722,47 @@ function openProcurementAuthDialog() {
 
   procurementAuthError.value = ''
 
+  pendingProcurementEntryTab.value = ''
+
   procurementAuthForm.username = authSession.value?.user.username || procurementAuthForm.username
 
   procurementAuthForm.password = ''
 
   procurementAuthVisible.value = true
+
+}
+
+function closeProcurementAuthDialog() {
+
+  pendingProcurementEntryTab.value = ''
+
+  procurementAuthVisible.value = false
+
+}
+
+
+function openProcurementEntry(targetTab: (typeof tabs)[number]['key'] = 'summary') {
+
+  if (procurementAccountLabel.value) {
+
+    enterWorkspace(targetTab)
+
+    return
+
+  }
+
+  openProcurementAuthDialog()
+
+  pendingProcurementEntryTab.value = targetTab
+
+}
+
+
+async function submitLandingProcurementAuth() {
+
+  pendingProcurementEntryTab.value = pendingProcurementEntryTab.value || 'summary'
+
+  await submitProcurementAuth()
 
 }
 
@@ -3745,6 +3801,10 @@ async function submitProcurementAuth() {
 
     applyAuthSession(session)
 
+    const entryTabAfterLogin = pendingProcurementEntryTab.value
+
+    pendingProcurementEntryTab.value = ''
+
     await Promise.allSettled([
       reloadSummary(),
       reloadSupplierOverview(),
@@ -3755,6 +3815,12 @@ async function submitProcurementAuth() {
     procurementAuthForm.password = ''
 
     ElMessage.success('采购端登录成功')
+
+    if (entryTabAfterLogin) {
+
+      enterWorkspace(entryTabAfterLogin)
+
+    }
 
   } catch (error) {
 
@@ -10661,6 +10727,7 @@ onBeforeUnmount(() => {
 }
 
 .mobile-redesign-location,
+.mobile-redesign-login-button,
 .mobile-redesign-alert-dot,
 .mobile-redesign-search button,
 .mobile-redesign-section-head button {
@@ -10683,6 +10750,13 @@ onBeforeUnmount(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.mobile-redesign-login-button {
+  padding: 0 12px;
+  border-color: #2563eb;
+  background: #eff6ff;
+  color: #1d4ed8;
 }
 
 .mobile-redesign-location i {
@@ -10804,6 +10878,56 @@ onBeforeUnmount(() => {
   line-height: 1.16;
   letter-spacing: -.03em;
   font-weight: 800;
+}
+
+.mobile-redesign-auth-panel {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid #dbe4ef;
+  border-radius: 18px;
+  background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
+  box-shadow: 0 8px 22px rgba(15, 23, 42, .04);
+}
+
+.mobile-redesign-auth-panel-copy {
+  display: grid;
+  gap: 4px;
+}
+
+.mobile-redesign-auth-panel-copy strong {
+  color: #071226;
+  font-size: 17px;
+  letter-spacing: -.03em;
+}
+
+.mobile-redesign-auth-panel-copy span {
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.mobile-redesign-auth-panel-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.mobile-redesign-auth-panel-actions button {
+  min-height: 42px;
+  border: 1px solid #dbe4ef;
+  border-radius: 14px;
+  background: #ffffff;
+  color: #334155;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.mobile-redesign-auth-panel-actions button.primary {
+  border-color: #2563eb;
+  background: #2563eb;
+  color: #ffffff;
 }
 
 .mobile-redesign-stat-strip {
@@ -11313,6 +11437,7 @@ onBeforeUnmount(() => {
 }
 
 .mobile-redesign-location,
+.mobile-redesign-login-button,
 .mobile-redesign-alert-dot,
 .mobile-redesign-section-head button,
 .mobile-redesign-search button {
@@ -11324,6 +11449,12 @@ onBeforeUnmount(() => {
   max-width: 116px;
   background: rgba(255,255,248,.86);
   color: var(--phone-green);
+}
+
+.mobile-redesign-login-button {
+  padding: 0 12px;
+  background: #e7f6c5;
+  color: #203f1f;
 }
 
 .mobile-redesign-location i {
@@ -11379,6 +11510,56 @@ onBeforeUnmount(() => {
   max-width: 290px;
   font-size: clamp(26px, 8vw, 34px);
   line-height: .98;
+}
+
+.mobile-redesign-auth-panel {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--phone-line);
+  border-radius: 22px;
+  background: linear-gradient(180deg, #fffef8 0%, #fffdf4 100%);
+  box-shadow: 0 10px 22px rgba(40, 63, 36, .08);
+}
+
+.mobile-redesign-auth-panel-copy {
+  display: grid;
+  gap: 4px;
+}
+
+.mobile-redesign-auth-panel-copy strong {
+  color: var(--phone-ink);
+  font-size: 17px;
+  letter-spacing: -.03em;
+}
+
+.mobile-redesign-auth-panel-copy span {
+  color: var(--phone-muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.mobile-redesign-auth-panel-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.mobile-redesign-auth-panel-actions button {
+  min-height: 42px;
+  border: 1px solid var(--phone-line);
+  border-radius: 16px;
+  background: #fffdf4;
+  color: var(--phone-green);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.mobile-redesign-auth-panel-actions button.primary {
+  border-color: var(--phone-green);
+  background: var(--phone-green);
+  color: var(--phone-lime);
 }
 
 .mobile-redesign-search {
@@ -11568,7 +11749,21 @@ onBeforeUnmount(() => {
   background: rgba(255, 253, 244, .78);
 }
 
-.mobile-redesign-nav,
+.mobile-redesign-nav {
+  position: sticky;
+  left: auto;
+  right: auto;
+  bottom: 10px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-top: 20px;
+  border: 1px solid rgba(48, 74, 43, .13);
+  border-radius: 24px;
+  background: rgba(255, 253, 244, .94);
+  box-shadow: 0 14px 32px rgba(40, 63, 36, .16);
+  z-index: 30;
+}
+
 .mobile-redesign-workspace .market-mobile-bottom-nav {
   left: 10px;
   right: 10px;
@@ -11579,7 +11774,6 @@ onBeforeUnmount(() => {
   box-shadow: 0 14px 32px rgba(40, 63, 36, .16);
 }
 
-.mobile-redesign-home .mobile-redesign-main::after,
 .mobile-redesign-workspace .market-mobile-shell-content::after {
   content: "";
   display: block;
@@ -11640,6 +11834,13 @@ onBeforeUnmount(() => {
 
 .mobile-redesign-workspace .market-mobile-shell-content {
   padding: 12px 12px calc(102px + env(safe-area-inset-bottom, 0px));
+}
+
+.mobile-redesign-workspace .market-mobile-menu-page,
+.mobile-redesign-workspace .market-mobile-alert-page,
+.mobile-redesign-workspace .market-summary-panel,
+.mobile-redesign-workspace .product-trend-panel {
+  padding-bottom: 96px;
 }
 
 .mobile-redesign-workspace .market-mobile-alert-card,

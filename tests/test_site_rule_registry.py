@@ -142,6 +142,34 @@ def test_upsert_site_rule_preserves_liancai_h5_fields(tmp_path: Path):
     assert loaded[0]["base_url"] == "http://m.liancaiwang.cn"
 
 
+def test_upsert_site_rule_preserves_nanjing_zhongcai_fields(tmp_path: Path):
+    target = tmp_path / "sites.json"
+
+    rule, created = upsert_site_rule(
+        target,
+        {
+            "site_name": "南京众彩",
+            "domains": ["www.njnfwl.com"],
+            "strategy": "nanjing_zhongcai_public_batch",
+            "base_url": "https://www.njnfwl.com",
+            "list_url": "https://www.njnfwl.com/list-eqpn3l3g/shucaijiage/1/10",
+            "zhongcai_category": "蔬菜",
+            "max_pages": 1,
+            "max_articles": 1,
+            "min_ocr_rows": 20,
+        },
+    )
+
+    loaded = load_site_rules(target)
+
+    assert created is True
+    assert rule["strategy"] == "nanjing_zhongcai_public_batch"
+    assert rule["list_url"] == "https://www.njnfwl.com/list-eqpn3l3g/shucaijiage/1/10"
+    assert rule["zhongcai_category"] == "蔬菜"
+    assert loaded[0]["max_articles"] == 1
+    assert loaded[0]["min_ocr_rows"] == 20
+
+
 def test_upsert_site_rule_preserves_chinaprice_fast_snapshot_fields(tmp_path: Path):
     target = tmp_path / "sites.json"
 

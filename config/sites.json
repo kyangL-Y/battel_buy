@@ -273,6 +273,44 @@
     "fallback_strategy": null
   },
   {
+    "site_name": "南京众彩",
+    "domains": [
+      "njnfwl.com",
+      "www.njnfwl.com"
+    ],
+    "currency": "CNY",
+    "name_selectors": [],
+    "price_selectors": [],
+    "original_price_selectors": [],
+    "promotion_selectors": [],
+    "preferred_fetch_mode": "requests",
+    "api_strategy": "off",
+    "api_url": null,
+    "api_method": "GET",
+    "api_headers": {},
+    "api_body_template": null,
+    "api_field_mapping": {},
+    "batch_list_path": null,
+    "api_discovery_enabled": false,
+    "timeout_seconds": 20,
+    "retry_count": 1,
+    "request_delay_seconds": 0.5,
+    "max_pages": 1,
+    "max_articles": 1,
+    "min_ocr_rows": 20,
+    "blocked_status_codes": [
+      403,
+      429
+    ],
+    "playwright_wait_until": null,
+    "custom_headers": null,
+    "notes": "南京农副产品物流中心公开价格参考表；官网明细以图片发布，需要 Tesseract OCR 或外部 OCR 服务解析成商品价格行。",
+    "strategy": "nanjing_zhongcai_public_batch",
+    "base_url": "https://www.njnfwl.com",
+    "zhongcai_category": "蔬菜",
+    "fallback_strategy": null
+  },
+  {
     "site_name": "莲菜网App",
     "domains": [
       "lcwgetway.liancaiwang.cn"
@@ -309,5 +347,68 @@
     "max_keyword_items": 10,
     "max_brand_items": 10,
     "fallback_strategy": null
+  },
+  {
+    "site_name": "美菜网App",
+    "domains": [
+      "mall-entrance.yunshanmeicai.com",
+      "mallapi.yunshanmeicai.com"
+    ],
+    "currency": "CNY",
+    "name_selectors": [],
+    "price_selectors": [],
+    "original_price_selectors": [],
+    "promotion_selectors": [],
+    "preferred_fetch_mode": "requests",
+    "api_strategy": "off",
+    "api_url": null,
+    "api_method": "GET",
+    "api_headers": {},
+    "api_body_template": null,
+    "api_field_mapping": {},
+    "batch_list_path": null,
+    "api_discovery_enabled": false,
+    "timeout_seconds": 20,
+    "retry_count": 1,
+    "request_delay_seconds": 0.2,
+    "blocked_status_codes": [
+      403,
+      429
+    ],
+    "playwright_wait_until": null,
+    "custom_headers": null,
+    "notes": "美菜网App网关商品流；优先按莲菜网同款 saleClass + getSpusByClass 分类分页抓取；服务器可直接设置 MEICAI_REQUEST_HEADERS / MEICAI_COMMON_BODY，或设置 MEICAI_SECRET_ENV_FILE 指向登录态 env 文件；接口返回加密 data 时按约定失败，不转 OCR。",
+    "strategy": "meicai_app_gateway_batch",
+    "gateway_base_url": "https://mall-entrance.yunshanmeicai.com",
+    "request_headers_env": "MEICAI_REQUEST_HEADERS",
+    "common_body_env": "MEICAI_COMMON_BODY",
+    "endpoint": "class_products",
+    "city_id": "17",
+    "area_id": "4402",
+    "module_key": "700",
+    "class1_id": "-1",
+    "class2_id": "",
+    "category_filters": [
+      {
+        "category": "推荐商品",
+        "class1_id": "-1",
+        "class2_id": ""
+      },
+      {
+        "category": "蔬菜",
+        "class1_id": "6506",
+        "class2_id": ""
+      },
+      {
+        "category": "酒水饮料",
+        "class1_id": "6511",
+        "class2_id": ""
+      }
+    ],
+    "sale_class_tree_path": "tmp/meicai_sale_class_tree.json",
+    "page_size": 20,
+    "max_pages": 20,
+    "fallback_strategy": null,
+    "secret_env_file_env": "MEICAI_SECRET_ENV_FILE"
   }
 ]

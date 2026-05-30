@@ -2054,6 +2054,49 @@ def _filter_single_product_history(df: pd.DataFrame, identity_key: str) -> pd.Da
     alias_candidates = {str(identity_key).strip()}
     if "|" in str(identity_key):
         alias_candidates.add(str(identity_key).split("|", 1)[0].strip())
+    identity_segments = [segment.strip() for segment in str(identity_key).split("|") if segment.strip()]
+    if len(identity_segments) >= 3:
+        compact_product_name = re.sub(r"[\s*·•/.]+", "", identity_segments[0]).strip().casefold()
+        compact_brand_name = re.sub(r"[\s*·•/.]+", "", identity_segments[-2]).strip().casefold()
+        compact_product_series = re.sub(r"[\s*·•/.]+", "", identity_segments[-1]).strip().casefold()
+        product_name_series = (
+            cross_site_base.get("product_name", pd.Series(index=cross_site_base.index, dtype="object"))
+            .fillna("")
+            .astype(str)
+            .str.replace(r"[\s*·•/.]+", "", regex=True)
+            .str.strip()
+            .str.casefold()
+        )
+        brand_series = (
+            cross_site_base.get("brand", pd.Series(index=cross_site_base.index, dtype="object"))
+            .fillna("")
+            .astype(str)
+            .str.replace(r"[\s*·•/.]+", "", regex=True)
+            .str.strip()
+            .str.casefold()
+        )
+        product_series = (
+            cross_site_base.get("product_series", pd.Series(index=cross_site_base.index, dtype="object"))
+            .fillna("")
+            .astype(str)
+            .str.replace(r"[\s*·•/.]+", "", regex=True)
+            .str.strip()
+            .str.casefold()
+        )
+        same_identity_rows = cross_site_base[
+            product_name_series.eq(compact_product_name)
+            & brand_series.eq(compact_brand_name)
+            & product_series.eq(compact_product_series)
+        ]
+        for alias_column in ["price_identity_key", "cross_site_identity_key"]:
+            alias_candidates.update(
+                same_identity_rows.get(alias_column, pd.Series(dtype="object"))
+                .dropna()
+                .astype(str)
+                .str.strip()
+                .loc[lambda aliases: aliases.ne("")]
+                .tolist()
+            )
     compact_aliases = {
         re.sub(r"[\s*·•/]+", "", alias).strip()
         for alias in alias_candidates
