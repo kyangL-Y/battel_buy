@@ -70,8 +70,8 @@
       </article>
       <article>
         <span>登录后第三步</span>
-        <strong>分配供应商账号</strong>
-        <small>给供应商开通报价入口，避免报价、结算、档案混在一起。</small>
+        <strong>进入供应报价</strong>
+        <small>供应商用分配账号录价，采购端只看自己绑定团队的数据。</small>
       </article>
     </section>
 
@@ -81,7 +81,7 @@
       type="warning"
       :closable="false"
       title="当前账号无权进入采购端供应商管理"
-      description="供应商账号只能进入供应平台录价、查看报价历史和结算；采购端供应商管理需要管理员账号。"
+      description="供应商账号只能进入供应平台录价、查看报价历史和结算；采购端供应商管理需要采购或管理员账号。"
       show-icon
     />
 

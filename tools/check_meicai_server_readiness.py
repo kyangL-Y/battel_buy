@@ -9,6 +9,7 @@ from typing import Any
 
 DEFAULT_PRODUCTS_PATH = Path("config/products.json")
 DEFAULT_SITES_PATH = Path("config/sites.json")
+MEICAI_SUPPORTED_STRATEGIES = {"meicai_app_gateway_batch", "meicai_h5_decrypt_batch"}
 
 
 def load_env_file_without_override(path: Path) -> list[str]:
@@ -37,7 +38,7 @@ def find_meicai_product(products: list[dict[str, Any]]) -> dict[str, Any] | None
         (
             product
             for product in products
-            if product.get("strategy") == "meicai_app_gateway_batch"
+            if product.get("strategy") in MEICAI_SUPPORTED_STRATEGIES
             or "yunshanmeicai.com" in str(product.get("url") or "")
         ),
         None,
@@ -49,7 +50,7 @@ def find_meicai_site_rule(site_rules: list[dict[str, Any]]) -> dict[str, Any] | 
         (
             rule
             for rule in site_rules
-            if rule.get("strategy") == "meicai_app_gateway_batch"
+            if rule.get("strategy") in MEICAI_SUPPORTED_STRATEGIES
             or any("yunshanmeicai.com" in str(domain) for domain in rule.get("domains", []))
         ),
         None,
@@ -116,6 +117,7 @@ def build_readiness_report(
         if isinstance(item, dict)
     ]
     sale_class_tree_path = str(meicai_site_rule.get("sale_class_tree_path") or "").strip()
+    h5_salts_path = str(meicai_site_rule.get("h5_salts_path") or "").strip()
     sale_class_filter_count = None
     if sale_class_tree_path:
         tree_payload = load_json_file(Path(sale_class_tree_path))
@@ -127,6 +129,10 @@ def build_readiness_report(
             for item in flat_rows
             if isinstance(item, dict) and str(item.get("saleC1Id") or "").strip()
         )
+    if meicai_site_rule.get("strategy") == "meicai_h5_decrypt_batch" and h5_salts_path:
+        salts_payload = load_json_file(Path(h5_salts_path))
+        if not isinstance(salts_payload, dict) or not salts_payload.get("saltsType3"):
+            raise RuntimeError(f"{h5_salts_path} missing saltsType3")
     return {
         "ready": True,
         "product_enabled": bool(meicai_product.get("enabled", False)),
@@ -139,6 +145,8 @@ def build_readiness_report(
         "page_size": meicai_site_rule.get("page_size"),
         "max_pages": meicai_site_rule.get("max_pages"),
         "sale_class_tree_path": sale_class_tree_path or None,
+        "h5_salts_path": h5_salts_path or None,
+        "request_source": meicai_site_rule.get("request_source"),
         "sale_class_filter_count": sale_class_filter_count,
         "category_filter_count": len(category_filters),
         "category_filters": category_filters,

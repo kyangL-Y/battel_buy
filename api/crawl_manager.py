@@ -64,7 +64,11 @@ def _next_daily_run_at(now: datetime, run_time: str) -> datetime:
     return candidate
 
 
-def build_crawler_service(fetch_mode: str, runtime_settings: dict[str, Any]) -> PriceCrawlerService:
+def build_crawler_service(
+    fetch_mode: str,
+    runtime_settings: dict[str, Any],
+    site_rules_path: str | Path = SITES_CONFIG_PATH,
+) -> PriceCrawlerService:
     crawler_config = runtime_settings.get("crawler", {})
     timeout = _safe_int(crawler_config.get("default_timeout"), 15)
     retries = _safe_int(crawler_config.get("default_retries"), 2)
@@ -80,7 +84,7 @@ def build_crawler_service(fetch_mode: str, runtime_settings: dict[str, Any]) -> 
         crawler_config.get("playwright_block_resource_types", ["image", "media", "font"])
         or ["image", "media", "font"]
     )
-    site_rules = load_site_rules(SITES_CONFIG_PATH)
+    site_rules = load_site_rules(site_rules_path)
 
     if fetch_mode == "playwright":
         fetcher = PlaywrightFetcher(

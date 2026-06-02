@@ -12,7 +12,7 @@
           <small>{{ procurementCarryHint }}</small>
         </div>
         <div class="supplier-backend-auth-foot">
-          <span>账号由采购或超级管理员分配，请拿到账号后登录。</span>
+          <span>用公司账号登录。</span>
         </div>
 
         <strong>账号登录</strong>
@@ -27,7 +27,7 @@
         />
         <p v-if="authError" class="market-auth-error">{{ authError }}</p>
         <div class="market-auth-actions">
-          <el-button type="primary" data-testid="auth-login-button" :loading="authSubmitting" @click="submitAuthLogin">登录后台</el-button>
+          <el-button type="primary" data-testid="auth-login-button" :loading="authSubmitting" @click="submitAuthLogin">登录</el-button>
         </div>
         <div class="supplier-backend-auth-foot">
           <button type="button" @click="showPasswordHelp">忘记密码</button>
@@ -37,7 +37,7 @@
 
     <el-dialog v-model="passwordResetVisible" title="重置密码" width="min(92vw, 420px)">
       <div class="market-auth-form supplier-backend-reset-form">
-        <small>输入账号、当前密码和新密码，验证通过后直接更新密码并登录。</small>
+        <small>输入账号、旧密码和新密码。</small>
         <el-input v-model="passwordResetForm.username" placeholder="账号" autocomplete="username" />
         <el-input v-model="passwordResetForm.current_password" type="password" show-password placeholder="当前密码" autocomplete="current-password" />
         <el-input v-model="passwordResetForm.new_password" type="password" show-password placeholder="新密码，至少 8 位" autocomplete="new-password" @keyup.enter="submitPasswordReset" />
@@ -54,8 +54,8 @@
       <div class="supplier-backend-brand">
         <div class="supplier-backend-brand-mark">档</div>
         <div class="supplier-backend-brand-copy">
-          <p class="panel-kicker">供应协同后台</p>
-          <strong>供应商管理台</strong>
+          <p class="panel-kicker">供应商管理</p>
+          <strong>供应商管理</strong>
         </div>
       </div>
       <div class="supplier-backend-topbar-actions">
@@ -65,7 +65,7 @@
           <small>{{ currentAuthScopeLabel }}</small>
         </div>
         <div class="supplier-backend-chip accent">
-          <span>当前角色</span>
+          <span>账号类型</span>
           <strong>{{ currentAuthRoleLabel }}</strong>
         </div>
         <el-button v-if="isAuthenticated" plain @click="logoutAuthSession">退出登录</el-button>
@@ -131,7 +131,7 @@
         <header v-if="isAuthenticated && !isCompactWorkspaceSection" class="panel supplier-backend-pagebar" :class="{ compact: isCompactWorkspaceSection }">
           <div class="supplier-backend-pagebar-copy">
             <p class="panel-kicker">{{ isAuthenticated ? '当前页面' : '登录' }}</p>
-            <h1>{{ isAuthenticated ? activeBackendTabMeta.title : '登录后台' }}</h1>
+            <h1>{{ isAuthenticated ? activeBackendTabMeta.title : '登录' }}</h1>
             <div v-if="isAuthenticated" class="supplier-backend-pagebar-meta">
               <span v-for="item in backendWorkspaceTags" :key="item">{{ item }}</span>
             </div>
@@ -188,68 +188,28 @@
           </template>
 
           <template v-else-if="!isAuthenticated">
-            <div class="supplier-backend-auth-layout" :class="{ mobile: isMobileViewport }">
-              <div class="supplier-backend-auth-intro">
-                <span>SUPPLIER BACKEND</span>
-                <strong>供应商管理入口</strong>
-                <small>管理员和供应商都从同一个入口进入，但会按角色自动裁剪成自己该处理的任务。</small>
+            <div class="market-auth-form supplier-backend-login-card" data-testid="supplier-login-form">
+              <div class="supplier-backend-login-head">
                 <div>
-                  <b>档案管理</b>
-                <b>报价录入</b>
-                  <b>结算台账</b>
-                </div>
-                <div class="supplier-backend-auth-preview">
-                  <article>
-                    <span>01</span>
-                    <strong>管理员登录</strong>
-                    <small>维护供应商管理</small>
-                  </article>
-                  <article>
-                    <span>02</span>
-                    <strong>报价管理</strong>
-                    <small>录价、导入和复核记录</small>
-                  </article>
-                  <article>
-                    <span>03</span>
-                    <strong>结算处理</strong>
-                    <small>管理账期和付款状态</small>
-                  </article>
-                </div>
-                <div class="supplier-backend-auth-note">
-                  <div>
-                    <strong>账号分配</strong>
-                    <small>供应商账号由采购或超级管理员在后台分配。</small>
-                  </div>
+                  <strong>账号登录</strong>
                 </div>
               </div>
-
-              <div class="market-auth-form supplier-backend-login-card" data-testid="supplier-login-form">
-                <div class="supplier-backend-auth-foot">
-                  <span>账号由采购或超级管理员分配，请拿到账号后登录。</span>
-                </div>
-
-                <div class="supplier-backend-login-head">
-                  <div>
-                    <strong>账号登录</strong>
-                  </div>
-                </div>
-                <el-input v-model="authForm.username" data-testid="auth-username-input" placeholder="账号" />
-                <el-input
-                  v-model="authForm.password"
-                  data-testid="auth-password-input"
-                  type="password"
-                  show-password
-                  placeholder="密码"
-                  @keyup.enter="submitAuthLogin"
-                />
-                <p v-if="authError" class="market-auth-error">{{ authError }}</p>
-                <div class="market-auth-actions">
-                <el-button type="primary" data-testid="auth-login-button" :loading="authSubmitting" @click="submitAuthLogin">登录后台</el-button>
-                </div>
-                <div class="supplier-backend-auth-foot">
-                  <span>账号由采购或超级管理员分配。</span>
-                  <button type="button" @click="showPasswordHelp">忘记密码</button>
-                </div>
+              <el-input v-model="authForm.username" data-testid="auth-username-input" placeholder="账号" />
+              <el-input
+                v-model="authForm.password"
+                data-testid="auth-password-input"
+                type="password"
+                show-password
+                placeholder="密码"
+                @keyup.enter="submitAuthLogin"
+              />
+              <p v-if="authError" class="market-auth-error">{{ authError }}</p>
+              <div class="market-auth-actions">
+                <el-button type="primary" data-testid="auth-login-button" :loading="authSubmitting" @click="submitAuthLogin">登录</el-button>
+              </div>
+              <div class="supplier-backend-auth-foot">
+                <span>没有账号请联系负责人。</span>
+                <button type="button" @click="showPasswordHelp">忘记密码</button>
               </div>
             </div>
           </template>
@@ -265,6 +225,7 @@
               :selected-identity-key="selectedIdentityKey"
               :selected-product-label="selectedProductLabel"
               :procurement-source-label="procurementSourceLabel"
+              :procurement-source-type="initialCarrySource"
               :mobile="isMobileViewport"
               :auth-role="currentAuthRole"
               :auth-supplier-id="currentAuthSupplierId"
@@ -346,7 +307,7 @@ const isAuthenticated = computed(() => Boolean(authSession.value?.access_token &
 const currentAuthRole = computed(() => currentUser.value?.role ?? null)
 const currentAuthSupplierId = computed(() => currentUser.value?.supplier_id ?? null)
 const currentAuthDisplayName = computed(() => currentUser.value?.display_name || currentUser.value?.username || '')
-const authRoleHint = computed(() => '管理员可查看全局供应商数据；供应商账号在供应平台内仅查看绑定范围，并可完成自助录价与批量导入。')
+const authRoleHint = computed(() => '管理员管理供应商；供应商填写报价。')
 const currentAuthRoleLabel = computed(() => {
   if (!isAuthenticated.value) {
     return '待登录'
@@ -355,13 +316,13 @@ const currentAuthRoleLabel = computed(() => {
 })
 const currentAuthScopeLabel = computed(() => {
   if (!isAuthenticated.value) {
-    return '当前范围：待登录'
+    return '还未登录'
   }
   if (currentAuthRole.value === 'admin') {
-    return '当前范围：全局供应商数据'
+    return '可管理所有供应商'
   }
   const supplierName = currentUser.value?.supplier_profile?.supplier_name || ''
-  return supplierName ? `当前范围：${supplierName}` : '当前范围：仅限已绑定供应商'
+  return supplierName ? `当前供应商：${supplierName}` : '还没有分配供应商'
 })
 const selectedProductLabel = computed(() => {
   const current = productOptions.value.find((item) => item.price_identity_key === selectedIdentityKey.value)
@@ -398,6 +359,9 @@ function normalizeBackendSectionForRole(section: BackendSection): BackendSection
   if (currentAuthRole.value === 'supplier' && section !== 'quote' && section !== 'settlement') {
     return 'quote'
   }
+  if (currentAuthRole.value === 'procurement' && section === 'accounts') {
+    return 'suppliers'
+  }
   return section
 }
 
@@ -407,6 +371,9 @@ const backendTabEntries = computed(() =>
     .filter((item) => {
       if (currentAuthRole.value === 'supplier') {
         return item.key === 'quote' || item.key === 'settlement'
+      }
+      if (currentAuthRole.value === 'procurement') {
+        return item.key === 'suppliers' || item.key === 'quote' || item.key === 'settlement'
       }
       return item.key === 'suppliers' || item.key === 'accounts' || item.key === 'quote' || item.key === 'settlement'
     })
@@ -427,11 +394,20 @@ const backendTabEntries = computed(() =>
 )
 const backendSecondaryEntries = computed(() => {
   if (currentAuthRole.value === 'supplier') return []
+  if (currentAuthRole.value === 'procurement') {
+    return [
+      {
+        key: 'logs' as const,
+        label: '操作日志',
+        detail: '查看当前团队供应商留痕',
+      },
+    ]
+  }
   return [
     {
       key: 'accounts' as const,
       label: '账号管理',
-      detail: '管理用户、角色和权限',
+      detail: '管理账号和权限',
     },
     {
       key: 'logs' as const,
@@ -450,7 +426,7 @@ const activeBackendTabMeta = computed(() => {
   if (resolvedBackendSection.value === 'accounts') {
     return {
       title: '账号管理',
-      description: '集中维护管理员、供应商账号、绑定范围、启停和密码重置。',
+      description: '维护管理员和供应商账号、启停状态和密码重置。',
     }
   }
   if (resolvedBackendSection.value === 'settlement') {
@@ -494,19 +470,19 @@ const secondaryBackendActionLabel = computed(() =>
 )
 const backendShellCards = computed(() => [
   {
-    label: '当前角色',
+    label: '账号类型',
     value: isAuthenticated.value ? (currentAuthRole.value === 'admin' ? '管理员' : '供应商') : '待登录',
-    detail: isAuthenticated.value ? currentAuthRoleLabel.value : '登录后按角色裁剪供应平台导航',
+    detail: isAuthenticated.value ? currentAuthRoleLabel.value : '登录后显示可用功能',
   },
   {
-    label: '数据范围',
+    label: '可看内容',
     value: isAuthenticated.value ? (currentAuthRole.value === 'admin' ? '全局供应' : '绑定供应商') : '未验证',
-    detail: isAuthenticated.value ? currentAuthScopeLabel.value : '未登录时仅可查看供应平台入口说明',
+    detail: isAuthenticated.value ? currentAuthScopeLabel.value : '未登录时只能看登录入口',
   },
   {
     label: '当前分区',
     value: isAuthenticated.value ? activeBackendTabMeta.value.title : '账号登录',
-    detail: isAuthenticated.value ? activeBackendTabMeta.value.description : '先完成账号校验，再进入供应平台分区',
+    detail: isAuthenticated.value ? activeBackendTabMeta.value.description : '登录后进入',
   },
 ])
 const backendOverviewCards = computed(() => [
@@ -541,7 +517,7 @@ const loginMetricCards = computed(() => [
   {
     label: '账号登录',
     value: '已接入',
-    detail: '供应平台只接受真实账号密码，不在页面展示测试账号。',
+    detail: '用公司账号登录。',
   },
   {
     label: '供应分区',
@@ -551,41 +527,41 @@ const loginMetricCards = computed(() => [
   {
     label: '当前上下文',
     value: selectedProductLabel.value || '多品类',
-    detail: '登录后上下文会直接带进报价管理和结算工作区。',
+    detail: '继续处理当前商品。',
   },
 ])
 const loginSceneCards = computed(() => [
   {
-    kicker: 'Admin Workspace',
-    title: '管理员看全局供应商和结算流转',
-    detail: '用于档案维护、报价代录、结算台账和操作日志。',
+    kicker: '管理员',
+    title: '管理员管理供应商',
+    detail: '维护资料、录价、看结算。',
   },
   {
-    kicker: 'Supplier Workspace',
-    title: '供应商自助任务在同一平台完成',
-    detail: '自助录价、批量导入和我的报价记录都在供应平台内按角色展示。',
+    kicker: '供应商',
+    title: '供应商填写报价',
+    detail: '录价、导入、看记录。',
   },
   {
-    kicker: 'Access Control',
-    title: '停用账号会被明确拦截',
-    detail: '平台账号治理会阻止停用供应商继续进入工作区。',
+    kicker: '账号状态',
+    title: '停用后不能登录',
+    detail: '账号停用即失效。',
   },
 ])
 const loginChecklist = computed(() => [
   {
     step: '01',
-    title: '管理员先看全局供应数据',
-    detail: '先展示供应商主列表、报价管理和结算台账，建立全局认知。',
+    title: '管理员看供应商',
+    detail: '供应商、报价、结算。',
   },
   {
     step: '02',
-    title: '供应商自助任务在平台内完成',
-    detail: '供应商使用自己的账号进入供应平台，完成批量导入和我的报价记录维护。',
+    title: '供应商填报价',
+    detail: '录价、导入、看记录。',
   },
   {
     step: '03',
-    title: '停用账号做权限收口',
-    detail: '停用账号会被平台明确拦截，避免继续进入工作区。',
+    title: '停用后不能登录',
+    detail: '账号停用即失效。',
   },
 ])
 const backendCommandCards = computed(() => [
@@ -595,13 +571,13 @@ const backendCommandCards = computed(() => [
     detail: isAuthenticated.value
       ? (currentAuthRole.value === 'admin'
           ? '管理员适合从供应商主列表开始，再切结算和日志。'
-          : '供应商账号进入报价工作台，完成自助导入、报价提交和历史复核。')
-      : '登录后按角色进入对应工作台。',
+          : '进入报价页面。')
+      : '登录后进入。',
   },
   {
     label: '当前账号',
     value: isAuthenticated.value ? (currentUser.value?.display_name || currentUser.value?.username || '未登录') : '未登录',
-    detail: isAuthenticated.value ? currentAuthScopeLabel.value : '请输入已开通的真实供应平台账号。',
+    detail: isAuthenticated.value ? currentAuthScopeLabel.value : '输入公司账号。',
   },
   {
     label: '当前焦点',

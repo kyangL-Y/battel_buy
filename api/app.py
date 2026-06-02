@@ -5,16 +5,19 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 from functools import lru_cache
 import hashlib
+import ipaddress
 from pathlib import Path
 import re
 import shutil
 import json
 import logging
 from time import monotonic
+from urllib.error import HTTPError, URLError
 from urllib.parse import unquote
+from urllib.request import Request as UrlRequest, urlopen
 
 import pandas as pd
-from fastapi import Body, Depends, FastAPI, HTTPException, Query
+from fastapi import Body, Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
@@ -120,6 +123,7 @@ from services.site_rule_registry import load_site_rules, save_site_rules
 from utils.config_loader import load_json_config
 from utils.config_loader import BASE_DIR as CONFIG_BASE_DIR
 from utils.config_loader import save_json_config
+from utils.location_catalog import match_standard_city, match_standard_province
 from utils.source_config import get_source_name, get_source_tier, is_source_enabled
 
 
@@ -144,6 +148,7 @@ DEFAULT_SUPPLIER_QUOTE_DUPLICATE_MATCH_FIELDS = (
 SUPPORTED_SUPPLIER_QUOTE_DUPLICATE_MATCH_FIELDS = frozenset(DEFAULT_SUPPLIER_QUOTE_DUPLICATE_MATCH_FIELDS)
 ACCOUNT_USERNAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.@-]{2,63}$")
 MIN_ACCOUNT_PASSWORD_LENGTH = 8
+LOCATION_HINT_TIMEOUT_SECONDS = 2.5
 
 
 def get_crawl_manager() -> CrawlManager:
@@ -158,6 +163,109 @@ def _sanitize_dataframe(df: pd.DataFrame) -> list[dict]:
         if pd.api.types.is_datetime64_any_dtype(result[column]):
             result[column] = result[column].dt.strftime("%Y-%m-%d %H:%M:%S")
     return result.where(pd.notna(result), None).to_dict(orient="records")
+
+
+def _fetch_location_hint_json(endpoint_url: str) -> dict | None:
+    outbound_location_call = UrlRequest(
+        endpoint_url,
+        headers={
+            "Accept": "application/json",
+            "User-Agent": "BattelLocationHint/1.0",
+        },
+    )
+    try:
+        with urlopen(outbound_location_call, timeout=LOCATION_HINT_TIMEOUT_SECONDS) as response:
+            decoded_payload = response.read().decode("utf-8", errors="ignore")
+    except (HTTPError, URLError, TimeoutError, OSError, ValueError):
+        return None
+    try:
+        parsed_payload = json.loads(decoded_payload)
+    except json.JSONDecodeError:
+        return None
+    return parsed_payload if isinstance(parsed_payload, dict) else None
+
+
+def _text_segments(*values: object) -> list[str]:
+    return [str(value).strip() for value in values if str(value or "").strip()]
+
+
+def _build_location_suggestion(raw_location: str, source: str, source_label: str, confidence: float) -> dict | None:
+    location_text = " ".join(_text_segments(raw_location))
+    if not location_text:
+        return None
+    matched_city, province_from_city = match_standard_city(location_text)
+    matched_province = match_standard_province(location_text) or province_from_city
+    if not matched_province and not matched_city:
+        return None
+    label = matched_city or ("河南本地市场" if matched_province == "河南省" else matched_province)
+    return {
+        "matched": True,
+        "province": matched_province,
+        "city": matched_city,
+        "label": label,
+        "source": source,
+        "source_label": source_label,
+        "confidence": confidence,
+        "raw_location": location_text,
+    }
+
+
+def _fetch_browser_location_suggestion(latitude: float, longitude: float) -> dict | None:
+    if not (-90 <= float(latitude) <= 90 and -180 <= float(longitude) <= 180):
+        return None
+    geocode_payload = _fetch_location_hint_json(
+        "https://nominatim.openstreetmap.org/reverse"
+        f"?format=jsonv2&lat={float(latitude):.6f}&lon={float(longitude):.6f}"
+        "&zoom=10&addressdetails=1&accept-language=zh-CN"
+    )
+    if not geocode_payload:
+        return None
+    address = geocode_payload.get("address")
+    address = address if isinstance(address, dict) else {}
+    raw_location = " ".join(_text_segments(
+        address.get("state"),
+        address.get("province"),
+        address.get("city"),
+        address.get("town"),
+        address.get("county"),
+        address.get("district"),
+        geocode_payload.get("display_name"),
+    ))
+    return _build_location_suggestion(raw_location, "browser_geolocation", "浏览器定位", 0.86)
+
+
+def _extract_public_client_ip(request: Request) -> str:
+    raw_candidates = [
+        str(request.headers.get("x-forwarded-for") or "").split(",", 1)[0],
+        request.headers.get("x-real-ip"),
+        request.client.host if request.client else None,
+    ]
+    for raw_candidate in raw_candidates:
+        candidate = str(raw_candidate or "").strip()
+        if not candidate:
+            continue
+        try:
+            parsed_ip = ipaddress.ip_address(candidate)
+        except ValueError:
+            continue
+        if parsed_ip.is_global:
+            return candidate
+    return ""
+
+
+def _fetch_ip_location_suggestion(ip_address_text: str) -> dict | None:
+    normalized_ip = str(ip_address_text or "").strip()
+    if not normalized_ip:
+        return None
+    ip_payload = _fetch_location_hint_json(f"https://ipapi.co/{normalized_ip}/json/")
+    if not ip_payload:
+        return None
+    raw_location = " ".join(_text_segments(
+        ip_payload.get("region"),
+        ip_payload.get("city"),
+        ip_payload.get("country_name"),
+    ))
+    return _build_location_suggestion(raw_location, "ip_geolocation", "IP 归属地", 0.58)
 
 
 @lru_cache(maxsize=64)
@@ -240,7 +348,7 @@ def _market_summary_cache_path(
         sort_keys=True,
         separators=(",", ":"),
     )
-    digest = hashlib.sha1(payload.encode("utf-8")).hexdigest()
+    digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()
     return MARKET_SUMMARY_DISK_CACHE_DIR / f"{digest}.json"
 
 
@@ -1090,7 +1198,7 @@ def _normalize_supplier_id_list(values: list[int] | None) -> list[int]:
     })
 
 
-def _validate_procurement_supplier_ids(supplier_ids: list[int]) -> None:
+def _validate_procurement_supplier_ids(supplier_ids: list[int], existing_user_id: int | None = None) -> None:
     if not supplier_ids:
         raise HTTPException(status_code=400, detail="采购账号至少绑定一家供应商")
     supplier_rows = _sanitize_dataframe(get_db().get_suppliers(active_only=False))
@@ -1098,6 +1206,17 @@ def _validate_procurement_supplier_ids(supplier_ids: list[int]) -> None:
     missing_ids = [supplier_id for supplier_id in supplier_ids if supplier_id not in existing_ids]
     if missing_ids:
         raise HTTPException(status_code=400, detail=f"存在未找到的供应商 ID: {', '.join(str(item) for item in missing_ids)}")
+
+    current_user_id = int(existing_user_id or 0)
+    ownership_rows = _sanitize_dataframe(get_db().get_procurement_user_supplier_mappings(supplier_ids))
+    conflicting_supplier_ids = sorted({
+        int(item.get("supplier_id") or 0)
+        for item in ownership_rows
+        if int(item.get("supplier_id") or 0) > 0 and int(item.get("user_id") or 0) != current_user_id
+    })
+    if conflicting_supplier_ids:
+        joined_ids = ", ".join(str(item) for item in conflicting_supplier_ids)
+        raise HTTPException(status_code=400, detail=f"以下供应商已绑定其他采购账号: {joined_ids}")
 
 
 def _require_procurement_or_admin(current_user: dict) -> None:
@@ -1114,6 +1233,22 @@ def _filter_suppliers_by_current_user(current_user: dict, items: list[dict]) -> 
         return [item for item in items if int(item.get("id") or 0) in allowed_supplier_ids]
     supplier_scope = ensure_supplier_access(current_user, int(current_user.get("supplier_id") or 0))
     return [item for item in items if int(item.get("id") or 0) == supplier_scope]
+
+
+def _resolve_supplier_quote_write_supplier_id(current_user: dict, requested_supplier_id: int | None) -> int | None:
+    if is_admin_user(current_user):
+        return requested_supplier_id
+    if is_procurement_user(current_user):
+        return ensure_supplier_access(current_user, int(requested_supplier_id or 0))
+    return ensure_supplier_access(current_user, int(current_user.get("supplier_id") or 0))
+
+
+def _find_supplier_row_by_name(supplier_name: str) -> dict | None:
+    normalized_name = str(supplier_name or "").strip()
+    if not normalized_name:
+        return None
+    supplier_rows = _sanitize_dataframe(get_db().get_supplier_by_name(normalized_name))
+    return supplier_rows[0] if supplier_rows else None
 
 
 def _hash_required_account_password(value: str | None, detail: str) -> str:
@@ -2028,6 +2163,32 @@ def create_app() -> FastAPI:
         provinces, cities, province_city_map = get_location_options(latest_df)
         return {"provinces": provinces, "cities": cities, "province_city_map": province_city_map}
 
+    @app.get("/api/location/suggest")
+    def location_suggestion(
+        request: Request,
+        latitude: float | None = Query(default=None),
+        longitude: float | None = Query(default=None),
+    ) -> dict:
+        suggestion = None
+        if latitude is not None and longitude is not None:
+            suggestion = _fetch_browser_location_suggestion(latitude, longitude)
+        if suggestion is None:
+            public_client_ip = _extract_public_client_ip(request)
+            suggestion = _fetch_ip_location_suggestion(public_client_ip)
+        if suggestion is None:
+            return {
+                "matched": False,
+                "province": None,
+                "city": None,
+                "label": None,
+                "source": "none",
+                "source_label": "未识别",
+                "confidence": 0,
+                "raw_location": None,
+                "message": "未能从浏览器定位或 IP 归属地识别到可用市场",
+            }
+        return {**suggestion, "message": None}
+
     @app.get("/api/source/coverage")
     def source_coverage() -> dict:
         return {"items": _build_source_coverage_rows()}
@@ -2392,7 +2553,7 @@ def create_app() -> FastAPI:
         if payload.role == "supplier" and supplier_id is None:
             raise HTTPException(status_code=400, detail="供应商账号必须绑定供应商")
         if payload.role == "procurement":
-            _validate_procurement_supplier_ids(procurement_supplier_ids)
+            _validate_procurement_supplier_ids(procurement_supplier_ids, existing_user_id=user_id)
         elif procurement_supplier_ids:
             raise HTTPException(status_code=400, detail="只有采购账号可以绑定多家供应商")
         _ensure_account_username_available(username, existing_user_id=user_id)
@@ -2474,6 +2635,10 @@ def create_app() -> FastAPI:
         current_user: dict = Depends(require_authenticated_user),
     ) -> SupplierItem:
         _require_procurement_or_admin(current_user)
+        supplier_name = str(payload.supplier_name or "").strip()
+        existing_supplier_row = _find_supplier_row_by_name(supplier_name)
+        if existing_supplier_row is not None:
+            raise HTTPException(status_code=400, detail="供应商已存在，请直接编辑现有档案")
         account_username = _normalize_account_username(payload.account_username)
         account_password_hash = None
         if account_username:
@@ -2481,7 +2646,7 @@ def create_app() -> FastAPI:
             account_password_hash = _hash_required_account_password(payload.account_password, "创建供应商账号时必须填写初始密码")
         try:
             supplier_id = get_db().upsert_supplier(
-                supplier_name=payload.supplier_name,
+                supplier_name=supplier_name,
                 contact_name=payload.contact_name,
                 contact_phone=payload.contact_phone,
                 market_scope=payload.market_scope,
@@ -2571,12 +2736,8 @@ def create_app() -> FastAPI:
         payload: SupplierQuoteCreateRequest,
         current_user: dict = Depends(require_authenticated_user),
     ) -> SupplierQuoteCreateResponse:
-        if is_admin_user(current_user):
-            resolved_supplier_id = payload.supplier_id
-            resolved_supplier_name = payload.supplier_name
-        else:
-            resolved_supplier_id = ensure_supplier_access(current_user, int(current_user.get("supplier_id") or 0))
-            resolved_supplier_name = None
+        resolved_supplier_id = _resolve_supplier_quote_write_supplier_id(current_user, payload.supplier_id)
+        resolved_supplier_name = payload.supplier_name if is_admin_user(current_user) else None
         supplier_id, record_id, decoded_key, fallback_item = _create_supplier_quote_record(
             supplier_id=resolved_supplier_id,
             supplier_name=resolved_supplier_name,
@@ -2602,7 +2763,7 @@ def create_app() -> FastAPI:
         )
         comparison_response = _build_product_supplier_quotes_response(
             decoded_key,
-            None if is_admin_user(current_user) else int(current_user.get("supplier_id") or 0),
+            None if is_admin_user(current_user) else supplier_id,
         )
         created_item = next(
             (
@@ -2623,7 +2784,7 @@ def create_app() -> FastAPI:
     ) -> SupplierQuoteImportResponse:
         supplier_id = ensure_supplier_access(
             current_user,
-            payload.supplier_id if is_admin_user(current_user) else int(current_user.get("supplier_id") or 0),
+            _resolve_supplier_quote_write_supplier_id(current_user, payload.supplier_id) or 0,
         )
         operator_name = get_actor_display_name(current_user)
         db = get_db()
@@ -2806,7 +2967,7 @@ def create_app() -> FastAPI:
         db = get_db()
         supplier_id = ensure_supplier_access(
             current_user,
-            payload.supplier_id if is_admin_user(current_user) else int(current_user.get("supplier_id") or 0),
+            _resolve_supplier_quote_write_supplier_id(current_user, payload.supplier_id) or 0,
         )
         duplicate_match_fields = _resolve_supplier_quote_duplicate_match_fields(payload.duplicate_match_fields)
         preview_items: list[SupplierQuoteImportPreviewItem] = []

@@ -8,7 +8,7 @@ from crawler.api_fetcher import ApiFetcher
 from crawler.base import BaseFetcher, FetchResult
 from crawler.playwright_fetcher import PlaywrightFetcher
 from crawler.requests_fetcher import RequestsFetcher
-from crawler.public_source_crawlers import PublicSourceCrawler
+from crawler.public_source_crawlers import NanjingZhongcaiNoNewArticle, PublicSourceCrawler
 from crawler.source_strategies import (
     ApiBatchSourceStrategy,
     BrowserAssistedSourceStrategy,
@@ -16,9 +16,11 @@ from crawler.source_strategies import (
     ChinapriceBatchSourceStrategy,
     HenanFgwPriceBatchSourceStrategy,
     HnnhgscBatchSourceStrategy,
+    KuailvH5BatchSourceStrategy,
     LiancaiAppGatewayBatchSourceStrategy,
     LiancaiH5BatchSourceStrategy,
     MeicaiAppGatewayBatchSourceStrategy,
+    MeicaiH5DecryptBatchSourceStrategy,
     MoaWholesaleBatchSourceStrategy,
     NanjingZhongcaiPublicBatchSourceStrategy,
     PfscChartBatchSourceStrategy,
@@ -121,8 +123,10 @@ class PriceCrawlerService:
             ZznyClzArticleBatchSourceStrategy(),
             CnhnbMarketBatchSourceStrategy(),
             NanjingZhongcaiPublicBatchSourceStrategy(),
+            KuailvH5BatchSourceStrategy(),
             LiancaiAppGatewayBatchSourceStrategy(),
             LiancaiH5BatchSourceStrategy(),
+            MeicaiH5DecryptBatchSourceStrategy(),
             MeicaiAppGatewayBatchSourceStrategy(),
             ApiBatchSourceStrategy(),
             BrowserAssistedSourceStrategy(),
@@ -1076,6 +1080,34 @@ class PriceCrawlerService:
         )
         return [result]
 
+    def _build_skipped_source_result(
+        self,
+        product: dict[str, Any],
+        site_rule: dict | None,
+        detail: str,
+        fetch_mode: str,
+        suggestion: str,
+    ) -> list[dict[str, Any]]:
+        captured_at = datetime.now().isoformat(timespec="seconds")
+        return [
+            {
+                "url": product["url"],
+                "status": "success",
+                "skipped": True,
+                "skip_reason": detail,
+                "site_name": (site_rule or {}).get("site_name") or "未知站点",
+                "fetch_mode": fetch_mode,
+                "status_code": 204,
+                "suggestion": suggestion,
+                "fallback_used": False,
+                "captured_at": captured_at,
+                "product_key": product.get("product_key") or product["url"],
+                "group_name": product.get("group_name"),
+                "product_name": product.get("product_name"),
+                "source_url": product["url"],
+            }
+        ]
+
     @staticmethod
     def _build_named_batch_key(product: dict[str, Any], parsed: dict, index: int) -> str:
         base_key = product.get("product_key") or product.get("url")
@@ -1378,6 +1410,15 @@ class PriceCrawlerService:
         site_rule = site_rule or self.parser.find_rule(product["url"])
         try:
             parsed_rows = self.public_source_crawler.fetch_nanjing_zhongcai_public(product, site_rule)
+        except NanjingZhongcaiNoNewArticle as exc:
+            self.logger.info("南京众彩公开价格无新增文章: %s | %s", product["url"], exc)
+            return self._build_skipped_source_result(
+                product,
+                site_rule,
+                str(exc),
+                "requests",
+                "南京众彩最新文章已处理，本次增量任务未下载图片、未运行 OCR。",
+            )
         except Exception as exc:  # noqa: BLE001
             self.logger.exception("南京众彩公开价格抓取失败: %s", product["url"])
             return self._build_failed_source_result(
@@ -1448,6 +1489,46 @@ class PriceCrawlerService:
             self._build_named_batch_key,
         )
         self.logger.info("莲菜网H5批量抓取成功: %s | 条数=%s", product["url"], len(results))
+        return results
+
+    def _crawl_kuailv_h5_source(
+        self,
+        product: dict[str, Any],
+        site_rule: dict | None = None,
+    ) -> list[dict[str, Any]]:
+        site_rule = site_rule or self.parser.find_rule(product["url"])
+        try:
+            parsed_items = self.public_source_crawler.fetch_kuailv_h5(product, site_rule)
+        except Exception as exc:  # noqa: BLE001
+            self.logger.exception("快驴H5抓取失败: %s", product["url"])
+            return self._build_failed_source_result(
+                product,
+                site_rule,
+                str(exc),
+                "kuailv_h5",
+                self._build_kuailv_h5_failure_suggestion(str(exc)),
+            )
+
+        if not parsed_items:
+            return self._build_failed_source_result(
+                product,
+                site_rule,
+                "快驴H5未返回可用商品",
+                "kuailv_h5",
+                "请用合法快驴商城采购/商家登录态重新运行 readiness probe，确认 goodsList 有商品行。",
+            )
+
+        results = self._build_custom_batch_results(
+            product,
+            parsed_items,
+            {
+                "fetch_mode": "kuailv_h5",
+                "fallback_used": False,
+                "preferred_fetch_mode": (site_rule or {}).get("preferred_fetch_mode"),
+            },
+            self._build_kuailv_h5_batch_key,
+        )
+        self.logger.info("快驴H5批量抓取成功: %s | 条数=%s", product["url"], len(results))
         return results
 
     def _crawl_liancai_app_gateway_source(
@@ -1536,6 +1617,49 @@ class PriceCrawlerService:
         self.logger.info("美菜网App网关批量抓取成功: %s | 条数=%s", product["url"], len(results))
         return results
 
+    def _crawl_meicai_h5_decrypt_source(
+        self,
+        product: dict[str, Any],
+        site_rule: dict | None = None,
+    ) -> list[dict[str, Any]]:
+        try:
+            parsed_items = self.public_source_crawler.fetch_meicai_h5_decrypt(product, site_rule)
+        except Exception as exc:
+            self.logger.exception("美菜网H5解密抓取失败: %s", product["url"])
+            self._record_failed_crawl(
+                product,
+                fetch_mode="h5_decrypt",
+                error=str(exc),
+                suggestion="请检查美菜登录态、H5 salts 文件、request_source=android 与 type=3 解密链。",
+                fallback_used=False,
+                raw_payload={},
+            )
+            return []
+
+        results = self._build_custom_batch_results(
+            product,
+            parsed_items,
+            {
+                "fetch_mode": "h5_decrypt",
+                "fallback_used": False,
+                "preferred_fetch_mode": (site_rule or {}).get("preferred_fetch_mode"),
+            },
+            self._build_meicai_app_gateway_batch_key,
+        )
+        if not results:
+            self._record_failed_crawl(
+                product,
+                fetch_mode="h5_decrypt",
+                error="美菜网H5解密未返回可用商品",
+                suggestion="请检查 saleClass 分类树、分页范围、账号状态或 H5 解密结构是否变更。",
+                fallback_used=False,
+                raw_payload={"parsed_count": len(parsed_items)},
+            )
+            return []
+
+        self.logger.info("美菜网H5解密批量抓取成功: %s | 条数=%s", product["url"], len(results))
+        return results
+
     @staticmethod
     def _build_liancai_app_gateway_batch_key(product: dict[str, Any], parsed: dict, index: int) -> str:
         base_key = product.get("product_key") or product.get("url")
@@ -1560,6 +1684,29 @@ class PriceCrawlerService:
             extra_fields.get("spec_text"),
         ]
         return _join_compact_key(str(base_key), parts, index)
+
+    @staticmethod
+    def _build_kuailv_h5_batch_key(product: dict[str, Any], parsed: dict, index: int) -> str:
+        base_key = product.get("product_key") or product.get("url")
+        extra_fields = parsed.get("extra_fields") or {}
+        parts = [
+            extra_fields.get("group_name") or extra_fields.get("category"),
+            extra_fields.get("compare_key") or parsed.get("product_name"),
+            extra_fields.get("kuailv_goods_id") or extra_fields.get("product_series"),
+            extra_fields.get("spec_text"),
+        ]
+        return _join_compact_key(str(base_key), parts, index)
+
+    @staticmethod
+    def _build_kuailv_h5_failure_suggestion(error: str) -> str:
+        message = str(error or "")
+        if "缺少快驴H5登录态" in message:
+            return "请设置 KUAILV_SECRET_ENV_FILE 指向 .local-secrets/kuailv.env，或直接设置 KUAILV_COOKIES / KUAILV_REQUEST_HEADERS。"
+        if "无权限访问" in message or "103000" in message:
+            return "当前登录态不是可访问快驴商城商品的采购/商家账号，或未选择南京可服务地址。"
+        if "goodsList" in message:
+            return "请重新抓取含 /wxmall/api/goods/list 的 HAR，并用 readiness probe 确认 goods_count > 0。"
+        return "请检查快驴 H5 cookie/header、selectedPoiAddressId、selectedSalesGridId 与 cat1Id/cat2Id 是否仍有效。"
 
     @staticmethod
     def _build_liancai_h5_failure_suggestion(error: str) -> str:

@@ -1,6 +1,6 @@
 # 美菜服务器抓取登录态
 
-美菜 `meicai_app_gateway_batch` 不在服务器上自动控制模拟器登录。服务器抓取只读取已授权登录态：
+美菜 `meicai_h5_decrypt_batch` 不在服务器上自动控制模拟器登录。服务器抓取只读取已授权登录态：
 
 - `MEICAI_REQUEST_HEADERS`
 - `MEICAI_COMMON_BODY`
@@ -50,3 +50,21 @@ Environment=MEICAI_SECRET_ENV_FILE=/opt/battel-secrets/meicai.env
 ```
 
 登录态过期、签名失效或接口返回加密 `data` 时，抓取会失败并提示刷新登录态；不会转 OCR。
+
+当前正式链路会按 H5 bundle 重新生成 `mallSaltSign` / `salt_sign`，并解密 `getSpusByClass` 的 `encryption.type=3` 响应。服务器还需要带上 `tmp/meicai_h5_salts.json`，配置项为 `h5_salts_path`。
+
+## 正式抓取与落库验收
+
+确认登录态、地址上下文、分类树和 H5 salts 都齐全后，执行：
+
+```powershell
+python tools\validate_meicai_h5_server_crawl.py --secret-env-file .local-secrets\meicai_address_context.env
+```
+
+该工具会读取当前 `meicai_h5_decrypt_batch` 配置，跑一次正式服务器抓取，并核对：
+
+- `price_records` 本轮新增数量是否等于抓取成功行数
+- `tmp/meicai_crawl_audit.json` 中的分类数是否等于 `saleClass` 二级类目数
+- 是否有分类命中 `max_pages` 截断
+
+输出只包含统计与字段名，不打印 token、签名或地址密文。

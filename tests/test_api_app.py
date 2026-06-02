@@ -1624,6 +1624,70 @@ def test_location_options_endpoint_returns_province_city_map(monkeypatch):
     }
 
 
+def test_location_suggestion_prefers_browser_coordinates(monkeypatch):
+    def fake_browser_suggestion(latitude, longitude):
+        assert latitude == 32.06
+        assert longitude == 118.79
+        return {
+            "matched": True,
+            "province": "江苏省",
+            "city": "南京",
+            "label": "南京",
+            "source": "browser_geolocation",
+            "source_label": "浏览器定位",
+            "confidence": 0.86,
+            "raw_location": "江苏省 南京市",
+        }
+
+    def fail_ip_suggestion(ip_address_text):
+        raise AssertionError("IP fallback should not run when browser location matches")
+
+    monkeypatch.setattr(api_app_module, "_fetch_browser_location_suggestion", fake_browser_suggestion)
+    monkeypatch.setattr(api_app_module, "_fetch_ip_location_suggestion", fail_ip_suggestion)
+
+    client = TestClient(create_app())
+    response = client.get("/api/location/suggest?latitude=32.06&longitude=118.79")
+
+    assert response.status_code == 200
+    assert response.json()["matched"] is True
+    assert response.json()["province"] == "江苏省"
+    assert response.json()["city"] == "南京"
+    assert response.json()["source"] == "browser_geolocation"
+
+
+def test_location_suggestion_uses_ip_fallback(monkeypatch):
+    def fake_browser_suggestion(latitude, longitude):
+        return None
+
+    def fake_ip_suggestion(ip_address_text):
+        assert ip_address_text == "8.8.8.8"
+        return {
+            "matched": True,
+            "province": "河南省",
+            "city": "郑州",
+            "label": "郑州",
+            "source": "ip_geolocation",
+            "source_label": "IP 归属地",
+            "confidence": 0.58,
+            "raw_location": "河南省 郑州市",
+        }
+
+    monkeypatch.setattr(api_app_module, "_fetch_browser_location_suggestion", fake_browser_suggestion)
+    monkeypatch.setattr(api_app_module, "_fetch_ip_location_suggestion", fake_ip_suggestion)
+
+    client = TestClient(create_app())
+    response = client.get(
+        "/api/location/suggest?latitude=0&longitude=0",
+        headers={"x-forwarded-for": "8.8.8.8"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["matched"] is True
+    assert response.json()["province"] == "河南省"
+    assert response.json()["city"] == "郑州"
+    assert response.json()["source"] == "ip_geolocation"
+
+
 
 
 
@@ -2314,6 +2378,123 @@ def test_procurement_account_scopes_suppliers_and_overview_to_bound_suppliers(mo
     assert [item["supplier_name"] for item in payload["recent_quotes"]] == ["冻品档口C", "莲菜档口A"]
 
 
+def test_procurement_account_binding_rejects_supplier_owned_by_other_procurement_user(tmp_path, monkeypatch):
+    db = Database(tmp_path / "procurement_scope_conflict.db")
+    db.init_db()
+
+    supplier_a = db.upsert_supplier(
+        supplier_name="莲菜档口A",
+        contact_name="老王",
+        market_scope="南京市场",
+        market_category="干调类",
+        channel="微信小程序",
+    )
+    supplier_b = db.upsert_supplier(
+        supplier_name="冻品档口B",
+        contact_name="小李",
+        market_scope="南京市场",
+        market_category="冻品类",
+        channel="门店直报",
+    )
+
+    admin_client = _create_authenticated_client(monkeypatch, db=db)
+
+    create_first_response = admin_client.post(
+        "/api/auth/users",
+        json={
+            "username": "buyer-a",
+            "password": "buyer123456",
+            "role": "procurement",
+            "procurement_supplier_ids": [supplier_a],
+            "display_name": "采购A",
+            "market_scope": "南京市场",
+            "is_active": True,
+        },
+    )
+
+    assert create_first_response.status_code == 200
+
+    conflict_response = admin_client.post(
+        "/api/auth/users",
+        json={
+            "username": "buyer-b",
+            "password": "buyer123456",
+            "role": "procurement",
+            "procurement_supplier_ids": [supplier_a, supplier_b],
+            "display_name": "采购B",
+            "market_scope": "南京市场",
+            "is_active": True,
+        },
+    )
+
+    assert conflict_response.status_code == 400
+    assert "已绑定其他采购账号" in conflict_response.json()["detail"]
+
+
+def test_procurement_supplier_creation_rejects_existing_supplier_name(tmp_path, monkeypatch):
+    db = Database(tmp_path / "procurement_supplier_duplicate.db")
+    db.init_db()
+
+    owned_supplier_id = db.upsert_supplier(
+        supplier_name="自有档口",
+        contact_name="王哥",
+        market_scope="南京市场",
+        market_category="蔬菜类",
+        channel="门店直报",
+    )
+    existing_supplier_id = db.upsert_supplier(
+        supplier_name="莲菜档口A",
+        contact_name="老王",
+        market_scope="南京市场",
+        market_category="干调类",
+        channel="微信小程序",
+    )
+
+    procurement_user_id = db.upsert_auth_user(
+        username="buyer-owned",
+        password_hash=hash_password("buyer123456"),
+        role="procurement",
+        display_name="采购A",
+        is_active=True,
+    )
+    db.replace_procurement_user_suppliers(procurement_user_id, [owned_supplier_id])
+    other_procurement_user_id = db.upsert_auth_user(
+        username="buyer-other",
+        password_hash=hash_password("buyer123456"),
+        role="procurement",
+        display_name="采购B",
+        is_active=True,
+    )
+    db.replace_procurement_user_suppliers(other_procurement_user_id, [existing_supplier_id])
+
+    client = _create_authenticated_client(
+        monkeypatch,
+        db=db,
+        role="procurement",
+        supplier_id=None,
+        procurement_supplier_ids=[owned_supplier_id],
+        username="buyer-owned",
+        display_name="采购A",
+    )
+
+    response = client.post(
+        "/api/suppliers",
+        json={
+            "supplier_name": "莲菜档口A",
+            "contact_name": "老王",
+            "contact_phone": "13800000000",
+            "market_scope": "南京市场",
+            "market_category": "干调类",
+            "channel": "微信小程序",
+            "notes": "应被拦截",
+            "is_active": True,
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "供应商已存在，请直接编辑现有档案"
+
+
 
 
 
@@ -2879,6 +3060,81 @@ def test_create_supplier_price_endpoint_accepts_supplier_name(monkeypatch):
     assert captured["quote"]["quote_price"] == 17.9
 
     assert response.json()["item"]["comparison_label"] == "待补公开行情"
+
+
+def test_procurement_account_can_create_quote_for_bound_supplier(monkeypatch):
+    captured_quote: dict[str, object] = {}
+
+    class _FakeDb:
+        def insert_supplier_price_record(self, **kwargs):
+            captured_quote.update(kwargs)
+            return 21
+
+        def get_supplier_price_record(self, record_id):
+            assert record_id == 21
+            return pd.DataFrame([
+                {
+                    "record_id": 21,
+                    "supplier_id": 9,
+                    "supplier_name": "莲菜档口A",
+                    "price_identity_key": "香菇|干调类|500g",
+                    "price_identity_label": "香菇 | 干调类 | 500g",
+                    "product_name": "香菇",
+                    "category": "干调类",
+                    "market_category": "干调类",
+                    "quote_price": 17.9,
+                    "quote_unit": "斤",
+                    "quoted_by": "南京采购",
+                    "quoted_at": "2026-04-20T10:00:00",
+                }
+            ])
+
+        def get_latest_supplier_quotes(self, *args, **kwargs):
+            return pd.DataFrame([
+                {
+                    "record_id": 21,
+                    "supplier_id": 9,
+                    "supplier_name": "莲菜档口A",
+                    "price_identity_key": "香菇|干调类|500g",
+                    "price_identity_label": "香菇 | 干调类 | 500g",
+                    "product_name": "香菇",
+                    "category": "干调类",
+                    "market_category": "干调类",
+                    "quote_price": 17.9,
+                    "quote_unit": "斤",
+                    "quoted_by": "南京采购",
+                    "quoted_at": "2026-04-20T10:00:00",
+                }
+            ])
+
+    monkeypatch.setattr(api_app_module, "get_db", lambda: _FakeDb())
+    monkeypatch.setattr(api_app_module, "get_product_keys_for_identity", lambda _: ["mock-key"])
+    monkeypatch.setattr(api_app_module, "get_product_history_identity_df", lambda _: pd.DataFrame())
+    client = _create_authenticated_client(
+        monkeypatch,
+        role="procurement",
+        supplier_id=None,
+        procurement_supplier_ids=[9],
+        display_name="南京采购",
+    )
+
+    response = client.post(
+        "/api/supplier-prices",
+        json={
+            "supplier_id": 9,
+            "price_identity_key": "香菇|干调类|500g",
+            "price_identity_label": "香菇 | 干调类 | 500g",
+            "product_name": "香菇",
+            "market_category": "干调类",
+            "quote_price": 17.9,
+            "quote_unit": "斤",
+        },
+    )
+
+    assert response.status_code == 200
+    assert captured_quote["supplier_id"] == 9
+    assert captured_quote["quoted_by"] == "南京采购"
+    assert response.json()["item"]["supplier_id"] == 9
 
 
 

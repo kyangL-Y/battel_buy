@@ -157,6 +157,8 @@ def test_upsert_site_rule_preserves_nanjing_zhongcai_fields(tmp_path: Path):
             "max_pages": 1,
             "max_articles": 1,
             "min_ocr_rows": 20,
+            "ocr_cache_path": "tmp/nanjing_zhongcai_ocr_cache.json",
+            "processed_article_state_path": "tmp/nanjing_zhongcai_processed_articles.json",
         },
     )
 
@@ -168,6 +170,8 @@ def test_upsert_site_rule_preserves_nanjing_zhongcai_fields(tmp_path: Path):
     assert rule["zhongcai_category"] == "蔬菜"
     assert loaded[0]["max_articles"] == 1
     assert loaded[0]["min_ocr_rows"] == 20
+    assert loaded[0]["ocr_cache_path"] == "tmp/nanjing_zhongcai_ocr_cache.json"
+    assert loaded[0]["processed_article_state_path"] == "tmp/nanjing_zhongcai_processed_articles.json"
 
 
 def test_upsert_site_rule_preserves_chinaprice_fast_snapshot_fields(tmp_path: Path):
@@ -195,3 +199,41 @@ def test_upsert_site_rule_preserves_chinaprice_fast_snapshot_fields(tmp_path: Pa
     assert rule["chinaprice_query_mode"] == "fast_snapshot"
     assert rule["chinaprice_menu_codes"] == ["pfscsphzjg"]
     assert loaded[0]["chinaprice_max_rows"] == 5000
+
+
+def test_upsert_site_rule_preserves_meicai_h5_decrypt_fields(tmp_path: Path):
+    target = tmp_path / "sites.json"
+
+    rule, created = upsert_site_rule(
+        target,
+        {
+            "site_name": "美菜网H5",
+            "domains": ["mall-entrance.yunshanmeicai.com"],
+            "strategy": "meicai_h5_decrypt_batch",
+            "gateway_base_url": "https://mall-entrance.yunshanmeicai.com",
+            "request_headers_env": "MEICAI_REQUEST_HEADERS",
+            "common_body_env": "MEICAI_COMMON_BODY",
+            "secret_env_file_env": "MEICAI_SECRET_ENV_FILE",
+            "endpoint": "class_products",
+            "city_id": "17",
+            "area_id": "4402",
+            "category_filters": [{"category": "推荐商品", "class1_id": "-1", "class2_id": ""}],
+            "sale_class_tree_path": "tmp/meicai_sale_class_tree.json",
+            "h5_salts_path": "tmp/meicai_h5_salts.json",
+            "request_source": "android",
+            "crawl_audit_path": "tmp/meicai_audit.json",
+            "page_size": 200,
+            "max_pages": 20,
+        },
+    )
+
+    loaded = load_site_rules(target)
+
+    assert created is True
+    assert rule["strategy"] == "meicai_h5_decrypt_batch"
+    assert loaded[0]["gateway_base_url"] == "https://mall-entrance.yunshanmeicai.com"
+    assert loaded[0]["sale_class_tree_path"] == "tmp/meicai_sale_class_tree.json"
+    assert loaded[0]["h5_salts_path"] == "tmp/meicai_h5_salts.json"
+    assert loaded[0]["request_source"] == "android"
+    assert loaded[0]["crawl_audit_path"] == "tmp/meicai_audit.json"
+    assert loaded[0]["category_filters"] == [{"category": "推荐商品", "class1_id": "-1", "class2_id": ""}]

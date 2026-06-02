@@ -24,13 +24,33 @@
         </div>
       </div>
 
+      <div v-if="locationSuggestionHint && !showMobileLocationPanel" class="mobile-redesign-location-status">
+        {{ locationSuggestionHint }}
+      </div>
+
       <div v-if="showMobileLocationPanel" class="mobile-redesign-location-panel">
+        <div class="mobile-redesign-location-panel-head">
+          <strong>{{ isAuthScopedLocationLocked ? '账号地区已锁定' : '选择默认市场' }}</strong>
+          <span>{{ isAuthScopedLocationLocked ? '由采购账号控制，不能覆盖' : '未登录时定位只作为默认筛选建议' }}</span>
+        </div>
+        <small v-if="isAuthScopedLocationLocked" class="mobile-redesign-location-loading">账号地区已固定，不能用定位或手选覆盖</small>
         <small v-if="locationLoading" class="mobile-redesign-location-loading">正在同步地区列表</small>
+        <small v-if="locationSuggestionHint" class="mobile-redesign-location-loading">{{ locationSuggestionHint }}</small>
+        <button
+          v-if="!isAuthScopedLocationLocked"
+          type="button"
+          class="mobile-redesign-location-hint-button"
+          :disabled="locationSuggestionLoading"
+          @click="requestAuxiliaryLocationSuggestion"
+        >
+          {{ locationSuggestionLoading ? '正在定位' : '用定位建议地区' }}
+        </button>
         <button
           v-for="item in mobileLocationOptions"
           :key="item"
           type="button"
           :class="{ active: item === selectedLocationLabel }"
+          :disabled="isAuthScopedLocationLocked"
           @click="selectMobileLocation(item)"
         >
           {{ item }}
@@ -46,11 +66,11 @@
       <div class="mobile-redesign-auth-panel">
         <div class="mobile-redesign-auth-panel-copy">
           <strong>采购账号登录</strong>
-          <span>一个账号即一个租户，登录后只看绑定地区和已分配供应商。</span>
+          <span>一个采购账号只看自己的地区和已分配供应商。</span>
         </div>
         <div class="mobile-redesign-auth-panel-actions">
           <button type="button" class="primary" @click="openProcurementEntry()">
-            登录采购端
+            登录
           </button>
           <button type="button" @click="openSupplierPortal(false)">
             供应商入口
@@ -104,7 +124,7 @@
         </div>
         <button type="button" class="mobile-redesign-priority-card is-main" @click="mobileAlertBadge ? openProcurementEntry('alerts') : openProcurementEntry('menu')">
           <p>{{ selectedLocationLabel }}</p>
-          <strong>{{ mobileAlertBadge ? `${mobileAlertBadge} 条价格提醒待处理` : '菜单、报价、供应商协同在一个工作流里处理' }}</strong>
+          <strong>{{ mobileAlertBadge ? `${mobileAlertBadge} 条价格提醒待处理` : '菜单、报价、供应商一起处理' }}</strong>
           <small>{{ mobileAlertBadge ? '核对异常来源，必要时带商品去供应商报价。' : '录入菜单后自动匹配行情与供应商报价。' }}</small>
         </button>
       </section>
@@ -114,7 +134,7 @@
           <div>
             <p>可比价商品</p>
             <h2>优先看的价格</h2>
-            <small class="mobile-redesign-section-note">保留抓取规格，不强拆斤价，按真实可购买单位展示。</small>
+            <small class="mobile-redesign-section-note">保留原始报价规格，不强拆斤价，按真实可购买单位展示。</small>
           </div>
           <div class="mobile-redesign-head-actions">
             <button type="button" class="mobile-trend-shortcut market-mobile-bottom-item" @click="openProcurementEntry('trend')">单品</button>
@@ -166,7 +186,7 @@
           </button>
           <div v-if="!mobileAlertRows.length" class="mobile-redesign-empty-card compact">
             <strong>暂无触发预警</strong>
-            <small>触发阈值后将在此显示。</small>
+            <small>超过提醒价格后将在此显示。</small>
           </div>
         </div>
       </section>
@@ -184,7 +204,7 @@
             v-for="item in displayedMobileCategoryTableRows.slice(0, 4)"
             :key="item.key"
             type="button"
-            @click="openCategoryMarket(item.category)"
+            @click="openCategoryMarket(item.category, item.subcategory)"
           >
             <span>{{ item.category }}</span>
             <strong>{{ item.subcategory }}</strong>
@@ -200,14 +220,14 @@
       <section class="mobile-redesign-section mobile-redesign-entry-section">
         <div class="mobile-redesign-section-head">
           <div>
-            <p>协同入口</p>
+            <p>选择入口</p>
             <h2>采购与供应商</h2>
           </div>
         </div>
         <div class="mobile-redesign-entry-grid">
           <button type="button" data-testid="mobile-buyer-entry-button" @click="openProcurementEntry('menu')">
             <span>采购端</span>
-            <strong>采购登录</strong>
+            <strong>我是采购</strong>
             <small>菜单、建议、价格核对</small>
           </button>
           <button type="button" data-testid="mobile-supplier-nav-button" @click="openSupplierPortal(false)">
@@ -235,7 +255,7 @@
             :key="item.key"
             type="button"
             class="mobile-redesign-directory-card"
-            @click="openCategoryMarket(item.category)"
+            @click="openCategoryMarket(item.category, item.subcategory)"
           >
             <span>{{ item.category }}</span>
             <strong>{{ item.subcategory }}</strong>
@@ -446,7 +466,7 @@
 
             <div v-if="!mobileAlertRows.length" class="market-mobile-alert-empty">
               <strong>暂无触发预警</strong>
-              <p>当前商品与市场继续监控，超过阈值后会出现在这里。</p>
+              <p>当前商品与市场继续监控，超过提醒价格后会出现在这里。</p>
             </div>
           </div>
         </section>
@@ -492,7 +512,7 @@
             <label><span>市场</span><strong>{{ selectedLocationLabel }}</strong></label>
             <label><span>最高价</span><input v-model.number="mobileAlertRuleDraft.maxPrice" type="number" min="0" step="0.01" placeholder="例如 12.50" /></label>
             <label><span>最低价</span><input v-model.number="mobileAlertRuleDraft.minPrice" type="number" min="0" step="0.01" placeholder="例如 8.80" /></label>
-            <label><span>阈值</span><strong>{{ mobileAlertThresholdLabel }}</strong></label>
+            <label><span>提醒价格</span><strong>{{ mobileAlertThresholdLabel }}</strong></label>
             <button type="button" @click="saveMobileAlertRule">保存规则</button>
           </div>
         </section>
@@ -633,45 +653,21 @@
         <span>食</span>
         <strong>食采云</strong>
       </button>
-      <div class="platform-choice-nav-links" aria-label="能力导航">
-        <button type="button" @click="openProcurementEntry('summary')">行情洞察</button>
+      <div class="platform-choice-nav-links" aria-label="首页导航">
+        <button type="button" @click="openProcurementEntry('summary')">查菜价</button>
         <button type="button" @click="openProcurementEntry('menu')">采购计划</button>
         <button type="button" @click="openProcurementEntry('alerts')">价格预警</button>
-      </div>
-      <div class="platform-choice-nav-actions">
-        <button type="button" class="platform-choice-pill ghost" @click="openSupplierPortal(false)">供应商入口</button>
-        <button type="button" class="platform-choice-pill solid" @click="openProcurementEntry()">采购登录</button>
       </div>
     </nav>
 
     <section class="platform-choice-hero-banner" data-testid="platform-choice-hero">
       <div class="platform-choice-hero-banner-copy">
-        <div class="platform-choice-update-badge" data-testid="homepage-local-change-badge">
-          <span>采购端</span>
-          <strong>账号即租户，按采购团队隔离行情、供应商与采购数据</strong>
-        </div>
-        <h1>先登录<br><em>再采购</em></h1>
-        <p>采购账号进入自己的市场、供应商和采购计划；供应商账号只进入被分配的报价门户。</p>
-        <div class="platform-choice-hero-tags" aria-label="平台能力">
-          <span>{{ selectedLocationLabel }}</span>
-          <span>多供应商报价</span>
-          <span>Team 数据隔离</span>
-          <span>采购计划闭环</span>
-        </div>
-        <div class="platform-choice-hero-banner-actions" aria-label="主要入口">
-          <button type="button" class="platform-choice-pill solid large" data-testid="enter-workspace-button" @click="openProcurementEntry()">
-            采购账号登录
-          </button>
-          <button type="button" class="platform-choice-pill ghost large" data-testid="supplier-choice-button" @click="openSupplierPortal(false)">
-            供应商入口
-          </button>
-        </div>
+        <h1>欢迎登录食采云</h1>
+        <p>查菜价、做采购计划、看价格提醒。</p>
       </div>
       <aside class="platform-choice-hero-rail platform-choice-login-card" aria-label="采购账号登录">
         <div class="platform-choice-login-head">
-          <span>Procurement Login</span>
-          <strong>采购账号登录</strong>
-          <small>账号由超级管理员分配；一个采购账号就是一个租户。</small>
+          <strong>账号登录</strong>
         </div>
         <div v-if="procurementAccountLabel" class="platform-choice-login-session">
           <span>当前已登录</span>
@@ -684,74 +680,34 @@
         </div>
         <form v-else class="platform-choice-login-form" @submit.prevent="submitLandingProcurementAuth">
           <label>
-            <span>采购账号</span>
-            <input v-model="procurementAuthForm.username" type="text" autocomplete="username" placeholder="请输入采购账号" />
+            <span>账号</span>
+            <input ref="landingProcurementUsernameInput" v-model="procurementAuthForm.username" type="text" autocomplete="username" placeholder="采购账号或管理员账号" />
           </label>
           <label>
             <span>登录密码</span>
-            <input v-model="procurementAuthForm.password" type="password" autocomplete="current-password" placeholder="请输入密码" />
+            <span class="platform-choice-password-field">
+              <input v-model="procurementAuthForm.password" :type="landingProcurementPasswordVisible ? 'text' : 'password'" autocomplete="current-password" placeholder="请输入密码" />
+              <button
+                type="button"
+                :aria-label="landingProcurementPasswordVisible ? '隐藏密码' : '显示密码'"
+                @click="landingProcurementPasswordVisible = !landingProcurementPasswordVisible"
+              >
+                {{ landingProcurementPasswordVisible ? '隐藏' : '显示' }}
+              </button>
+            </span>
           </label>
           <p v-if="procurementAuthError" class="platform-choice-login-error">{{ procurementAuthError }}</p>
+          <div class="platform-choice-login-links">
+            <button type="button" @click="showProcurementPasswordHelp">忘记密码</button>
+          </div>
           <button type="submit" class="platform-choice-login-submit" :disabled="procurementAuthSubmitting">
-            {{ procurementAuthSubmitting ? '登录中' : '登录采购端' }}
+            {{ procurementAuthSubmitting ? '登录中' : '登录' }}
           </button>
           <button type="button" class="platform-choice-login-secondary" @click="openSupplierPortal(false)">
-            我是供应商，进入报价门户
+            我是供应商
           </button>
         </form>
-        <div class="platform-choice-login-rules" aria-label="账号规则">
-          <span>供应商账号由采购分配</span>
-          <span>采购与供应商按 Team 隔离</span>
-        </div>
       </aside>
-    </section>
-
-    <section class="platform-choice-feature-strip" aria-label="核心价值">
-      <article class="platform-choice-inline-route">
-        <div class="platform-choice-inline-route-copy">
-          <span>Market Signal</span>
-          <strong>先锁定地区</strong>
-          <p>采购账号进入绑定地区，只看对应市场行情，避免不同团队数据混在一起。</p>
-          <ul>
-            <li>市场汇总</li>
-            <li>地区隔离</li>
-          </ul>
-        </div>
-        <div class="platform-choice-inline-route-meta">
-          <small>01</small>
-          <em>进入行情 ›</em>
-        </div>
-      </article>
-      <article class="platform-choice-inline-route">
-        <div class="platform-choice-inline-route-copy">
-          <span>Supplier Quote</span>
-          <strong>再对比报价</strong>
-          <p>同一采购 Team 下可绑定多家供应商，报价、规格和可购买单位原样保留。</p>
-          <ul>
-            <li>报价比对</li>
-            <li>多供应商</li>
-          </ul>
-        </div>
-        <div class="platform-choice-inline-route-meta">
-          <small>02</small>
-          <em>管理报价 ›</em>
-        </div>
-      </article>
-      <article class="platform-choice-inline-route">
-        <div class="platform-choice-inline-route-copy">
-          <span>Procurement Flow</span>
-          <strong>最后生成计划</strong>
-          <p>菜单、行情、供应商报价和采购建议在采购工作台里闭环处理。</p>
-          <ul>
-            <li>菜单采购</li>
-            <li>建议复核</li>
-          </ul>
-        </div>
-        <div class="platform-choice-inline-route-meta">
-          <small>03</small>
-          <em>开始协同 ›</em>
-        </div>
-      </article>
     </section>
   </section>
 
@@ -796,6 +752,7 @@
     :pending-plan-count="pendingPlanCount"
     :menu-total-cost-label="menuTotalCostLabel"
     :menu-loading="menuPlanLoading"
+    :location-suggestion-loading="locationSuggestionLoading"
     :global-alert-rules="globalAlertRules"
     :settings-change-logs="settingsChangeLogs"
     :auth-role="authSession?.user.role || null"
@@ -814,6 +771,7 @@
     @menu-fill-supplier-price="handleMenuPlanFillSupplierPrice"
     @menu-confirm-row="handleMenuPlanConfirmRow"
     @menu-fill-missing-quotes="handleMenuPlanFillMissingQuotes"
+    @request-location-suggestion="requestAuxiliaryLocationSuggestion"
     @refresh="reloadAll"
     @open-procurement-auth="openProcurementAuthDialog"
     @logout-procurement-auth="logoutProcurementAuth"
@@ -835,8 +793,8 @@
   <el-dialog v-model="procurementAuthVisible" title="采购端登录" width="min(92vw, 420px)">
     <div class="market-auth-dialog">
       <div class="market-auth-notice">
-        <strong>账号由超级管理员分配</strong>
-        <span>采购账号需要在后台账号管理中创建并绑定供应商。</span>
+        <strong>公司账号登录</strong>
+        <span>没有账号请联系负责人。</span>
       </div>
       <label>
         <span>账号</span>
@@ -850,7 +808,7 @@
       <div class="market-auth-actions">
         <button type="button" @click="closeProcurementAuthDialog">取消</button>
         <button type="button" class="primary" :disabled="procurementAuthSubmitting" @click="submitProcurementAuth">
-          {{ procurementAuthSubmitting ? '登录中' : '登录采购端' }}
+          {{ procurementAuthSubmitting ? '登录中' : '登录' }}
         </button>
       </div>
     </div>
@@ -877,6 +835,7 @@ import {
   fetchCrawlStatus,
   fetchLiancaiFacets,
   fetchLocationOptions,
+  fetchLocationSuggestion,
   fetchLiancaiCategorySummary,
   fetchMarketSummary,
 
@@ -914,6 +873,7 @@ import type {
   CrawlStatusItem,
   LiancaiFacetResponse,
   LiancaiCategorySummaryItem,
+  LocationSuggestionResponse,
   MarketSummaryItem,
 
   MenuPlanRow,
@@ -1093,6 +1053,9 @@ const pageError = ref('')
 const summaryLoading = ref(false)
 const summaryBackfillLoading = ref(false)
 const locationLoading = ref(false)
+const locationSuggestionLoading = ref(false)
+const locationSuggestionHint = ref('')
+const initialLocationSuggestionHandled = ref(false)
 const coverageLoading = ref(false)
 
 const liancaiCategorySummaryLoading = ref(false)
@@ -1111,7 +1074,9 @@ const procurementAuthForm = reactive({
   username: '',
   password: '',
 })
+const landingProcurementPasswordVisible = ref(false)
 const pendingProcurementEntryTab = ref<(typeof tabs)[number]['key'] | ''>('')
+const landingProcurementUsernameInput = ref<HTMLInputElement | null>(null)
 const imagePreviewVisible = ref(false)
 const imagePreviewUrl = ref('')
 const imagePreviewTitle = ref('')
@@ -1147,6 +1112,13 @@ function resolveAuthScopedLocation(user?: AuthLoginResponse['user'] | null) {
     scope: String(user?.market_scope || '').trim(),
   }
 }
+
+function hasLockedAuthScopedLocation() {
+  const scopedLocation = resolveAuthScopedLocation(authSession.value?.user ?? null)
+  return Boolean(scopedLocation.scope || scopedLocation.province || scopedLocation.city)
+}
+
+const isAuthScopedLocationLocked = computed(() => hasLockedAuthScopedLocation())
 
 const initialAuthScopedLocation = resolveAuthScopedLocation(authSession.value?.user ?? null)
 
@@ -1536,7 +1508,7 @@ const mobileTabMeta = computed(() => {
 
       title: '价格预警',
 
-      description: '处理异常波动，并为重点商品设置触发阈值。',
+      description: '处理异常波动，并为重点商品设置提醒价格。',
 
     }
 
@@ -1761,14 +1733,14 @@ const landingTrustCards = computed(() => [
     detail: '最近一次可用行情时间',
   },
   {
-    label: '来源覆盖',
+    label: '来源数量',
     value: `${sourceCoverageRows.value.length || 0} 个`,
-    detail: failedSourceCount.value ? `${failedSourceCount.value} 个来源待复核` : '当前覆盖状态稳定',
+    detail: failedSourceCount.value ? `${failedSourceCount.value} 个来源待复核` : '当前来源状态稳定',
   },
   {
     label: '建议依据',
     value: signalOverview.value?.headline || '真实行情 + 供应报价',
-    detail: '异常、信号和建议均来自现有接口返回',
+    detail: '异常、信号和建议均来自系统同步数据',
   },
 ])
 
@@ -2429,7 +2401,7 @@ const mobileAlertHeroText = computed(() => {
   const pending = mobileAlertRows.value.filter((item) => item.state === '待处理').length
   if (pending > 0) return `当前有 ${pending} 个待处理商品，请优先核对价格提醒。`
   if (mobileAlertRows.value.length > 0) return '当前无待处理项，可继续关注波动较大的商品。'
-  return '当前未触发异常，系统将继续监控价格阈值。'
+  return '当前未触发异常，系统将继续监控提醒价格。'
 })
 
 const mobileAlertSummaryPills = computed(() => {
@@ -3483,6 +3455,7 @@ function openSupplierBackend(
   context: { source?: string; productLabel?: string; identityKey?: string; section?: string } = {},
 ) {
   if (typeof window !== 'undefined') {
+    mirrorProcurementSessionToSupplierBackend()
     const params = new URLSearchParams(window.location.search)
     const identityKey = context.identityKey || (useCurrentProduct ? selectedIdentityKey.value : '')
     const productLabel = context.productLabel || (useCurrentProduct ? (selectedProductLabel.value || selectedProductFallbackLabel.value || '') : '')
@@ -3527,6 +3500,13 @@ function openSupplierBackend(
   }
 }
 
+function mirrorProcurementSessionToSupplierBackend() {
+  const session = authSession.value
+  const role = session?.user.role
+  if (!session?.access_token || (role !== 'admin' && role !== 'procurement')) return
+  writeAuthSession(session, 'supplier')
+}
+
 function openHomeSuiteEntry(key: HomeSuiteKey) {
   if (key === 'supplier') {
     openSupplierBackend(false)
@@ -3549,22 +3529,23 @@ function openLandingPriorityEntry(target: 'alerts' | 'signals' | 'summary') {
 }
 
 
-function openCategoryMarket(categoryKey: string) {
-
-  activeMarketCategory.value = categoryKey
-
-  const category = mobileQuickCategories.value.find((item) => item.key === categoryKey)
-
+async function openCategoryMarket(categoryKey: string, subcategoryKey = '') {
+  const normalizedCategory = String(categoryKey || '').trim()
+  const normalizedSubcategory = String(subcategoryKey || '').trim()
+  const selectedTopCategory = !normalizedCategory || normalizedCategory === '全部' ? '' : normalizedCategory
+  const selectedSubcategory = !selectedTopCategory || normalizedSubcategory === '全部' ? '' : normalizedSubcategory
+  const category = mobileQuickCategories.value.find((item) => item.key === normalizedCategory || item.label === normalizedCategory)
+  activeMarketCategory.value = selectedTopCategory || '全部'
   writeMobileRecentState({
-
-    categoryKey,
-
-    categoryLabel: category?.label || categoryKey,
-
+    categoryKey: selectedTopCategory || '全部',
+    categoryLabel: category?.label || selectedTopCategory || '全部',
   })
-
   enterWorkspace('summary', { preserveSummaryFilters: true })
-
+  await handleWorkbenchSummaryLiancaiFilter({
+    source_name: filters.summarySourceName,
+    liancai_top_category: selectedTopCategory,
+    liancai_subcategory: selectedSubcategory,
+  })
 }
 
 
@@ -3715,6 +3696,10 @@ function applyAuthSession(session: AuthLoginResponse | null) {
     mobileLocationPreset.value = ''
   }
 
+  locationSuggestionHint.value = hasLockedAuthScopedLocation()
+    ? '账号地区已锁定，不能用定位或手选覆盖'
+    : ''
+
 }
 
 
@@ -3727,6 +3712,14 @@ function openProcurementAuthDialog() {
   procurementAuthForm.username = authSession.value?.user.username || procurementAuthForm.username
 
   procurementAuthForm.password = ''
+
+  if (!isMobileViewport.value) {
+    goToLanding()
+    void nextTick(() => {
+      landingProcurementUsernameInput.value?.focus()
+    })
+    return
+  }
 
   procurementAuthVisible.value = true
 
@@ -3763,6 +3756,13 @@ async function submitLandingProcurementAuth() {
   pendingProcurementEntryTab.value = pendingProcurementEntryTab.value || 'summary'
 
   await submitProcurementAuth()
+
+}
+
+
+function showProcurementPasswordHelp() {
+
+  ElMessage.info('请联系负责人重置密码')
 
 }
 
@@ -3805,11 +3805,6 @@ async function submitProcurementAuth() {
 
     pendingProcurementEntryTab.value = ''
 
-    await Promise.allSettled([
-      reloadSummary(),
-      reloadSupplierOverview(),
-    ])
-
     procurementAuthVisible.value = false
 
     procurementAuthForm.password = ''
@@ -3821,6 +3816,11 @@ async function submitProcurementAuth() {
       enterWorkspace(entryTabAfterLogin)
 
     }
+
+    void Promise.allSettled([
+      reloadSummary(),
+      reloadSupplierOverview(),
+    ])
 
   } catch (error) {
 
@@ -4044,6 +4044,11 @@ function toggleMobileLocationPanel() {
 }
 
 function selectMobileLocation(value: string) {
+  if (isAuthScopedLocationLocked.value) {
+    locationSuggestionHint.value = '账号地区已锁定，不能切换到其他市场'
+    ElMessage.info(locationSuggestionHint.value)
+    return
+  }
   const normalized = String(value || '').trim()
   if (!normalized) return
   if (normalized === '河南本地市场' || normalized === '全国') {
@@ -4065,6 +4070,127 @@ function selectMobileLocation(value: string) {
     filters.city = normalized
   }
   showMobileLocationPanel.value = false
+}
+
+function readBrowserCoordinates() {
+  return new Promise<{ latitude: number; longitude: number } | null>((resolve) => {
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      resolve(null)
+      return
+    }
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        resolve({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+        })
+      },
+      () => resolve(null),
+      {
+        enableHighAccuracy: false,
+        maximumAge: 10 * 60 * 1000,
+        timeout: 5000,
+      },
+    )
+  })
+}
+
+async function fetchAuxiliaryLocationSuggestion() {
+  if (!provinces.value.length || !Object.keys(provinceCityMap.value).length) {
+    await reloadLocations(true)
+  }
+  const browserCoordinates = await readBrowserCoordinates()
+  return fetchLocationSuggestion(
+    browserCoordinates?.latitude,
+    browserCoordinates?.longitude,
+  )
+}
+
+function applyAuxiliaryLocationSuggestion(suggestion: LocationSuggestionResponse) {
+  if (isAuthScopedLocationLocked.value) {
+    locationSuggestionHint.value = '账号地区已锁定，辅助定位仅作未登录默认建议'
+    return false
+  }
+  if (!suggestion.matched) {
+    return false
+  }
+  const suggestedProvince = String(suggestion.province || '').trim()
+  const suggestedCity = String(suggestion.city || '').trim()
+  if (!suggestedProvince && !suggestedCity) {
+    return false
+  }
+
+  if (suggestedProvince) {
+    filters.province = suggestedProvince
+  } else if (suggestedCity) {
+    const matchedProvince = Object.entries(provinceCityMap.value).find(([, cityList]) => cityList.includes(suggestedCity))?.[0]
+    if (matchedProvince) {
+      filters.province = matchedProvince
+    }
+  }
+  filters.city = suggestedCity || ''
+
+  if (!filters.city && filters.province === '河南省') {
+    mobileLocationPreset.value = 'henan'
+  } else {
+    mobileLocationPreset.value = ''
+  }
+  menuForm.preferredLocation = suggestedCity || filters.province || menuForm.preferredLocation
+  return true
+}
+
+async function requestAuxiliaryLocationSuggestion() {
+  if (locationSuggestionLoading.value) return
+  if (hasLockedAuthScopedLocation()) {
+    locationSuggestionHint.value = '账号地区已锁定，辅助定位仅作未登录默认建议'
+    ElMessage.info(locationSuggestionHint.value)
+    return
+  }
+  locationSuggestionLoading.value = true
+  locationSuggestionHint.value = ''
+  try {
+    const suggestion = await fetchAuxiliaryLocationSuggestion()
+    if (!applyAuxiliaryLocationSuggestion(suggestion)) {
+      locationSuggestionHint.value = suggestion.message || '未能识别当前位置'
+      ElMessage.warning(`${locationSuggestionHint.value}，请手动选择地区`)
+      return
+    }
+    const suggestionLabel = suggestion.label || selectedLocationLabel.value
+    locationSuggestionHint.value = `${suggestion.source_label} · ${suggestionLabel}`
+    showMobileLocationPanel.value = false
+    ElMessage.success(`已按${suggestion.source_label}切换到 ${suggestionLabel}`)
+  } catch (error) {
+    locationSuggestionHint.value = extractApiErrorDetail(error) || '辅助定位失败'
+    ElMessage.warning(`${locationSuggestionHint.value}，请手动选择地区`)
+  } finally {
+    locationSuggestionLoading.value = false
+  }
+}
+
+async function applyInitialLocationSuggestion() {
+  if (initialLocationSuggestionHandled.value) {
+    return
+  }
+  if (hasLockedAuthScopedLocation() || filters.province || filters.city || mobileLocationPreset.value === 'all') {
+    initialLocationSuggestionHandled.value = true
+    return
+  }
+  initialLocationSuggestionHandled.value = true
+  try {
+    const suggestion = await fetchAuxiliaryLocationSuggestion()
+    if (!applyAuxiliaryLocationSuggestion(suggestion)) {
+      return
+    }
+    const suggestionLabel = suggestion.label || selectedLocationLabel.value
+    locationSuggestionHint.value = `${suggestion.source_label} · ${suggestionLabel}`
+    if (activeTab.value === 'trend' && selectedIdentityKey.value) {
+      await reloadTrend(selectedIdentityKey.value)
+    } else {
+      await reloadSummary()
+    }
+  } catch {
+    // 初次默认定位失败时不打断页面加载，保留手动选择入口。
+  }
 }
 
 async function ensureWorkbenchTrend() {
@@ -4618,10 +4744,10 @@ async function handleWorkbenchUpdateSourceStrategy(payload: {
   try {
     await updateSourceStrategy(payload)
     await reloadSourceCoverage()
-    appendSettingsChangeLog('source_strategy', payload.source_name, `模式 ${payload.preferred_fetch_mode || 'requests'}，策略 ${payload.strategy || '未填写'}，超时 ${payload.timeout_seconds || 0} 秒`)
-    ElMessage.success('抓取策略已保存')
+    appendSettingsChangeLog('source_strategy', payload.source_name, `采价方式 ${payload.preferred_fetch_mode || 'requests'}，采价方案 ${payload.strategy || '未填写'}，超时 ${payload.timeout_seconds || 0} 秒`)
+    ElMessage.success('采价方案已保存')
   } catch {
-    ElMessage.error('保存抓取策略失败')
+    ElMessage.error('保存采价方案失败')
   }
 }
 
@@ -5769,8 +5895,11 @@ onMounted(async () => {
     return
   }
   const isMobileLanding = isMobileViewport.value && viewMode.value === 'landing'
-  void restoreAuthSession()
+  const authSessionRestore = restoreAuthSession()
   const eagerLocationLoad = reloadLocations()
+  void Promise.allSettled([authSessionRestore, eagerLocationLoad]).then(() => {
+    void applyInitialLocationSuggestion()
+  })
   if (activeTab.value === 'trend') {
     if (trendDeepLinkLabel || trendDeepLinkTarget) {
       await ensureProductOptionsLoaded()
@@ -10608,16 +10737,23 @@ onBeforeUnmount(() => {
   gap: 12px;
 }
 
+.mobile-redesign-topbar {
+  flex-wrap: wrap;
+}
+
 .mobile-redesign-brand {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex: 1 1 100%;
   min-width: 0;
 }
 
 .mobile-redesign-top-actions {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
@@ -10631,12 +10767,47 @@ onBeforeUnmount(() => {
   background: #ffffff;
 }
 
+.mobile-redesign-location-panel-head {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 2px;
+  padding: 2px 2px 6px;
+}
+
+.mobile-redesign-location-panel-head strong {
+  color: #0f172a;
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+.mobile-redesign-location-panel-head span {
+  color: #64748b;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
 .mobile-redesign-location-loading {
   grid-column: 1 / -1;
   color: #64748b;
   font-size: 11px;
   font-weight: 700;
   text-align: center;
+}
+
+.mobile-redesign-location-status {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  max-width: 100%;
+  margin-top: 0;
+  padding: 8px 10px;
+  border: 1px solid #dbe4ef;
+  border-radius: 999px;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.45;
 }
 
 .mobile-redesign-location-panel-empty {
@@ -10716,6 +10887,7 @@ onBeforeUnmount(() => {
 
 .mobile-redesign-brand small,
 .mobile-redesign-hero-copy small,
+.mobile-redesign-location-status,
 .mobile-redesign-priority-card small,
 .mobile-redesign-product-card span,
 .mobile-redesign-product-card span,
@@ -10727,6 +10899,7 @@ onBeforeUnmount(() => {
 }
 
 .mobile-redesign-location,
+.mobile-redesign-location-hint,
 .mobile-redesign-login-button,
 .mobile-redesign-alert-dot,
 .mobile-redesign-search button,
@@ -10750,6 +10923,26 @@ onBeforeUnmount(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.mobile-redesign-location-hint {
+  padding: 0 10px;
+  background: #f8fafc;
+  color: #1d4ed8;
+  white-space: nowrap;
+}
+
+.mobile-redesign-location-hint:disabled,
+.mobile-redesign-location-panel button:disabled {
+  opacity: .62;
+  cursor: not-allowed;
+}
+
+.mobile-redesign-location-hint-button {
+  grid-column: 1 / -1;
+  border-color: #bfdbfe !important;
+  background: #eff6ff !important;
+  color: #1d4ed8 !important;
 }
 
 .mobile-redesign-login-button {
@@ -11378,8 +11571,8 @@ onBeforeUnmount(() => {
 .mobile-redesign-hero-card {
   position: relative;
   overflow: hidden;
-  gap: 16px;
-  padding: 16px;
+  gap: 10px;
+  padding: 14px;
 }
 
 .mobile-redesign-hero-card::before {
@@ -11396,12 +11589,16 @@ onBeforeUnmount(() => {
 .mobile-redesign-topbar {
   position: relative;
   z-index: 1;
+  flex-wrap: nowrap;
+  align-items: flex-start;
+  gap: 8px;
 }
 
 .mobile-redesign-brand {
   border: 0;
   background: transparent;
   padding: 0;
+  flex: 1 1 116px;
   text-align: left;
 }
 
@@ -11427,6 +11624,8 @@ onBeforeUnmount(() => {
 .mobile-redesign-brand small,
 .mobile-redesign-hero-copy small,
 .mobile-redesign-section-note,
+.mobile-redesign-location-status,
+.mobile-redesign-location-panel-head span,
 .mobile-redesign-priority-card small,
 .mobile-redesign-product-card span,
 .mobile-redesign-alert-list span,
@@ -11437,6 +11636,7 @@ onBeforeUnmount(() => {
 }
 
 .mobile-redesign-location,
+.mobile-redesign-location-hint,
 .mobile-redesign-login-button,
 .mobile-redesign-alert-dot,
 .mobile-redesign-section-head button,
@@ -11446,12 +11646,26 @@ onBeforeUnmount(() => {
 }
 
 .mobile-redesign-location {
-  max-width: 116px;
+  max-width: 104px;
+  min-height: 38px;
+  padding-inline: 10px;
   background: rgba(255,255,248,.86);
   color: var(--phone-green);
 }
 
+.mobile-redesign-top-actions {
+  flex: 0 0 auto;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.mobile-redesign-location-hint {
+  background: rgba(231, 246, 197, .78);
+  color: #203f1f;
+}
+
 .mobile-redesign-login-button {
+  min-height: 38px;
   padding: 0 12px;
   background: #e7f6c5;
   color: #203f1f;
@@ -11463,6 +11677,9 @@ onBeforeUnmount(() => {
 }
 
 .mobile-redesign-alert-dot {
+  min-height: 38px;
+  width: 38px;
+  flex-basis: 38px;
   background: #fffaf1;
   color: var(--phone-red);
 }
@@ -11474,9 +11691,22 @@ onBeforeUnmount(() => {
 .mobile-redesign-location-panel {
   position: relative;
   z-index: 2;
+  max-height: 236px;
+  overflow: auto;
   border-color: var(--phone-line);
   border-radius: 20px;
   background: #fffdf4;
+}
+
+.mobile-redesign-location-panel-head strong {
+  color: var(--phone-ink);
+}
+
+.mobile-redesign-location-status {
+  min-height: 28px;
+  padding: 5px 9px;
+  border-color: var(--phone-line);
+  background: rgba(255, 253, 244, .9);
 }
 
 .mobile-redesign-location-panel button {
@@ -11495,7 +11725,7 @@ onBeforeUnmount(() => {
 .mobile-redesign-hero-copy {
   position: relative;
   z-index: 1;
-  margin-top: 4px;
+  margin-top: 0;
 }
 
 .mobile-redesign-hero-copy p,
@@ -11507,17 +11737,20 @@ onBeforeUnmount(() => {
 }
 
 .mobile-redesign-hero-copy h1 {
-  max-width: 290px;
-  font-size: clamp(26px, 8vw, 34px);
-  line-height: .98;
+  max-width: 310px;
+  margin-top: 2px;
+  font-size: clamp(23px, 6.6vw, 28px);
+  line-height: 1.02;
 }
 
 .mobile-redesign-auth-panel {
   display: grid;
-  gap: 12px;
-  padding: 14px;
+  grid-template-columns: minmax(0, 1fr) 118px;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
   border: 1px solid var(--phone-line);
-  border-radius: 22px;
+  border-radius: 20px;
   background: linear-gradient(180deg, #fffef8 0%, #fffdf4 100%);
   box-shadow: 0 10px 22px rgba(40, 63, 36, .08);
 }
@@ -11529,24 +11762,28 @@ onBeforeUnmount(() => {
 
 .mobile-redesign-auth-panel-copy strong {
   color: var(--phone-ink);
-  font-size: 17px;
+  font-size: 16px;
   letter-spacing: -.03em;
 }
 
 .mobile-redesign-auth-panel-copy span {
   color: var(--phone-muted);
-  font-size: 12px;
-  line-height: 1.55;
+  font-size: 11px;
+  line-height: 1.35;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .mobile-redesign-auth-panel-actions {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  grid-template-columns: 1fr;
+  gap: 6px;
 }
 
 .mobile-redesign-auth-panel-actions button {
-  min-height: 42px;
+  min-height: 32px;
   border: 1px solid var(--phone-line);
   border-radius: 16px;
   background: #fffdf4;
@@ -11565,7 +11802,7 @@ onBeforeUnmount(() => {
 .mobile-redesign-search {
   position: relative;
   z-index: 1;
-  padding: 7px;
+  padding: 5px;
   border: 1px solid var(--phone-line);
   border-radius: 20px;
   background: rgba(255,255,248,.9);
@@ -11573,12 +11810,12 @@ onBeforeUnmount(() => {
 }
 
 .mobile-redesign-search :deep(.el-input__wrapper) {
-  min-height: 44px;
+  min-height: 38px;
 }
 
 .mobile-redesign-search button {
-  min-height: 46px;
-  min-width: 82px;
+  min-height: 40px;
+  min-width: 78px;
   border-color: var(--phone-green);
   background: var(--phone-green);
 }
@@ -11593,9 +11830,9 @@ onBeforeUnmount(() => {
 
 .mobile-redesign-command-grid button {
   display: grid;
-  gap: 6px;
-  min-height: 82px;
-  padding: 10px;
+  gap: 4px;
+  min-height: 58px;
+  padding: 8px;
   border: 1px solid var(--phone-line);
   border-radius: 18px;
   background: #fffdf4;
@@ -11624,14 +11861,31 @@ onBeforeUnmount(() => {
 
 .mobile-redesign-command-grid strong {
   color: var(--phone-ink);
-  font-size: 18px;
+  font-size: 17px;
   line-height: 1;
 }
 
 .mobile-redesign-command-grid small {
   color: var(--phone-muted);
-  font-size: 11px;
-  line-height: 1.25;
+  display: none;
+}
+
+.mobile-redesign-priority-card.is-main {
+  border-color: rgba(49, 91, 44, .22);
+  background: linear-gradient(160deg, #1f3d1f 0%, #315b2c 100%);
+  color: #f8ffe9;
+}
+
+.mobile-redesign-priority-card.is-main p {
+  color: var(--phone-lime);
+}
+
+.mobile-redesign-priority-card.is-main strong {
+  color: #ffffff;
+}
+
+.mobile-redesign-priority-card.is-main small {
+  color: rgba(248, 255, 233, .82);
 }
 
 .mobile-redesign-main {
@@ -11841,6 +12095,76 @@ onBeforeUnmount(() => {
 .mobile-redesign-workspace .market-summary-panel,
 .mobile-redesign-workspace .product-trend-panel {
   padding-bottom: 96px;
+}
+
+.mobile-redesign-workspace :deep(.market-mobile-feed-hero) {
+  padding: 12px 10px;
+}
+
+.mobile-redesign-workspace :deep(.market-mobile-feed-hero h2) {
+  font-size: 22px;
+  line-height: 1.1;
+}
+
+.mobile-redesign-workspace :deep(.market-mobile-feed-hero small) {
+  font-size: 11px;
+}
+
+.mobile-redesign-workspace :deep(.market-mobile-feed-toolbar),
+.mobile-redesign-workspace :deep(.market-mobile-feed-tabs),
+.mobile-redesign-workspace :deep(.market-mobile-feed-list) {
+  gap: 8px;
+}
+
+.mobile-redesign-workspace :deep(.market-mobile-feed-search) {
+  padding: 4px 6px;
+}
+
+.mobile-redesign-workspace :deep(.market-mobile-feed-clear),
+.mobile-redesign-workspace :deep(.market-mobile-feed-tabs button),
+.mobile-redesign-workspace :deep(.market-mobile-feed-hero button) {
+  min-height: 36px;
+}
+
+.mobile-redesign-workspace :deep(.market-mobile-feed-card),
+.mobile-redesign-workspace :deep(.market-mobile-feed-skeleton-card) {
+  min-height: 122px;
+  padding: 12px;
+  gap: 8px;
+  border-radius: 18px;
+}
+
+.mobile-redesign-workspace :deep(.market-mobile-feed-card-main) {
+  grid-template-columns: 40px minmax(0, 1fr);
+  gap: 10px;
+}
+
+.mobile-redesign-workspace :deep(.market-mobile-feed-thumb-shell) {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+}
+
+.mobile-redesign-workspace :deep(.market-mobile-feed-card-main strong) {
+  font-size: 16px;
+  line-height: 1.18;
+}
+
+.mobile-redesign-workspace :deep(.market-mobile-feed-price b) {
+  font-size: 22px;
+}
+
+.mobile-redesign-workspace :deep(.market-mobile-feed-price b small) {
+  font-size: 11px;
+}
+
+.mobile-redesign-workspace :deep(.market-mobile-feed-meta),
+.mobile-redesign-workspace :deep(.market-mobile-feed-card p) {
+  font-size: 11px;
+}
+
+.mobile-redesign-workspace :deep(.market-mobile-feed-card p) {
+  display: none;
 }
 
 .mobile-redesign-workspace .market-mobile-alert-card,

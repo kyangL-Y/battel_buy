@@ -298,13 +298,15 @@
     "max_pages": 1,
     "max_articles": 1,
     "min_ocr_rows": 20,
+    "ocr_cache_path": "tmp/nanjing_zhongcai_ocr_cache.json",
+    "processed_article_state_path": "tmp/nanjing_zhongcai_processed_articles.json",
     "blocked_status_codes": [
       403,
       429
     ],
     "playwright_wait_until": null,
     "custom_headers": null,
-    "notes": "南京农副产品物流中心公开价格参考表；官网明细以图片发布，需要 Tesseract OCR 或外部 OCR 服务解析成商品价格行。",
+    "notes": "南京农副产品物流中心公开价格参考表；官网明细以图片发布，需要 Tesseract OCR 或外部 OCR 服务解析成商品价格行；同一图片 URL 会复用 OCR 缓存，已处理文章会写入增量状态，后续定时任务不再下载图片或运行 OCR。",
     "strategy": "nanjing_zhongcai_public_batch",
     "base_url": "https://www.njnfwl.com",
     "zhongcai_category": "蔬菜",
@@ -349,6 +351,47 @@
     "fallback_strategy": null
   },
   {
+    "site_name": "快驴商城H5",
+    "domains": [
+      "klmall.meituan.com"
+    ],
+    "currency": "CNY",
+    "name_selectors": [],
+    "price_selectors": [],
+    "original_price_selectors": [],
+    "promotion_selectors": [],
+    "preferred_fetch_mode": "requests",
+    "api_strategy": "off",
+    "api_url": null,
+    "api_method": "POST",
+    "api_headers": {},
+    "api_body_template": null,
+    "api_field_mapping": {},
+    "batch_list_path": null,
+    "api_discovery_enabled": false,
+    "timeout_seconds": 20,
+    "retry_count": 1,
+    "request_delay_seconds": 1.0,
+    "blocked_status_codes": [
+      403,
+      429
+    ],
+    "playwright_wait_until": null,
+    "custom_headers": null,
+    "notes": "快驴商城 H5 分类商品流；服务器只读取授权 KUAILV_SECRET_ENV_FILE / KUAILV_COOKIES / KUAILV_REQUEST_HEADERS / KUAILV_ADDRESS_CONTEXT，不绕过登录、验证码或风控；goodsList readiness 通过后启用。",
+    "strategy": "kuailv_h5_batch",
+    "gateway_base_url": "https://klmall.meituan.com/wxmall",
+    "request_headers_env": "KUAILV_REQUEST_HEADERS",
+    "cookies_env": "KUAILV_COOKIES",
+    "address_context_env": "KUAILV_ADDRESS_CONTEXT",
+    "secret_env_file_env": "KUAILV_SECRET_ENV_FILE",
+    "city_id": "320100",
+    "page_size": 20,
+    "max_pages": 20,
+    "max_category_filters": 80,
+    "fallback_strategy": null
+  },
+  {
     "site_name": "美菜网App",
     "domains": [
       "mall-entrance.yunshanmeicai.com",
@@ -370,15 +413,15 @@
     "api_discovery_enabled": false,
     "timeout_seconds": 20,
     "retry_count": 1,
-    "request_delay_seconds": 0.2,
+    "request_delay_seconds": 1.0,
     "blocked_status_codes": [
       403,
       429
     ],
     "playwright_wait_until": null,
     "custom_headers": null,
-    "notes": "美菜网App网关商品流；优先按莲菜网同款 saleClass + getSpusByClass 分类分页抓取；服务器可直接设置 MEICAI_REQUEST_HEADERS / MEICAI_COMMON_BODY，或设置 MEICAI_SECRET_ENV_FILE 指向登录态 env 文件；接口返回加密 data 时按约定失败，不转 OCR。",
-    "strategy": "meicai_app_gateway_batch",
+    "notes": "美菜网H5解密商品流；按莲菜网同款 saleClass + getSpusByClass 分类分页抓取，服务器设置 MEICAI_REQUEST_HEADERS / MEICAI_COMMON_BODY 或 MEICAI_SECRET_ENV_FILE；使用 fresh H5 mallSaltSign/salt_sign 解密 type=3，不转 UI 滚动或 OCR。",
+    "strategy": "meicai_h5_decrypt_batch",
     "gateway_base_url": "https://mall-entrance.yunshanmeicai.com",
     "request_headers_env": "MEICAI_REQUEST_HEADERS",
     "common_body_env": "MEICAI_COMMON_BODY",
@@ -406,7 +449,10 @@
       }
     ],
     "sale_class_tree_path": "tmp/meicai_sale_class_tree.json",
-    "page_size": 20,
+    "h5_salts_path": "tmp/meicai_h5_salts.json",
+    "crawl_audit_path": "tmp/meicai_crawl_audit.json",
+    "request_source": "android",
+    "page_size": 200,
     "max_pages": 20,
     "fallback_strategy": null,
     "secret_env_file_env": "MEICAI_SECRET_ENV_FILE"

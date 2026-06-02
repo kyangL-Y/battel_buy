@@ -100,24 +100,24 @@ const props = withDefaults(defineProps<{
   focusLabel: '真实数据',
   refreshLabel: '等待同步',
   heroTitle: '行情、信号、采购动作在同一屏承接',
-  heroSummary: '基于真实接口返回的信息先讲风险和机会，再进入采购或供应商报价。',
+  heroSummary: '基于真实同步的数据先讲风险和机会，再进入采购或供应商报价。',
 })
 
 const fallbackHeroMetrics: LandingMetric[] = [
-  { label: '行情记录', value: '0 条', detail: '等待接口返回', tone: 'default' },
-  { label: '经营信号', value: '0 条', detail: '等待接口返回', tone: 'default' },
-  { label: '采购建议', value: '0 条', detail: '等待接口返回', tone: 'default' },
+  { label: '行情记录', value: '0 条', detail: '等待同步', tone: 'default' },
+  { label: '经营信号', value: '0 条', detail: '等待同步', tone: 'default' },
+  { label: '采购建议', value: '0 条', detail: '等待同步', tone: 'default' },
 ]
 
 const fallbackQuickWins: LandingCard[] = [
-  { title: '等待真实机会', tag: '经营信号', summary: '接口返回机会信号后会展示可执行动作。', detail: '暂无真实机会。' },
-  { title: '等待真实风险', tag: '经营信号', summary: '接口返回风险信号后会展示采购或报价建议。', detail: '暂无真实风险。' },
+  { title: '等待真实机会', tag: '经营信号', summary: '同步到机会信号后会展示可执行动作。', detail: '暂无真实机会。' },
+  { title: '等待真实风险', tag: '经营信号', summary: '同步到风险信号后会展示采购或报价建议。', detail: '暂无真实风险。' },
 ]
 
 const fallbackActionCards: LandingActionCard[] = [
-  { title: '老板摘要', badge: '真实信号', caption: '等待经营信号接口返回摘要。', emphasis: '暂无动作', footnote: '刷新后重试' },
-  { title: '采购承接', badge: '真实建议', caption: '等待菜单采购或供应商报价接口返回建议。', emphasis: '暂无动作', footnote: '刷新后重试' },
-  { title: '供应商承接', badge: '真实报价', caption: '等待供应商报价接口返回记录。', emphasis: '暂无动作', footnote: '刷新后重试' },
+  { title: '老板摘要', badge: '真实信号', caption: '等待经营信号摘要。', emphasis: '暂无动作', footnote: '刷新后重试' },
+  { title: '采购承接', badge: '真实建议', caption: '等待菜单采购或供应商报价建议。', emphasis: '暂无动作', footnote: '刷新后重试' },
+  { title: '供应商承接', badge: '真实报价', caption: '等待供应商报价记录。', emphasis: '暂无动作', footnote: '刷新后重试' },
 ]
 
 const resolvedHeroMetrics = computed(() => props.heroMetrics?.length ? props.heroMetrics : fallbackHeroMetrics)

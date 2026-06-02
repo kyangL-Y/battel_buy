@@ -80,19 +80,19 @@ const props = withDefaults(defineProps<{
 }>(), {
   kicker: '经营信号',
   title: '今日经营概览',
-  subtitle: '每张卡只展示经营信号接口返回的一个判断。',
+  subtitle: '每张卡只展示一个经营判断。',
   windowLabel: '近 7 天',
   reviewLabel: '每天 09:00 / 15:00 复核',
 })
 
 const fallbackSignals: BusinessSignal[] = [
-  { title: '经营信号', value: '0 条', changeLabel: '等待接口', detail: '暂无真实经营信号返回。', trend: 'flat', severity: 'good' },
-  { title: '风险提醒', value: '0 条', changeLabel: '等待接口', detail: '暂无真实风险提醒返回。', trend: 'flat', severity: 'good' },
-  { title: '建议动作', value: '0 条', changeLabel: '等待接口', detail: '暂无真实建议动作返回。', trend: 'flat', severity: 'good' },
+  { title: '经营信号', value: '0 条', changeLabel: '等待同步', detail: '暂无真实经营信号。', trend: 'flat', severity: 'good' },
+  { title: '风险提醒', value: '0 条', changeLabel: '等待同步', detail: '暂无真实风险提醒。', trend: 'flat', severity: 'good' },
+  { title: '建议动作', value: '0 条', changeLabel: '等待同步', detail: '暂无真实建议动作。', trend: 'flat', severity: 'good' },
 ]
 
 const fallbackAlerts: SignalAlert[] = [
-  { title: '等待真实提醒', detail: '经营信号接口返回后会在这里展示轻提醒。', owner: '系统' },
+  { title: '等待真实提醒', detail: '同步到经营信号后会在这里展示轻提醒。', owner: '系统' },
 ]
 
 const resolvedSignals = computed(() => props.signals?.length ? props.signals : fallbackSignals)

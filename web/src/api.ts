@@ -12,6 +12,7 @@ import type {
   AuthUserUpdatePayload,
   LiancaiFacetResponse,
   LocationOptionsResponse,
+  LocationSuggestionResponse,
   LiancaiCategorySummaryItem,
   MarketSummaryItem,
   ProductOptionItem,
@@ -567,6 +568,16 @@ export async function fetchLocationOptions() {
     }
     throw error
   }
+}
+
+export async function fetchLocationSuggestion(latitude?: number, longitude?: number) {
+  return requestWithState(async () => {
+    const { data } = await api.get<LocationSuggestionResponse>('/location/suggest', {
+      params: latitude != null && longitude != null ? { latitude, longitude } : undefined,
+      timeout: 8000,
+    })
+    return data
+  }, { affectGlobalState: false })
 }
 
 export async function fetchSourceCoverage() {

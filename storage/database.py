@@ -1129,6 +1129,38 @@ class Database:
             if value is not None and str(value).strip()
         ]
 
+    def get_supplier_by_name(self, supplier_name: str) -> pd.DataFrame:
+        normalized_name = str(supplier_name or "").strip()
+        if not normalized_name:
+            return pd.DataFrame()
+        return self._read_sql(
+            """
+            SELECT id, supplier_name, contact_name, contact_phone, market_scope, market_category, channel, notes, is_active, created_at, updated_at
+            FROM suppliers
+            WHERE supplier_name = :supplier_name
+            LIMIT 1
+            """,
+            {"supplier_name": normalized_name},
+        )
+
+    def get_procurement_user_supplier_mappings(self, supplier_ids: list[int] | tuple[int, ...]) -> pd.DataFrame:
+        normalized_supplier_ids = sorted({
+            int(supplier_id)
+            for supplier_id in supplier_ids or []
+            if supplier_id is not None and int(supplier_id) > 0
+        })
+        if not normalized_supplier_ids:
+            return pd.DataFrame(columns=["user_id", "supplier_id"])
+        statement = text(
+            """
+            SELECT user_id, supplier_id
+            FROM procurement_user_suppliers
+            WHERE supplier_id IN :supplier_ids
+            ORDER BY supplier_id ASC, user_id ASC
+            """
+        ).bindparams(bindparam("supplier_ids", expanding=True))
+        return self._read_sql(statement, {"supplier_ids": normalized_supplier_ids})
+
     def replace_procurement_user_suppliers(self, user_id: int, supplier_ids: list[int] | tuple[int, ...]) -> None:
         normalized_user_id = int(user_id)
         normalized_supplier_ids = sorted({

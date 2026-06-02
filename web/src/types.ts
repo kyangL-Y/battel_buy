@@ -690,6 +690,18 @@ export interface LocationOptionsResponse {
   province_city_map: Record<string, string[]>
 }
 
+export interface LocationSuggestionResponse {
+  matched: boolean
+  province?: string | null
+  city?: string | null
+  label?: string | null
+  source: 'browser_geolocation' | 'ip_geolocation' | 'none'
+  source_label: string
+  confidence: number
+  raw_location?: string | null
+  message?: string | null
+}
+
 export interface SignalMetricItem {
   label: string
   value: string

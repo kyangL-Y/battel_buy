@@ -100,19 +100,19 @@ const props = withDefaults(defineProps<{
   subtitle: '先读取真实经营信号，再决定是否深挖价格细节。',
   riskLabel: '等待信号',
   riskTone: 'stable',
-  riskNote: '经营信号接口暂无返回',
-  noteSummary: '当前暂无真实经营摘要，请先刷新行情或检查经营信号接口。',
+  riskNote: '暂无经营信号',
+  noteSummary: '当前暂无真实经营摘要，请先刷新行情或检查同步状态。',
 })
 
 const fallbackKpis: BossKpi[] = [
-  { label: '经营信号', value: '0 条', detail: '等待接口返回', emphasis: true },
+  { label: '经营信号', value: '0 条', detail: '等待同步', emphasis: true },
   { label: '风险商品', value: '0 项', detail: '暂无真实风险' },
   { label: '机会商品', value: '0 项', detail: '暂无真实机会' },
   { label: '建议动作', value: '0 件', detail: '暂无真实建议' },
 ]
 
 const fallbackFocusItems: FocusItem[] = [
-  { title: '等待真实信号', summary: '经营信号接口返回后会显示需要优先关注的商品和动作。', owner: '系统' },
+  { title: '等待真实信号', summary: '同步到经营信号后会显示需要优先关注的商品和动作。', owner: '系统' },
 ]
 
 const fallbackDecisionPoints: DecisionPoint[] = [

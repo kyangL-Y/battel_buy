@@ -106,7 +106,7 @@ def test_crawl_manager_skips_disabled_sources(tmp_path, monkeypatch):
 def test_filter_sources_by_region_prefers_matching_city_and_keeps_national_sources():
     items = [
         {"product_key": "nationwide", "product_name": "全国行情", "market_scope": "全国公开市场", "enabled": True},
-        {"product_key": "zhengzhou-local", "product_name": "莲菜网", "source_name": "莲菜网", "market_scope": "郑州本地市场", "enabled": True},
+        {"product_key": "zhengzhou-local", "product_name": "莲菜网", "source_name": "莲菜网", "market_scope": "郑州采购市场", "enabled": True},
         {"product_key": "henan-local", "product_name": "内黄果蔬城", "source_name": "河南内黄果蔬城", "market_scope": "河南公开市场", "enabled": True},
         {"product_key": "beijing-local", "product_name": "北京新发地", "market_scope": "北京公开市场", "enabled": True},
     ]
@@ -114,6 +114,40 @@ def test_filter_sources_by_region_prefers_matching_city_and_keeps_national_sourc
     filtered = filter_sources_by_region(items, province="河南省", city="郑州", target_scope="city")
 
     assert [item["product_key"] for item in filtered] == ["nationwide", "zhengzhou-local"]
+
+
+def test_lian_cai_sources_are_marked_as_zhengzhou_procurement_market():
+    from utils.config_loader import load_json_config
+
+    products = load_json_config("config/products.json")
+    lian_cai_sources = [
+        item for item in products
+        if item.get("source_name") == "莲菜网" or "liancaiwang.cn" in str(item.get("url") or "")
+    ]
+
+    assert lian_cai_sources
+    assert all(item.get("market_scope") == "郑州采购市场" for item in lian_cai_sources)
+
+
+def test_product_source_config_no_longer_uses_local_market_labels():
+    from utils.config_loader import load_json_config
+
+    products = load_json_config("config/products.json")
+    source_fields = ("group_name", "source_tier", "market_scope")
+
+    assert all("本地市场" not in str(item.get(field) or "") for item in products for field in source_fields)
+
+
+def test_region_filter_supports_future_city_procurement_markets():
+    items = [
+        {"product_key": "nationwide", "product_name": "全国行情", "market_scope": "全国公开市场", "enabled": True},
+        {"product_key": "chengdu-procurement", "product_name": "成都采购平台", "market_scope": "成都采购市场", "enabled": True},
+        {"product_key": "zhengzhou-procurement", "product_name": "郑州采购平台", "market_scope": "郑州采购市场", "enabled": True},
+    ]
+
+    filtered = filter_sources_by_region(items, province="四川省", city="成都", target_scope="city")
+
+    assert [item["product_key"] for item in filtered] == ["nationwide", "chengdu-procurement"]
 
 
 def test_crawl_manager_filters_products_by_schedule_region(tmp_path, monkeypatch):
@@ -139,7 +173,7 @@ def test_crawl_manager_filters_products_by_schedule_region(tmp_path, monkeypatch
         json.dumps(
             [
                 {"product_key": "nationwide", "product_name": "全国行情", "market_scope": "全国公开市场", "enabled": True},
-                {"product_key": "zhengzhou-local", "product_name": "莲菜网", "source_name": "莲菜网", "market_scope": "郑州本地市场", "enabled": True},
+                {"product_key": "zhengzhou-local", "product_name": "莲菜网", "source_name": "莲菜网", "market_scope": "郑州采购市场", "enabled": True},
                 {"product_key": "beijing-local", "product_name": "北京新发地", "market_scope": "北京公开市场", "enabled": True},
             ],
             ensure_ascii=False,

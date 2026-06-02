@@ -4,6 +4,67 @@ import { expectNoHorizontalOverflow } from './helpers/layout'
 
 test.setTimeout(90_000)
 
+test('桌面端账号绑定地区时辅助定位不会覆盖账号市场', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1024 })
+  const lockedUser = {
+    id: 31,
+    username: 'nanjing-buyer',
+    display_name: '南京采购',
+    role: 'procurement',
+    market_scope: '南京市场',
+    default_province: '江苏省',
+    default_city: '南京',
+    supplier_id: null,
+    is_active: true,
+    created_at: '2026-05-01T00:00:00',
+    updated_at: '2026-05-01T00:00:00',
+  }
+  let locationSuggestionRequestCount = 0
+
+  await page.addInitScript((authSession) => {
+    window.localStorage.setItem('battel.auth.session.procurement', JSON.stringify(authSession))
+  }, {
+    access_token: 'locked-location-token',
+    token_type: 'Bearer',
+    expires_in: 3600,
+    user: lockedUser,
+  })
+  await page.route('**/api/auth/me', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({ user: lockedUser }),
+    })
+  })
+  await page.route('**/api/location/suggest**', async (route) => {
+    locationSuggestionRequestCount += 1
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        matched: true,
+        province: '河南省',
+        city: '郑州',
+        label: '郑州',
+        source: 'browser_geolocation',
+        source_label: '浏览器定位',
+        confidence: 0.86,
+        raw_location: '河南省 郑州市',
+      }),
+    })
+  })
+
+  await page.goto('/', { waitUntil: 'domcontentloaded' })
+  await expect(page.getByTestId('sales-landing-view')).toBeVisible()
+  await expect(page.locator('.platform-choice-hero-tags')).toContainText('南京')
+  await page.waitForTimeout(2_000)
+  expect(locationSuggestionRequestCount).toBe(0)
+
+  await page.getByRole('button', { name: '智能定位' }).click()
+  await expect(page.getByText('账号地区已锁定')).toBeVisible()
+  await expect(page.locator('.platform-choice-hero-tags')).toContainText('南京')
+  await expect(page.locator('.platform-choice-hero-tags')).not.toContainText('郑州')
+  expect(locationSuggestionRequestCount).toBe(0)
+})
+
 test('桌面端平台后台独立承载抓取和来源治理', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1024 })
   await page.goto('/admin', { waitUntil: 'domcontentloaded' })
@@ -190,6 +251,160 @@ test('桌面端 PC 工作台供应商管理后台入口进入独立后台路径'
   expect(currentUrl.pathname).toBe('/supplier-backend')
   expect(currentUrl.searchParams.get('mode')).toBe('supplier')
   expect(currentUrl.searchParams.get('tab')).toBe('supplier')
+})
+
+test('桌面端采购账号进入独立供应后台时保留团队供应商会话', async ({ page }) => {
+  const procurementUser = {
+    id: 31,
+    username: 'nanjing-buyer',
+    display_name: '南京采购',
+    role: 'procurement',
+    market_scope: '南京市场',
+    default_province: '江苏省',
+    default_city: '南京',
+    supplier_id: null,
+    procurement_supplier_ids: [1, 3],
+    is_active: true,
+    created_at: '2026-05-01T00:00:00',
+    updated_at: '2026-05-01T00:00:00',
+  }
+
+  await page.setViewportSize({ width: 1440, height: 1024 })
+  await page.addInitScript((session) => {
+    window.localStorage.setItem('battel.auth.session.procurement', JSON.stringify(session))
+  }, {
+    access_token: 'procurement-bridge-token',
+    token_type: 'Bearer',
+    expires_in: 3600,
+    user: procurementUser,
+  })
+  await page.route('**/api/auth/me', async (route) => {
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ user: procurementUser }) })
+  })
+  await page.route('**/api/market/summary**', async (route) => {
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [], total: 0, limit: 20, offset: 0, has_more: false }) })
+  })
+  await page.route('**/api/product/options**', async (route) => {
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [] }) })
+  })
+  await page.route('**/api/location/options**', async (route) => {
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ provinces: ['江苏省'], cities: ['南京'], province_city_map: { 江苏省: ['南京'] } }) })
+  })
+  await page.route('**/api/suppliers/overview**', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        summary: { supplier_count: 2, active_supplier_count: 1, inactive_supplier_count: 1, category_count: 2, total_quote_count: 5, latest_quoted_at: '2026-05-01T10:00:00' },
+        category_items: [
+          { market_category: '干调类', supplier_count: 1, active_supplier_count: 1, quote_count: 3 },
+          { market_category: '冻品类', supplier_count: 1, active_supplier_count: 0, quote_count: 2 },
+        ],
+        recent_quotes: [],
+      }),
+    })
+  })
+  await page.route('**/api/suppliers?**', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        items: [
+          { id: 1, supplier_name: '莲菜档口A', market_category: '干调类', channel: '微信小程序', market_scope: '南京市场', is_active: true, quote_count: 3, latest_quoted_at: '2026-05-01T10:00:00' },
+          { id: 3, supplier_name: '冻品档口C', market_category: '冻品类', channel: 'Excel', market_scope: '南京市场', is_active: false, quote_count: 2, latest_quoted_at: '2026-05-01T09:00:00' },
+        ],
+      }),
+    })
+  })
+
+  await page.goto('/?mode=workspace&tab=summary', { waitUntil: 'domcontentloaded' })
+  await expect(page.getByTestId('pc-price-workbench')).toBeVisible({ timeout: 15_000 })
+  await page.getByRole('button', { name: '进入供应商管理后台' }).click()
+  await page.waitForURL(/\/supplier-backend/)
+
+  await expect(page.getByTestId('supplier-login-form')).toHaveCount(0)
+  await expect(page.getByTestId('supplier-admin-panel')).toBeVisible()
+  await expect(page.getByTestId('supplier-admin-panel')).toContainText('莲菜档口A')
+  const mirroredSession = await page.evaluate(() => window.localStorage.getItem('battel.auth.session.supplier'))
+  expect(mirroredSession).toContain('procurement-bridge-token')
+})
+
+test('桌面端采购账号从菜单采购进入供应后台时显示待补价任务', async ({ page }) => {
+  const procurementUser = {
+    id: 31,
+    username: 'nanjing-buyer',
+    display_name: '南京采购',
+    role: 'procurement',
+    market_scope: '南京市场',
+    default_province: '江苏省',
+    default_city: '南京',
+    supplier_id: null,
+    procurement_supplier_ids: [1, 3],
+    is_active: true,
+    created_at: '2026-05-01T00:00:00',
+    updated_at: '2026-05-01T00:00:00',
+  }
+
+  await page.setViewportSize({ width: 1440, height: 1024 })
+  await page.addInitScript((session) => {
+    window.localStorage.setItem('battel.auth.session.supplier', JSON.stringify(session))
+  }, {
+    access_token: 'procurement-menu-task-token',
+    token_type: 'Bearer',
+    expires_in: 3600,
+    user: procurementUser,
+  })
+  await page.route('**/api/auth/me', async (route) => {
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ user: procurementUser }) })
+  })
+  await page.route('**/api/location/options**', async (route) => {
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ provinces: ['江苏省'], cities: ['南京'], province_city_map: { 江苏省: ['南京'] } }) })
+  })
+  await page.route('**/api/product/options**', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({ items: [{ price_identity_key: 'abalone|kg', price_identity_label: '鲍鱼' }] }),
+    })
+  })
+  await page.route('**/api/product/*/supplier-quotes', async (route) => {
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [], summary: { price_identity_key: 'abalone|kg', product_name: '鲍鱼' } }) })
+  })
+  await page.route('**/api/suppliers/overview**', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        summary: { supplier_count: 2, active_supplier_count: 2, inactive_supplier_count: 0, category_count: 2, total_quote_count: 0, latest_quoted_at: null },
+        category_items: [],
+        recent_quotes: [],
+      }),
+    })
+  })
+  await page.route('**/api/suppliers?**', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        items: [
+          { id: 1, supplier_name: '莲菜档口A', market_category: '干调类', channel: '微信小程序', market_scope: '南京市场', is_active: true, quote_count: 0 },
+          { id: 3, supplier_name: '冻品档口C', market_category: '冻品类', channel: 'Excel', market_scope: '南京市场', is_active: true, quote_count: 0 },
+        ],
+      }),
+    })
+  })
+  await page.route('**/api/suppliers/*/quotes**', async (route) => {
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [], total: 0, limit: 12, offset: 0, has_more: false }) })
+  })
+  await page.route('**/api/suppliers/*/quote-actions**', async (route) => {
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [], total: 0, limit: 12, offset: 0, has_more: false }) })
+  })
+  await page.route('**/api/suppliers/*/settlements**', async (route) => {
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [], total: 0, limit: 12, offset: 0, has_more: false }) })
+  })
+
+  await page.goto('/supplier-backend?mode=supplier&tab=supplier&section=quote&source=menu_plan&identity_key=abalone%7Ckg&product_label=%E9%B2%8D%E9%B1%BC', { waitUntil: 'domcontentloaded' })
+
+  await expect(page.getByTestId('supplier-login-form')).toHaveCount(0)
+  await expect(page.getByTestId('supplier-procurement-carry-task')).toContainText('菜单采购待补价')
+  await expect(page.getByTestId('supplier-procurement-carry-task')).toContainText('鲍鱼')
+  await expect(page.getByText('切换供应商')).toBeVisible()
+  await expect(page.getByTestId('supplier-procurement-carry-task')).toContainText('莲菜档口A')
 })
 
 test('桌面端 PC 工作台侧边栏模块可通过 URL section 刷新恢复', async ({ page, request }) => {

@@ -527,13 +527,15 @@
 
 
           <div v-if="locationMenuVisible" class="pcw-location-menu" role="menu">
-
-
-
-
-
-
-
+            <button
+              type="button"
+              class="pcw-location-suggest"
+              :disabled="props.locationSuggestionLoading"
+              role="menuitem"
+              @click="emit('request-location-suggestion')"
+            >
+              {{ props.locationSuggestionLoading ? '定位中...' : '用当前位置' }}
+            </button>
             <button
 
 
@@ -2472,7 +2474,7 @@
 
 
 
-                        <span>趋势接口返回后会显示供应商、来源和报价时间。</span>
+                        <span>同步到趋势后会显示供应商、来源和报价时间。</span>
 
 
 
@@ -3152,7 +3154,7 @@
 
 
 
-              <p>这里直接告诉你发生了什么、会影响什么、建议下一步做什么；详细规则放到二级设置，不再让你先理解内部阈值。</p>
+              <p>这里直接告诉你发生了什么、会影响什么、建议下一步做什么；详细规则放到二级设置，不再让你先理解内部价格线。</p>
 
 
 
@@ -4053,7 +4055,7 @@
 
 
 
-              <span>推荐动作接口返回后会显示规则来源。</span>
+              <span>系统给出处理建议后会显示规则来源。</span>
 
 
 
@@ -4181,7 +4183,7 @@
 
 
 
-              <span>预警闭环后会显示置信度、动作和处理结果。</span>
+              <span>预警处理完成后会显示处理动作和结果。</span>
 
 
 
@@ -4813,7 +4815,7 @@
             <aside class="pcw-market-health-side">
               <section class="pcw-card pcw-market-health-pulse">
                 <div class="pcw-card-head">
-                  <h2>同步脉冲</h2>
+                  <h2>同步概况</h2>
                 </div>
                 <article v-for="item in marketCoverageCards" :key="item.label" :class="item.tone">
                   <span>{{ item.label }}</span>
@@ -5004,7 +5006,7 @@
 
 
 
-              <p class="pcw-module-table-note">下方展示真实数据明细，表格与右侧面板联动更新。</p>
+              <p class="pcw-module-table-note">下方展示真实数据明细，表格与右侧面板会一起更新。</p>
 
 
 
@@ -6029,7 +6031,7 @@
 
 
 
-                <strong>暂无流转明细</strong>
+                <strong>暂无处理明细</strong>
 
 
 
@@ -6730,7 +6732,7 @@
 
 
 
-            <p>例如“高于我能接受的采购价时提醒我”或“低于可考虑补货价时提醒我”。规则保存在当前浏览器，真实信号仍以接口返回为准。</p>
+            <p>例如“高于我能接受的采购价时提醒我”或“低于可考虑补货价时提醒我”。规则保存在当前浏览器，真实提醒仍以系统同步结果为准。</p>
 
 
 
@@ -7515,6 +7517,7 @@ const props = defineProps<{
 
 
   menuLoading?: boolean
+  locationSuggestionLoading?: boolean
   globalAlertRules?: GlobalAlertRuleItem[]
   settingsChangeLogs?: SettingsChangeLogItem[]
   authRole?: AuthUserRole | null
@@ -7612,6 +7615,7 @@ const emit = defineEmits<{
   (event: 'menu-fill-supplier-price', row: MenuPlanRow): void
   (event: 'menu-confirm-row', row: MenuPlanRow): void
   (event: 'menu-fill-missing-quotes'): void
+  (event: 'request-location-suggestion'): void
 
 
 
@@ -7725,7 +7729,7 @@ const settingsLastFinishedLabel = computed(() => formatShortDateTime(props.crawl
 
 const settingsCrawlResultLabel = computed(() => {
   if (!props.crawlStatus) return props.sourceCoverageRows?.length ? `${props.sourceCoverageRows.length} 个来源就绪` : '未获取状态'
-  if (props.crawlStatus.is_running) return '抓取中'
+  if (props.crawlStatus.is_running) return '同步中'
   const success = Number(props.crawlStatus.last_success_count || 0)
   const failed = Number(props.crawlStatus.last_failed_count || 0)
   return success || failed ? `${success} 成功 / ${failed} 异常` : props.sourceCoverageRows?.length ? `${props.sourceCoverageRows.length} 个来源就绪` : '未获取状态'
@@ -7733,18 +7737,18 @@ const settingsCrawlResultLabel = computed(() => {
 
 const settingsCrawlProgressLabel = computed(() => {
   if (!props.crawlStatus) {
-    return props.sourceCoverageRows?.length ? `已返回 ${props.sourceCoverageRows.length} 个来源覆盖` : '等待后端抓取状态'
+    return props.sourceCoverageRows?.length ? `已返回 ${props.sourceCoverageRows.length} 个来源` : '等待同步状态'
   }
   const completed = Number(props.crawlStatus.completed_sources || 0)
   const total = Number(props.crawlStatus.last_total_sources || 0)
   const currentIndex = Number(props.crawlStatus.current_source_index || 0)
   if (props.crawlStatus.is_running) {
-    if (!total) return props.crawlStatus.current_source_detail || '准备同步数据源'
+    if (!total) return props.crawlStatus.current_source_detail || '准备同步数据来源'
     const activeIndex = Math.max(currentIndex, completed + 1)
     const sourceProgress = Math.round(Number(props.crawlStatus.current_source_progress || 0) * 100)
-    return `第 ${activeIndex}/${total} 个来源 · 当前源 ${sourceProgress}%`
+    return `第 ${activeIndex}/${total} 个来源 · 当前来源 ${sourceProgress}%`
   }
-  return total ? `最近完成 ${completed || total}/${total} 个来源` : `已返回 ${props.sourceCoverageRows?.length || 0} 个来源覆盖`
+  return total ? `最近完成 ${completed || total}/${total} 个来源` : `已返回 ${props.sourceCoverageRows?.length || 0} 个来源`
 })
 
 const settingsScheduleDetail = computed(() => {
@@ -10659,7 +10663,7 @@ const supplierModuleView = computed<ModuleView>(() => {
 
 
 
-      : '等待供应商接口返回真实档案与报价。',
+      : '等待供应商档案与报价同步。',
 
 
 
@@ -10979,7 +10983,7 @@ const alertModuleView = computed<ModuleView>(() => {
 
 
 
-    description: props.signalOverview?.headline || '等待经营信号接口返回异常波动与采购风险。',
+    description: props.signalOverview?.headline || '等待经营信号同步异常波动与采购风险。',
 
 
 
@@ -11172,7 +11176,7 @@ const alertModuleView = computed<ModuleView>(() => {
 
 
 
-    flowTitle: '预警流转',
+    flowTitle: '预警处理',
 
 
 
@@ -11357,7 +11361,7 @@ const marketModuleView = computed<ModuleView>(() => {
 
 
 
-    description: sources.length ? `已接入 ${sources.length} 个来源，按真实行情主表监控商品价格。` : '等待来源覆盖接口返回市场配置。',
+    description: sources.length ? `已接入 ${sources.length} 个来源，按真实行情监控商品价格。` : '等待来源配置同步。',
 
 
 
@@ -11397,7 +11401,7 @@ const marketModuleView = computed<ModuleView>(() => {
 
 
 
-      { label: '本轮报价记录', value: String(rows.reduce((sum, row) => sum + Number(row.price_observation_count || row.market_count || row.site_count || 0), 0) || priceRows.length), detail: '当前接口真正返回的报价量', tone: 'blue' },
+      { label: '本轮报价记录', value: String(rows.reduce((sum, row) => sum + Number(row.price_observation_count || row.market_count || row.site_count || 0), 0) || priceRows.length), detail: '当前同步到的报价量', tone: 'blue' },
 
 
 
@@ -11718,7 +11722,7 @@ const quotesModuleView = computed<ModuleView>(() => {
     formatNumber(item.quote_price),
     item.quote_unit || '-',
     formatSignedNumber(item.price_diff_to_market_average),
-    item.channel || item.quoted_by || '接口同步',
+    item.channel || item.quoted_by || '系统同步',
     item.status === 'invalid' || item.invalidated_at ? '无效' : '有效',
     '查看记录',
   ])
@@ -11738,7 +11742,7 @@ const quotesModuleView = computed<ModuleView>(() => {
     ? `当前商品已承接 ${quotes.length} 条真实供应商报价，可直接进入采购确认。`
     : (hasTrendQuotes
       ? '当前商品有趋势/今日报价，但尚未进入供应商报价台账，已先作为待承接参考展示。'
-      : (summary ? `供应商报价库累计 ${summary.total_quote_count} 条，最近报价 ${summary.latest_quoted_at ? formatShortDateTime(summary.latest_quoted_at) : '暂无时间'}。` : '等待供应商报价接口返回记录。'))
+      : (summary ? `供应商报价库累计 ${summary.total_quote_count} 条，最近报价 ${summary.latest_quoted_at ? formatShortDateTime(summary.latest_quoted_at) : '暂无时间'}。` : '等待供应商报价记录同步。'))
 
   return {
     kicker: '报价记录',
@@ -11821,7 +11825,7 @@ const purchaseModuleView = computed<ModuleView>(() => {
     ? `已从当前商品报价记录生成 ${quotePurchaseRows.length} 条待确认采购动作，最低价供应商：${lowestQuote?.supplier_name || '待确认'}。`
     : (trendPurchaseRows.length
       ? '当前商品尚无供应商台账报价，已先承接趋势报价生成待确认采购动作。'
-      : (recommendations.length ? `已生成 ${recommendations.length} 条真实采购建议，按风险和时机分推进。` : '等待采购推荐接口或当前商品报价返回。'))
+      : (recommendations.length ? `已生成 ${recommendations.length} 条真实采购建议，按风险和时机分推进。` : '等待采购建议或当前商品报价同步。'))
 
   return {
     kicker: '我的采购',
@@ -11908,7 +11912,7 @@ const planModuleView = computed<ModuleView>(() => {
 
 
 
-    description: rows.length ? `按菜单用量生成 ${rows.length} 条计划明细。` : '等待菜单采购计划接口返回明细。',
+    description: rows.length ? `按菜单用量生成 ${rows.length} 条计划明细。` : '等待菜单采购计划明细同步。',
 
 
 
@@ -12349,7 +12353,7 @@ const reportsModuleView = computed<ModuleView>(() => {
 
 
 
-      { label: '风险信号', value: String(props.signalOverview?.alert_count || 0), detail: '预警接口', tone: props.signalOverview?.alert_count ? 'warn' : 'green' },
+      { label: '风险信号', value: String(props.signalOverview?.alert_count || 0), detail: '价格提醒', tone: props.signalOverview?.alert_count ? 'warn' : 'green' },
 
 
 
@@ -12357,7 +12361,7 @@ const reportsModuleView = computed<ModuleView>(() => {
 
 
 
-      { label: '来源覆盖', value: String(props.sourceCoverageRows?.length || 0), detail: '数据源配置', tone: 'blue' },
+      { label: '来源数量', value: String(props.sourceCoverageRows?.length || 0), detail: '数据来源配置', tone: 'blue' },
 
 
 
@@ -12641,7 +12645,7 @@ const settingsModuleView = computed<ModuleView>(() => {
 
 
 
-    description: sources.length ? `这里直接管理 ${sources.length} 个真实数据来源的同步、调度和异常状态。` : '这里直接进行系统采集设置，等待来源覆盖接口返回配置。',
+    description: sources.length ? `这里直接管理 ${sources.length} 个真实数据来源的同步、调度和异常状态。` : '这里直接进行系统采集设置，等待来源配置同步。',
 
 
 
@@ -14065,7 +14069,7 @@ const summaryEmptyDetail = computed(() => (
 
 
 
-    : '请调整来源、分类、商品或日期筛选，也可以点击刷新重新读取真实接口。'
+    : '请调整来源、分类、商品或日期筛选，也可以点击刷新重新同步真实数据。'
 
 
 
@@ -14105,7 +14109,7 @@ const trendEmptyDetail = computed(() => (
 
 
 
-    ? '正在读取趋势接口、供应商报价和市场来源。'
+    ? '正在读取趋势、供应商报价和市场来源。'
 
 
 
@@ -14282,13 +14286,13 @@ const moduleEmptyTitle = computed(() => {
 const moduleEmptyDetail = computed(() => {
   if (currentSection.value === 'settings') {
     if (!(props.sourceCoverageRows || []).length) {
-      return '来源覆盖接口当前没有返回真实来源记录，请先检查同步、权限或接口状态。'
+      return '当前没有同步到真实来源记录，请先检查同步状态、账号权限或服务状态。'
     }
     if (!moduleTableCount.value && allModuleTableRows.value.length > 0) {
       return `当前真实来源 ${allModuleTableRows.value.length} 条，但被顶部筛选条件过滤为 0 条。请重置筛选后再看。`
     }
   }
-  return `刷新或接口同步后会展示${moduleView.value.tableTitle}的真实记录。`
+  return `刷新或系统同步后会展示${moduleView.value.tableTitle}的真实记录。`
 })
 
 
@@ -17363,7 +17367,7 @@ const trendDynamics = computed(() => {
 
 
 
-    text: `${item.product_name || selectedProductName.value || '商品'} 报价 ${formatNumber(item.current_price)}，来源 ${item.source_name || item.source_tier || '真实接口'}`,
+    text: `${item.product_name || selectedProductName.value || '商品'} 报价 ${formatNumber(item.current_price)}，来源 ${item.source_name || item.source_tier || '真实数据'}`,
 
 
 
@@ -18325,7 +18329,7 @@ const trendSuggestions = computed(() => {
 
 
 
-  if (!rows.length) return ['等待真实趋势接口返回后生成采购建议。']
+  if (!rows.length) return ['等待真实趋势同步后生成采购建议。']
 
 
 
@@ -18349,7 +18353,7 @@ const trendSuggestions = computed(() => {
 
 
 
-    `${selectedProductName.value || latest?.product_name || '当前商品'} 最新报价 ${formatNumber(latest?.current_price)}，来源 ${latest?.source_name || latest?.site_name || '真实接口'}。`,
+    `${selectedProductName.value || latest?.product_name || '当前商品'} 最新报价 ${formatNumber(latest?.current_price)}，来源 ${latest?.source_name || latest?.site_name || '真实数据'}。`,
 
 
 
@@ -18643,7 +18647,7 @@ const marketCoverageCards = computed(() => {
   const recordTotal = sources.reduce((sum, item) => sum + Number(item.price_record_count || item.market_count || item.source_item_count || 0), 0)
   const latestCapture = sources.map((item) => item.latest_capture).filter((value): value is string => Boolean(value)).sort().at(-1)
   return [
-    { label: '启用来源', value: `${enabledCount}/${sources.length}`, detail: '来源覆盖状态', tone: enabledCount ? 'ok' : 'warn' },
+    { label: '启用来源', value: `${enabledCount}/${sources.length}`, detail: '来源同步状态', tone: enabledCount ? 'ok' : 'warn' },
     { label: '价格记录', value: String(recordTotal || props.rows.length), detail: '来源累计记录', tone: 'ok' },
     { label: '最近同步', value: latestCapture ? formatMonthDay(latestCapture) : '-', detail: latestCapture ? formatShortDateTime(latestCapture) : '等待同步', tone: latestCapture ? 'ok' : 'warn' },
   ]
@@ -18681,7 +18685,7 @@ const reportCategoryRows = computed(() => {
 
 const reportExportCards = computed(() => [
   { label: '行情日报', value: String(props.rows.length), detail: '可导出商品明细' },
-  { label: '来源覆盖', value: String(props.sourceCoverageRows?.length || 0), detail: '来源配置数量' },
+  { label: '来源数量', value: String(props.sourceCoverageRows?.length || 0), detail: '来源配置数量' },
   { label: '均价覆盖', value: props.rows.length ? `${Math.round((props.rows.filter((item) => item.average_price != null).length / props.rows.length) * 100)}%` : '0%', detail: '可统计均价比例' },
 ])
 
@@ -18692,7 +18696,7 @@ const reportRiskRows = computed(() => {
     tone: item.signal_level === 'high' || item.signal_level === 'critical' ? 'warn' : 'blue',
   }))
   return risks.length ? risks : [
-    { title: '暂无风险信号', detail: '当前报表以品类结构、均价覆盖和来源覆盖为主。', tone: 'green' },
+    { title: '暂无风险信号', detail: '当前报表以品类结构、均价完整度和来源数量为主。', tone: 'green' },
   ]
 })
 
@@ -18824,7 +18828,7 @@ const trendAlertRows = computed(() => {
 
 
 
-    return [['最高价阈值', `${formatNumber(currentPrice)} / ${formatNumber(settings.maxPrice)}`, 'up', '需处理']]
+    return [['最高提醒价', `${formatNumber(currentPrice)} / ${formatNumber(settings.maxPrice)}`, 'up', '需处理']]
 
 
 
@@ -18848,7 +18852,7 @@ const trendAlertRows = computed(() => {
 
 
 
-    return [['最低价阈值', `${formatNumber(currentPrice)} / ${formatNumber(settings.minPrice)}`, 'down', '低价提醒']]
+    return [['最低提醒价', `${formatNumber(currentPrice)} / ${formatNumber(settings.minPrice)}`, 'down', '低价提醒']]
 
 
 
@@ -18912,7 +18916,7 @@ const alertAdviceRows = computed(() => {
 
 
 
-  return rows.length ? rows : ['等待真实经营信号接口返回后生成处理建议。']
+  return rows.length ? rows : ['等待真实经营信号同步后生成处理建议。']
 
 
 
@@ -21975,7 +21979,7 @@ function isEmptyModuleSideItem(item: { title: string; detail: string }) {
 
 
   return (
-    (item.title === '等待真实数据' && item.detail === '接口返回后自动更新此处内容')
+    (item.title === '等待真实数据' && item.detail === '系统同步后自动更新此处内容')
     || (item.title === '暂无可展示数据' && item.detail === '当前没有可确认的真实记录')
   )
 
@@ -22010,7 +22014,7 @@ function isEmptyModuleFlowItem(item: { step: string; text: string }) {
 
 
   return (
-    (item.step === '同步' && item.text === '等待真实接口返回后生成流转记录')
+    (item.step === '同步' && item.text === '等待真实数据同步后生成处理记录')
     || (item.step === '空' && item.text === '当前没有可展示的真实流程记录')
   )
 
@@ -23631,7 +23635,7 @@ function moduleStatusTone(value: string) {
 
 
 
-.pcw-location{position:relative}.pcw-location-button{display:flex;align-items:center;gap:8px;min-width:0;height:38px;padding:0;border:0;background:transparent;color:#172641;text-align:left}.pcw-location-button strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pcw-location-button:hover strong,.pcw-location-button[aria-expanded="true"] strong{color:#2563eb}.pcw-location-button:focus{outline:0}.pcw-location-button:focus-visible{border-radius:8px;box-shadow:0 0 0 3px #eff6ff}.pcw-location-menu{position:absolute;top:46px;left:0;z-index:30;display:grid;gap:4px;width:max(190px,100%);max-height:260px;padding:8px;border:1px solid #dbe5f1;border-radius:8px;background:#fff;box-shadow:0 18px 38px rgba(15,23,42,.14);overflow:auto}.pcw-location-menu button{min-height:34px;padding:8px 10px;border:0;border-radius:6px;background:#fff;color:#24344d;text-align:left}.pcw-location-menu button:hover,.pcw-location-menu button.selected{background:#eff6ff;color:#1d4ed8;font-weight:800}.pcw-location-more{min-height:34px;padding:8px 10px;border:1px dashed #cfe2ff!important;border-radius:8px!important;background:#f8fbff!important;color:#1d4ed8!important;font-weight:800;text-align:center!important}.pcw-location-menu-group-label{padding:6px 10px 2px;color:#64748b;font-size:11px;font-weight:800;letter-spacing:.04em}
+.pcw-location{position:relative}.pcw-location-button{display:flex;align-items:center;gap:8px;min-width:0;height:38px;padding:0;border:0;background:transparent;color:#172641;text-align:left}.pcw-location-button strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pcw-location-button:hover strong,.pcw-location-button[aria-expanded="true"] strong{color:#2563eb}.pcw-location-button:focus{outline:0}.pcw-location-button:focus-visible{border-radius:8px;box-shadow:0 0 0 3px #eff6ff}.pcw-location-menu{position:absolute;top:46px;left:0;z-index:30;display:grid;gap:4px;width:max(190px,100%);max-height:260px;padding:8px;border:1px solid #dbe5f1;border-radius:8px;background:#fff;box-shadow:0 18px 38px rgba(15,23,42,.14);overflow:auto}.pcw-location-menu button{min-height:34px;padding:8px 10px;border:0;border-radius:6px;background:#fff;color:#24344d;text-align:left}.pcw-location-menu button:hover,.pcw-location-menu button.selected{background:#eff6ff;color:#1d4ed8;font-weight:800}.pcw-location-suggest{min-height:34px;padding:8px 10px;border:1px dashed #cfe2ff!important;border-radius:8px!important;background:#f8fbff!important;color:#1d4ed8!important;font-weight:800;text-align:center!important}.pcw-location-more{min-height:34px;padding:8px 10px;border:1px dashed #cfe2ff!important;border-radius:8px!important;background:#f8fbff!important;color:#1d4ed8!important;font-weight:800;text-align:center!important}.pcw-location-menu-group-label{padding:6px 10px 2px;color:#64748b;font-size:11px;font-weight:800;letter-spacing:.04em}
 
 .pcw-app{overflow:visible}
 .pcw-top{overflow:visible;z-index:35}

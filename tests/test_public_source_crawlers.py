@@ -1,7 +1,8 @@
+import json
 import os
 import subprocess
 
-from crawler.public_source_crawlers import PublicSourceCrawler
+from crawler.public_source_crawlers import NanjingZhongcaiNoNewArticle, PublicSourceCrawler
 from crawler.liancai_h5 import LiancaiCategory
 
 
@@ -1105,6 +1106,42 @@ def test_extract_meicai_goods_rows_reads_runtime_refeactor_skus():
     assert result[0]["extra_fields"]["meicai_sku_id"] == "sku-runtime"
 
 
+def test_extract_meicai_goods_rows_reads_h5_spus_skus():
+    payload = {
+        "data": {
+            "spus": [
+                {
+                    "id": "spu-h5",
+                    "name": "H5商品",
+                    "skus": [
+                        {
+                            "skuBase": {"skuName": "H5青菜", "skuId": "sku-h5"},
+                            "skuPrice": {"minPrice": "2.90", "priceUnit": "斤"},
+                        }
+                    ],
+                }
+            ]
+        }
+    }
+
+    goods_rows = PublicSourceCrawler.extract_meicai_goods_rows(payload)
+    result = PublicSourceCrawler().build_meicai_app_gateway_rows(
+        goods_rows,
+        {"category": "蔬菜"},
+        page=1,
+        endpoint_name="h5_class_products",
+        city_id="17",
+        area_id="4402",
+        source_label="美菜网H5",
+    )
+
+    assert len(result) == 1
+    assert result[0]["site_name"] == "美菜网H5 | 推荐商品"
+    assert result[0]["product_name"] == "H5青菜"
+    assert result[0]["current_price"] == 2.9
+    assert result[0]["extra_fields"]["meicai_mapping_source"] == "meicai_app_gateway_h5_class_products"
+
+
 def test_build_meicai_app_gateway_rows_prefers_sale_category_name_over_bi_name():
     crawler = PublicSourceCrawler()
     result = crawler.build_meicai_app_gateway_rows(
@@ -1380,6 +1417,273 @@ def test_fetch_meicai_app_gateway_uses_class_products_like_liancai_goodslist(tmp
     assert result[0]["extra_fields"]["meicai_mapping_source"] == "meicai_app_gateway_class_products"
 
 
+def test_fetch_meicai_h5_decrypt_uses_sale_class_tree_and_h5_rows(tmp_path, monkeypatch):
+    observed_pages: list[dict[str, object]] = []
+    tree_path = tmp_path / "meicai_sale_class_tree.json"
+    tree_path.write_text(
+        """
+        {
+          "flat": [
+            {"saleC1Id": "6202", "saleC1Name": "蔬果豆类", "saleC2Id": "19835", "saleC2Name": "叶菜花菜"}
+          ]
+        }
+        """,
+        encoding="utf-8",
+    )
+    salts_path = tmp_path / "meicai_h5_salts.json"
+    salts_path.write_text('{"salts":{"online":["salt"]},"saltsType3":"abcdefghijklmnopqrstuvwxyz"}', encoding="utf-8")
+
+    class FakeMeicaiH5Client:
+        def __init__(self, **kwargs):
+            observed_pages.append({"request_source": kwargs["request_source"]})
+
+        def class_products(self, **kwargs):
+            observed_pages.append(kwargs)
+            return {
+                "ret": 1,
+                "code": 1,
+                "data": {
+                    "spus": [
+                        {
+                            "id": "spu-h5",
+                            "skus": [
+                                {
+                                    "skuBase": {
+                                        "skuName": "H5叶菜",
+                                        "skuId": "sku-h5",
+                                        "saleC1Name": "蔬果豆类",
+                                        "saleC2Name": "叶菜花菜",
+                                    },
+                                    "skuPrice": {"minPrice": "2.80", "priceUnit": "斤"},
+                                }
+                            ],
+                        }
+                    ]
+                },
+                "encryption": {"type": 1},
+            }
+
+    monkeypatch.setattr("crawler.public_source_crawlers.MeicaiH5DecryptingGatewayClient", FakeMeicaiH5Client)
+    monkeypatch.delenv("MEICAI_ADDRESS_CONTEXT", raising=False)
+    monkeypatch.delenv("MEICAI_REQUEST_HEADERS", raising=False)
+    monkeypatch.delenv("MEICAI_COMMON_BODY", raising=False)
+
+    crawler = PublicSourceCrawler()
+    result = crawler.fetch_meicai_h5_decrypt(
+        {"category": "推荐商品"},
+        {
+            "max_pages": 1,
+            "page_size": 20,
+            "sale_class_tree_path": str(tree_path),
+            "h5_salts_path": str(salts_path),
+            "request_source": "android",
+        },
+    )
+
+    assert observed_pages[0] == {"request_source": "android"}
+    assert observed_pages[1]["sale_c1_id"] == "6202"
+    assert observed_pages[1]["sale_c2_id"] == "19835"
+    assert result[0]["site_name"] == "美菜网H5 | 推荐商品"
+    assert result[0]["product_name"] == "H5叶菜"
+    assert result[0]["extra_fields"]["category"] == "叶菜花菜"
+    assert result[0]["extra_fields"]["meicai_mapping_source"] == "meicai_app_gateway_h5_class_products"
+
+
+def test_fetch_meicai_h5_decrypt_applies_request_delay_between_requests(tmp_path, monkeypatch):
+    observed_sleep_seconds: list[float] = []
+    tree_path = tmp_path / "meicai_sale_class_tree.json"
+    tree_path.write_text(
+        """
+        {
+          "flat": [
+            {"saleC1Id": "6202", "saleC1Name": "蔬果豆类", "saleC2Id": "19835", "saleC2Name": "叶菜花菜"}
+          ]
+        }
+        """,
+        encoding="utf-8",
+    )
+    salts_path = tmp_path / "meicai_h5_salts.json"
+    salts_path.write_text('{"salts":{"online":["salt"]},"saltsType3":"abcdefghijklmnopqrstuvwxyz"}', encoding="utf-8")
+
+    class FakeMeicaiH5Client:
+        def __init__(self, **kwargs):
+            pass
+
+        def class_products(self, **kwargs):
+            page = int(kwargs["page"])
+            return {
+                "ret": 1,
+                "code": 1,
+                "data": {
+                    "spus": [
+                        {
+                            "id": f"spu-h5-{page}",
+                            "skus": [
+                                {
+                                    "skuBase": {"skuName": f"H5叶菜{page}", "skuId": f"sku-h5-{page}"},
+                                    "skuPrice": {"minPrice": "2.80", "priceUnit": "斤"},
+                                }
+                            ],
+                        }
+                    ]
+                },
+                "encryption": {"type": 1},
+            }
+
+    monkeypatch.setattr("crawler.public_source_crawlers.MeicaiH5DecryptingGatewayClient", FakeMeicaiH5Client)
+    monkeypatch.setattr("crawler.public_source_crawlers.time.sleep", observed_sleep_seconds.append)
+    monkeypatch.delenv("MEICAI_ADDRESS_CONTEXT", raising=False)
+    monkeypatch.delenv("MEICAI_REQUEST_HEADERS", raising=False)
+    monkeypatch.delenv("MEICAI_COMMON_BODY", raising=False)
+
+    crawler = PublicSourceCrawler()
+    result = crawler.fetch_meicai_h5_decrypt(
+        {"category": "推荐商品"},
+        {
+            "max_pages": 2,
+            "page_size": 1,
+            "request_delay_seconds": 1.0,
+            "sale_class_tree_path": str(tree_path),
+            "h5_salts_path": str(salts_path),
+            "request_source": "android",
+        },
+    )
+
+    assert [row["product_name"] for row in result] == ["H5叶菜1", "H5叶菜2"]
+    assert observed_sleep_seconds == [1.0]
+
+
+def test_fetch_meicai_h5_decrypt_continues_short_page_until_last_page_marker(tmp_path, monkeypatch):
+    observed_pages: list[int] = []
+    tree_path = tmp_path / "meicai_sale_class_tree.json"
+    tree_path.write_text(
+        """
+        {
+          "flat": [
+            {"saleC1Id": "6202", "saleC1Name": "蔬果豆类", "saleC2Id": "19835", "saleC2Name": "叶菜花菜"}
+          ]
+        }
+        """,
+        encoding="utf-8",
+    )
+    salts_path = tmp_path / "meicai_h5_salts.json"
+    salts_path.write_text('{"salts":{"online":["salt"]},"saltsType3":"abcdefghijklmnopqrstuvwxyz"}', encoding="utf-8")
+
+    class FakeMeicaiH5Client:
+        def __init__(self, **kwargs):
+            pass
+
+        def class_products(self, **kwargs):
+            page = int(kwargs["page"])
+            observed_pages.append(page)
+            return {
+                "ret": 1,
+                "code": 1,
+                "data": {
+                    "is_last_page": 1 if page == 2 else 0,
+                    "spus": [
+                        {
+                            "id": f"spu-h5-{page}",
+                            "skus": [
+                                {
+                                    "skuBase": {"skuName": f"H5叶菜{page}", "skuId": f"sku-h5-{page}"},
+                                    "skuPrice": {"minPrice": "2.80", "priceUnit": "斤"},
+                                }
+                            ],
+                        }
+                    ],
+                },
+                "encryption": {"type": 1},
+            }
+
+    monkeypatch.setattr("crawler.public_source_crawlers.MeicaiH5DecryptingGatewayClient", FakeMeicaiH5Client)
+    monkeypatch.delenv("MEICAI_ADDRESS_CONTEXT", raising=False)
+    monkeypatch.delenv("MEICAI_REQUEST_HEADERS", raising=False)
+    monkeypatch.delenv("MEICAI_COMMON_BODY", raising=False)
+
+    crawler = PublicSourceCrawler()
+    result = crawler.fetch_meicai_h5_decrypt(
+        {"category": "推荐商品"},
+        {
+            "max_pages": 20,
+            "page_size": 200,
+            "sale_class_tree_path": str(tree_path),
+            "h5_salts_path": str(salts_path),
+            "request_source": "android",
+        },
+    )
+
+    assert observed_pages == [1, 2]
+    assert [row["product_name"] for row in result] == ["H5叶菜1", "H5叶菜2"]
+
+
+def test_fetch_meicai_h5_decrypt_writes_crawl_audit(tmp_path, monkeypatch):
+    tree_path = tmp_path / "meicai_sale_class_tree.json"
+    tree_path.write_text(
+        """
+        {
+          "flat": [
+            {"saleC1Id": "6202", "saleC1Name": "蔬果豆类", "saleC2Id": "19835", "saleC2Name": "叶菜花菜"}
+          ]
+        }
+        """,
+        encoding="utf-8",
+    )
+    salts_path = tmp_path / "meicai_h5_salts.json"
+    salts_path.write_text('{"salts":{"online":["salt"]},"saltsType3":"abcdefghijklmnopqrstuvwxyz"}', encoding="utf-8")
+    audit_path = tmp_path / "meicai_crawl_audit.json"
+
+    class FakeMeicaiH5Client:
+        def __init__(self, **kwargs):
+            pass
+
+        def class_products(self, **kwargs):
+            return {
+                "ret": 1,
+                "code": 1,
+                "data": {
+                    "is_last_page": 1,
+                    "spus": [
+                        {
+                            "id": "spu-h5",
+                            "skus": [
+                                {
+                                    "skuBase": {"skuName": "H5叶菜", "skuId": "sku-h5"},
+                                    "skuPrice": {"minPrice": "2.80", "priceUnit": "斤"},
+                                }
+                            ],
+                        }
+                    ],
+                },
+                "encryption": {"type": 1},
+            }
+
+    monkeypatch.setattr("crawler.public_source_crawlers.MeicaiH5DecryptingGatewayClient", FakeMeicaiH5Client)
+    monkeypatch.delenv("MEICAI_ADDRESS_CONTEXT", raising=False)
+    monkeypatch.delenv("MEICAI_REQUEST_HEADERS", raising=False)
+    monkeypatch.delenv("MEICAI_COMMON_BODY", raising=False)
+
+    rows = PublicSourceCrawler().fetch_meicai_h5_decrypt(
+        {"category": "推荐商品"},
+        {
+            "max_pages": 20,
+            "page_size": 200,
+            "sale_class_tree_path": str(tree_path),
+            "h5_salts_path": str(salts_path),
+            "request_source": "android",
+            "crawl_audit_path": str(audit_path),
+        },
+    )
+
+    audit_payload = json.loads(audit_path.read_text(encoding="utf-8"))
+
+    assert len(rows) == 1
+    assert audit_payload["request_count"] == 1
+    assert audit_payload["deduplicated_row_count"] == 1
+    assert audit_payload["hit_max_pages_count"] == 0
+    assert audit_payload["category_reports"][0]["stop_reason"] == "last_page_marker"
+
+
 def test_load_env_file_if_configured_preserves_existing_environment(tmp_path, monkeypatch):
     secret_file = tmp_path / "meicai.env"
     secret_file.write_text(
@@ -1508,3 +1812,216 @@ def test_build_nanjing_zhongcai_rows_skips_noisy_ocr_names():
     )
 
     assert [row["product_name"] for row in rows] == ["青菜"]
+
+
+def test_read_nanjing_zhongcai_price_image_uses_cached_text_without_ocr_dependencies(tmp_path, monkeypatch):
+    crawler = PublicSourceCrawler()
+    image_url = "https://www.njnfwl.com/resources/uploads/20260529/1780023149702046971.png"
+    cache_path = tmp_path / "nanjing_zhongcai_ocr_cache.json"
+    cache_key = PublicSourceCrawler._build_nanjing_zhongcai_ocr_cache_key(image_url)
+    cache_path.write_text(
+        json.dumps(
+            {
+                cache_key: {
+                    "image_url": image_url,
+                    "ocr_text": "青菜 3.20 2.40 2.80",
+                }
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(crawler, "_resolve_tesseract_command", lambda: (_ for _ in ()).throw(AssertionError()))
+    monkeypatch.setattr(crawler, "_request", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError()))
+
+    ocr_text = crawler.read_nanjing_zhongcai_price_image(image_url, headers={}, cache_path=cache_path)
+
+    assert ocr_text == "青菜 3.20 2.40 2.80"
+
+
+def test_write_nanjing_zhongcai_cached_ocr_text_records_image_hash(tmp_path):
+    image_url = "https://www.njnfwl.com/resources/uploads/20260529/1780023149702046971.png"
+    cache_path = tmp_path / "nanjing_zhongcai_ocr_cache.json"
+
+    PublicSourceCrawler._write_nanjing_zhongcai_cached_ocr_text(
+        image_url,
+        "青菜 3.20 2.40 2.80",
+        cache_path=cache_path,
+        image_content=b"fake-image-content",
+    )
+
+    cache_payload = json.loads(cache_path.read_text(encoding="utf-8"))
+    cached_entry = cache_payload[PublicSourceCrawler._build_nanjing_zhongcai_ocr_cache_key(image_url)]
+
+    assert cached_entry["image_url"] == image_url
+    assert cached_entry["ocr_text"] == "青菜 3.20 2.40 2.80"
+    assert cached_entry["image_sha256"] == "77c3186fed16e562d7fd9cd6bf9c7106ec9dbce88f4caa4272183e4f9844290e"
+
+
+def test_fetch_nanjing_zhongcai_public_records_processed_article_state(tmp_path, monkeypatch):
+    crawler = PublicSourceCrawler()
+    state_path = tmp_path / "nanjing_zhongcai_processed_articles.json"
+    article_url = "https://www.njnfwl.com/article/2060192666927644672"
+
+    class FakeResponse:
+        def __init__(self, text):
+            self.text = text
+
+    def fake_request(method, url, **kwargs):
+        if url == "https://www.njnfwl.com/list-eqpn3l3g/shucaijiage/1/10":
+            return FakeResponse(
+                """
+                <div>
+                  <a title="2026年5月28日蔬菜价格参考表" href="/article/2060192666927644672"></a>
+                  <span>时间：2026-05-29</span>
+                </div>
+                """
+            )
+        if url == article_url:
+            return FakeResponse(
+                """
+                <div class="articleCon">
+                  <img src="/resources//uploads/20260529/1780023149702046971.png" />
+                </div>
+                """
+            )
+        raise AssertionError(url)
+
+    monkeypatch.setattr(crawler, "_request_with_retry", fake_request)
+
+    rows = crawler.fetch_nanjing_zhongcai_public(
+        {"category": "蔬菜", "url": "https://www.njnfwl.com/list-eqpn3l3g/shucaijiage/1/10"},
+        {
+            "base_url": "https://www.njnfwl.com",
+            "max_articles": 1,
+            "min_ocr_rows": 1,
+            "ocr_text": "青菜 3.20 2.40 2.80",
+            "processed_article_state_path": str(state_path),
+        },
+    )
+
+    state_payload = json.loads(state_path.read_text(encoding="utf-8"))
+
+    assert [row["product_name"] for row in rows] == ["青菜"]
+    assert state_payload["articles"][article_url]["title"] == "2026年5月28日蔬菜价格参考表"
+    assert state_payload["articles"][article_url]["row_count"] == 1
+
+
+def test_fetch_nanjing_zhongcai_public_skips_processed_articles_without_article_request(tmp_path, monkeypatch):
+    crawler = PublicSourceCrawler()
+    state_path = tmp_path / "nanjing_zhongcai_processed_articles.json"
+    article_url = "https://www.njnfwl.com/article/2060192666927644672"
+    state_path.write_text(
+        json.dumps(
+            {
+                "articles": {
+                    article_url: {
+                        "title": "2026年5月28日蔬菜价格参考表",
+                        "processed_at": "2026-06-01T03:30:00",
+                    }
+                }
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    requested_urls: list[str] = []
+
+    class FakeResponse:
+        def __init__(self, text):
+            self.text = text
+
+    def fake_request(method, url, **kwargs):
+        requested_urls.append(url)
+        if url == "https://www.njnfwl.com/list-eqpn3l3g/shucaijiage/1/10":
+            return FakeResponse(
+                """
+                <div>
+                  <a title="2026年5月28日蔬菜价格参考表" href="/article/2060192666927644672"></a>
+                  <span>时间：2026-05-29</span>
+                </div>
+                """
+            )
+        raise AssertionError(url)
+
+    monkeypatch.setattr(crawler, "_request_with_retry", fake_request)
+
+    try:
+        crawler.fetch_nanjing_zhongcai_public(
+            {"category": "蔬菜", "url": "https://www.njnfwl.com/list-eqpn3l3g/shucaijiage/1/10"},
+            {
+                "base_url": "https://www.njnfwl.com",
+                "max_articles": 1,
+                "min_ocr_rows": 1,
+                "processed_article_state_path": str(state_path),
+            },
+        )
+    except NanjingZhongcaiNoNewArticle as exc:
+        assert "没有新价格文章" in str(exc)
+    else:
+        raise AssertionError("expected NanjingZhongcaiNoNewArticle")
+
+    assert requested_urls == ["https://www.njnfwl.com/list-eqpn3l3g/shucaijiage/1/10"]
+
+
+def test_fetch_kuailv_h5_uses_env_context_and_goods_list(monkeypatch):
+    class FakeKuailvH5Client:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+        def fetch_goods_page(self, *, cat1_id, cat2_id, page_size, taken):
+            assert cat1_id == "9"
+            assert cat2_id == "91"
+            assert page_size == 20
+            assert taken is None
+            return {
+                "code": 200,
+                "status": 1,
+                "success": True,
+                "data": {
+                    "goodsList": [
+                        {
+                            "goodsId": "g-1",
+                            "goodsName": "上海青 500g",
+                            "salePrice": 2.6,
+                            "marketPrice": 3.0,
+                            "specText": "500g/份",
+                            "brandName": "测试品牌",
+                            "imageUrl": "https://img.example/greens.jpg",
+                        }
+                    ],
+                    "page": {"hasNextPage": False, "taken": "secret-taken"},
+                },
+            }
+
+    monkeypatch.setattr("crawler.public_source_crawlers.KuailvH5Client", FakeKuailvH5Client)
+    monkeypatch.setenv("KUAILV_COOKIES", '{"token":"secret-cookie"}')
+    monkeypatch.setenv("KUAILV_REQUEST_HEADERS", '{"x-auth":"secret-header"}')
+    monkeypatch.setenv(
+        "KUAILV_ADDRESS_CONTEXT",
+        '{"selectedPoiAddressId":"secret-address","cat1_id":"9","cat2_id":"91"}',
+    )
+
+    crawler = PublicSourceCrawler()
+    rows = crawler.fetch_kuailv_h5(
+        {
+            "url": "https://klmall.meituan.com/wxmall",
+            "category": "蔬菜",
+        },
+        {
+            "gateway_base_url": "https://klmall.meituan.com/wxmall",
+            "page_size": 20,
+            "max_pages": 1,
+        },
+    )
+
+    assert len(rows) == 1
+    assert rows[0]["site_name"] == "快驴商城H5 | 蔬菜"
+    assert rows[0]["product_name"] == "上海青 500g"
+    assert rows[0]["current_price"] == 2.6
+    assert rows[0]["original_price"] == 3.0
+    assert rows[0]["extra_fields"]["kuailv_goods_id"] == "g-1"
+    assert rows[0]["extra_fields"]["spec_text"] == "500g/份"
+    assert rows[0]["extra_fields"]["brand"] == "测试品牌"
+    assert rows[0]["extra_fields"]["cover"] == "https://img.example/greens.jpg"

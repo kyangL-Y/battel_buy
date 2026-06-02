@@ -10,11 +10,10 @@
         <div class="supplier-portal-brand">
           <div class="supplier-portal-brand-mark">报</div>
           <div class="supplier-portal-brand-copy">
-            <p class="panel-kicker">供应商前端</p>
-            <h1>供应商报价门户</h1>
+            <p class="panel-kicker">供应商报价</p>
+            <h1>供应商报价登录</h1>
           </div>
         </div>
-        <p>登录后直接处理今天待报价的商品、草稿和历史，不需要先判断该进哪个后台。</p>
         <div class="supplier-portal-auth-actions">
           <el-button plain @click="backToMainWorkspace">返回采购工作台</el-button>
         </div>
@@ -23,7 +22,7 @@
         <div class="supplier-portal-auth-note">
           <div>
             <strong>账号由采购分配</strong>
-            <small>请联系采购或超级管理员开通供应商账号。</small>
+            <small>没有账号请联系采购。</small>
           </div>
         </div>
 
@@ -39,7 +38,7 @@
         />
         <p v-if="authError" class="supplier-portal-error">{{ authError }}</p>
         <el-button type="primary" data-testid="auth-login-button" :loading="authSubmitting" @click="submitAuthLogin">
-          登录门户
+          登录
         </el-button>
         <div class="supplier-portal-auth-foot">
           <button type="button" @click="showPasswordHelp">忘记密码</button>
@@ -66,8 +65,8 @@
       <div class="supplier-portal-brand">
         <div class="supplier-portal-brand-mark">报</div>
         <div class="supplier-portal-brand-copy">
-          <p class="panel-kicker">供应商前端</p>
-          <h1>供应商报价门户</h1>
+          <p class="panel-kicker">供应商报价</p>
+          <h1>供应商报价登录</h1>
         </div>
       </div>
       <div class="supplier-portal-topbar-actions">
@@ -106,66 +105,30 @@
         </template>
 
         <template v-else-if="!isAuthenticated">
-          <div class="supplier-portal-login-layout" :class="{ mobile: isMobileViewport }">
-            <div class="supplier-portal-auth-intro">
-              <span>SUPPLIER PORTAL</span>
-              <strong>供应商报价入口</strong>
-              <small>供应商只需要处理报价、草稿和历史；档案、结算和账号管理由管理员在后台完成。</small>
+          <div class="supplier-portal-login-card" data-testid="supplier-login-form">
+            <div class="supplier-portal-auth-note">
               <div>
-                <b>实时报价</b>
-                <b>批量导入</b>
-                <b>记录留痕</b>
-              </div>
-              <div class="supplier-portal-auth-preview">
-                <article>
-                  <span>01</span>
-                  <strong>登录账号</strong>
-                  <small>进入自己的报价范围</small>
-                </article>
-                <article>
-                  <span>02</span>
-                  <strong>选择商品</strong>
-                  <small>按当前商品录价</small>
-                </article>
-                <article>
-                  <span>03</span>
-                  <strong>提交报价</strong>
-                  <small>保存记录并留痕</small>
-                </article>
-              </div>
-              <div class="supplier-portal-auth-note">
-                <div>
-                  <strong>还没有账号？</strong>
-                  <small>账号由采购在后台分配，拿到账号后即可登录。</small>
-                </div>
+                <strong>账号由采购分配</strong>
+                <small>没有账号请联系采购。</small>
               </div>
             </div>
 
-            <div class="supplier-portal-login-card" data-testid="supplier-login-form">
-              <div class="supplier-portal-auth-note">
-                <div>
-                  <strong>账号由采购分配</strong>
-                  <small>请联系采购或超级管理员开通供应商账号。</small>
-                </div>
-              </div>
-
-              <strong>账号登录</strong>
-              <el-input v-model="authForm.username" data-testid="auth-username-input" placeholder="账号" />
-              <el-input
-                v-model="authForm.password"
-                data-testid="auth-password-input"
-                type="password"
-                show-password
-                placeholder="密码"
-                @keyup.enter="submitAuthLogin"
-              />
-              <p v-if="authError" class="supplier-portal-error">{{ authError }}</p>
-              <el-button type="primary" data-testid="auth-login-button" :loading="authSubmitting" @click="submitAuthLogin">
-                登录
-              </el-button>
-              <div class="supplier-portal-auth-foot">
-                <button type="button" @click="showPasswordHelp">忘记密码</button>
-              </div>
+            <strong>账号登录</strong>
+            <el-input v-model="authForm.username" data-testid="auth-username-input" placeholder="账号" />
+            <el-input
+              v-model="authForm.password"
+              data-testid="auth-password-input"
+              type="password"
+              show-password
+              placeholder="密码"
+              @keyup.enter="submitAuthLogin"
+            />
+            <p v-if="authError" class="supplier-portal-error">{{ authError }}</p>
+            <el-button type="primary" data-testid="auth-login-button" :loading="authSubmitting" @click="submitAuthLogin">
+              登录
+            </el-button>
+            <div class="supplier-portal-auth-foot">
+              <button type="button" @click="showPasswordHelp">忘记密码</button>
             </div>
           </div>
         </template>
@@ -361,17 +324,17 @@ const selectedProductLabel = computed(() =>
   || selectedProductFallbackLabel.value,
 )
 const currentAuthScopeLabel = computed(() => {
-  if (!isAuthenticated.value) return '当前范围：待登录'
-  if (currentAuthRole.value === 'admin') return '当前范围：管理员账号；门户仅处理录价，供应商资料与结算请回管理台维护'
+  if (!isAuthenticated.value) return '还未登录'
+  if (currentAuthRole.value === 'admin') return '管理员账号：可帮供应商录价'
   return currentUser.value?.supplier_profile?.supplier_name
-    ? `当前范围：${currentUser.value.supplier_profile.supplier_name}`
-    : '当前范围：仅限已绑定供应商'
+    ? `当前供应商：${currentUser.value.supplier_profile.supplier_name}`
+    : '还没有分配供应商'
 })
 const portalLiveCards = computed(() => [
   {
-    label: '账号范围',
+    label: '当前账号',
     title: isAuthenticated.value ? (currentUser.value?.display_name || currentUser.value?.username || '已登录') : '待登录',
-    detail: isAuthenticated.value ? currentAuthScopeLabel.value : '登录后按真实账号限制可维护的供应商范围。',
+    detail: isAuthenticated.value ? currentAuthScopeLabel.value : '登录后显示你的商品。',
   },
   {
     label: '商品目录',
@@ -381,28 +344,28 @@ const portalLiveCards = computed(() => [
       : (portalContextLoading.value ? '正在读取后端商品目录。' : '后端暂未返回可选商品。'),
   },
   {
-    label: '写入链路',
-    title: 'API 提交',
-    detail: '报价、批量导入和作废动作都会写入后端供应商报价记录。',
+    label: '报价保存',
+    title: '提交后保存',
+    detail: '提交后保存记录。',
   },
 ])
 const portalWorkbenchCards = computed(() => [
   {
-    label: '门户范围',
+    label: '当前账号',
     value: currentAuthRole.value === 'admin' ? '管理员账号' : (currentUser.value?.supplier_profile?.supplier_name || '待绑定'),
-    detail: currentAuthRole.value === 'admin' ? '门户只保留录价动作，资料和结算回管理台处理' : currentAuthScopeLabel.value,
+    detail: currentAuthRole.value === 'admin' ? '管理员可帮供应商录价' : currentAuthScopeLabel.value,
   },
   {
     label: '可选商品',
     value: `${productOptions.value.length} 个`,
     detail: selectedProductLabel.value
       ? `当前录价商品：${selectedProductLabel.value}`
-      : (portalContextLoading.value ? '商品目录同步中' : '请先确认后端商品目录接口返回'),
+      : (portalContextLoading.value ? '商品目录同步中' : '暂时没有可选商品'),
   },
   {
-    label: '数据链路',
-    value: '后端同步',
-    detail: '报价提交后通过 API 写入供应商报价记录',
+    label: '保存状态',
+    value: '提交后保存',
+    detail: '提交后保存记录',
   },
 ])
 const portalScopeCards = computed(() => {
@@ -410,23 +373,23 @@ const portalScopeCards = computed(() => {
     return [
       {
         key: 'scope' as const,
-        label: '身份范围',
+        label: '当前账号',
         value: '管理员账号',
-        detail: '门户可临时录价，供应商资料和结算仍在管理台处理',
+        detail: '可帮供应商临时录价',
         tone: 'primary',
       },
       {
         key: 'history' as const,
-        label: '数据边界',
+        label: '可看内容',
         value: '全局可见',
-        detail: '历史记录按当前选中供应商收拢',
+        detail: '历史记录按当前选中供应商显示',
         tone: 'neutral',
       },
       {
         key: 'scope' as const,
         label: '下一步',
         value: '继续录价',
-        detail: '管理员在此确认商品和最新报价，资料维护再回管理台处理',
+        detail: '确认商品和最新报价后继续录价',
         tone: 'neutral',
       },
     ]
@@ -436,23 +399,23 @@ const portalScopeCards = computed(() => {
   return [
     {
       key: 'scope' as const,
-      label: '身份范围',
+      label: '当前账号',
       value: supplierName || '待绑定供应商',
       detail: supplierName ? '仅维护当前供应商报价' : '管理员绑定档案后才能录价',
       tone: supplierName ? 'primary' : 'warning',
     },
     {
       key: 'history' as const,
-      label: '数据边界',
+      label: '可看内容',
       value: supplierName ? '本供应商' : '未开通',
-      detail: supplierName ? '历史、草稿和提交都按当前供应商隔离' : '暂无可查看的报价范围',
+      detail: supplierName ? '只显示本供应商记录' : '暂无报价',
       tone: 'neutral',
     },
     {
       key: supplierName ? 'quote' as const : 'backend' as const,
       label: '下一步',
       value: supplierName ? '继续录价' : '等待绑定',
-      detail: supplierName ? '回到报价表单填写当前商品' : '请联系管理员完成绑定后再录价',
+      detail: supplierName ? '继续填写报价' : '请联系管理员',
       tone: 'neutral',
     },
   ]
@@ -478,7 +441,7 @@ const portalQuoteQueueCards = computed(() => [
     key: 'history' as const,
     label: '已提交',
     value: '报价记录',
-    detail: currentAuthRole.value === 'admin' ? '门户内先看最近记录' : '查看自己的历史报价',
+    detail: currentAuthRole.value === 'admin' ? '先看最近记录' : '查看自己的历史报价',
     tone: 'neutral',
   },
 ])
@@ -514,7 +477,7 @@ const portalStickyPrimaryLabel = computed(() => {
   if (quoteDraftSummary.hasCurrent) return '恢复草稿'
   return productOptions.value.length ? '继续录价' : '刷新目录'
 })
-const portalStickySecondaryLabel = computed(() => '去后台')
+const portalStickySecondaryLabel = computed(() => '去管理页')
 function applyAuthSession(session: AuthLoginResponse | null) {
   authSession.value = session
   if (session) {
@@ -695,7 +658,7 @@ async function submitAuthLogin() {
     applyAuthSession(session)
     await loadPortalContext(true)
     if (!isMobileViewport.value) {
-      ElMessage.success('已登录供应商门户')
+      ElMessage.success('已登录供应商报价页')
     }
   } catch (error) {
     authError.value = extractApiErrorDetail(error) || '登录失败，请检查账号或密码'

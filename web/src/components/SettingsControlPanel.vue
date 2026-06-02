@@ -43,7 +43,7 @@
         </select>
       </label>
       <label v-if="settingsScheduleDraftMode === 'daily_time'">
-        <span>抓取时间</span>
+        <span>同步时间</span>
         <input v-model="settingsScheduleDraftDailyRunTime" type="time" :disabled="settingsManagementLocked" @change="markSettingsScheduleDraftChanged" />
       </label>
       <label v-else>
@@ -57,10 +57,10 @@
         </select>
       </label>
       <label>
-        <span>抓取模式</span>
+        <span>采价方式</span>
         <select v-model="settingsFetchModeDraft" :disabled="settingsManagementLocked" @change="markSettingsScheduleDraftChanged">
-          <option value="requests">快速模式</option>
-          <option value="playwright">浏览器模式</option>
+          <option value="requests">快速采价</option>
+          <option value="playwright">浏览器采价</option>
         </select>
       </label>
       <div class="pcw-settings-inline-actions">
@@ -130,15 +130,15 @@
         <span>{{ settingsSelectedSourceRunSummary }}</span>
       </div>
       <label>
-        <span>抓取模式</span>
+        <span>采价方式</span>
         <select v-model="settingsStrategyDraftFetchMode" :disabled="settingsManagementLocked" @change="markSettingsStrategyDraftChanged">
-          <option value="requests">requests</option>
-          <option value="playwright">playwright</option>
-          <option value="api">api</option>
+          <option value="requests">快速采价</option>
+          <option value="playwright">浏览器采价</option>
+          <option value="api">接口采价</option>
         </select>
       </label>
       <label>
-        <span>抓取策略</span>
+        <span>采价方案</span>
         <input v-model="settingsStrategyDraftName" :disabled="settingsManagementLocked" type="text" @input="markSettingsStrategyDraftChanged" />
       </label>
       <label>
@@ -150,19 +150,19 @@
         <input v-model.number="settingsStrategyDraftRetry" :disabled="settingsManagementLocked" type="number" min="0" max="20" @input="markSettingsStrategyDraftChanged" />
       </label>
       <label>
-        <span>请求间隔(秒)</span>
+        <span>采价间隔(秒)</span>
         <input v-model.number="settingsStrategyDraftDelay" :disabled="settingsManagementLocked" type="number" min="0" max="60" step="0.1" @input="markSettingsStrategyDraftChanged" />
       </label>
       <label>
-        <span>API策略</span>
+        <span>接口方案</span>
         <input v-model="settingsStrategyDraftApiStrategy" :disabled="settingsManagementLocked" type="text" @input="markSettingsStrategyDraftChanged" />
       </label>
       <label>
-        <span>拦截状态码</span>
+        <span>失败返回码</span>
         <input v-model="settingsStrategyDraftBlockedCodes" :disabled="settingsManagementLocked" type="text" @input="markSettingsStrategyDraftChanged" />
       </label>
       <label>
-        <span>证书校验</span>
+        <span>网站安全校验</span>
         <select v-model="settingsStrategyDraftVerifySsl" :disabled="settingsManagementLocked" @change="markSettingsStrategyDraftChanged">
           <option :value="true">开启</option>
           <option :value="false">关闭</option>
@@ -170,7 +170,7 @@
       </label>
       <div class="pcw-settings-inline-actions">
         <button type="button" class="secondary" :disabled="settingsManagementLocked || !settingsSelectedSource || crawlStatus?.is_running" @click="runSelectedSourceCrawl">试跑当前来源</button>
-        <button type="submit" :disabled="settingsManagementLocked || !settingsSelectedSource">保存抓取策略</button>
+        <button type="submit" :disabled="settingsManagementLocked || !settingsSelectedSource">保存采价方案</button>
       </div>
     </form>
 
@@ -182,7 +182,7 @@
             <input v-model="item.target_name" :disabled="settingsManagementLocked" type="text" />
           </label>
           <label>
-            <span>触发阈值</span>
+            <span>提醒价格</span>
             <input v-model.number="item.threshold" :disabled="settingsManagementLocked" type="number" min="0" step="0.01" />
           </label>
           <label>
@@ -307,6 +307,11 @@ const settingsLatestCaptureAt = computed(() =>
     .at(-1),
 )
 const settingsScheduleEnabled = computed(() => Boolean(props.crawlStatus?.schedule_enabled))
+const fetchModeLabels: Record<'requests' | 'playwright' | 'api', string> = {
+  requests: '快速采价',
+  playwright: '浏览器采价',
+  api: '接口采价',
+}
 const settingsScheduleDirty = computed(() =>
   settingsScheduleDraftEnabled.value !== Boolean(props.crawlStatus?.schedule_enabled)
   || settingsScheduleDraftMode.value !== (props.crawlStatus?.schedule_mode === 'interval' ? 'interval' : 'daily_time')
@@ -317,25 +322,25 @@ const settingsScheduleDirty = computed(() =>
 const settingsLastFinishedLabel = computed(() => formatShortDateTime(props.crawlStatus?.last_finished_at || settingsLatestCaptureAt.value))
 const settingsCrawlResultLabel = computed(() => {
   if (!props.crawlStatus) return props.sourceCoverageRows?.length ? `${props.sourceCoverageRows.length} 个来源就绪` : '未获取状态'
-  if (props.crawlStatus.is_running) return '抓取中'
+  if (props.crawlStatus.is_running) return '同步中'
   const success = Number(props.crawlStatus.last_success_count || 0)
   const failed = Number(props.crawlStatus.last_failed_count || 0)
   return success || failed ? `${success} 成功 / ${failed} 异常` : props.sourceCoverageRows?.length ? `${props.sourceCoverageRows.length} 个来源就绪` : '未获取状态'
 })
 const settingsCrawlProgressLabel = computed(() => {
   if (!props.crawlStatus) {
-    return props.sourceCoverageRows?.length ? `已返回 ${props.sourceCoverageRows.length} 个来源覆盖` : '等待后端抓取状态'
+    return props.sourceCoverageRows?.length ? `已返回 ${props.sourceCoverageRows.length} 个来源` : '等待同步状态'
   }
   const completed = Number(props.crawlStatus.completed_sources || 0)
   const total = Number(props.crawlStatus.last_total_sources || 0)
   const currentIndex = Number(props.crawlStatus.current_source_index || 0)
   if (props.crawlStatus.is_running) {
-    if (!total) return props.crawlStatus.current_source_detail || '准备同步数据源'
+    if (!total) return props.crawlStatus.current_source_detail || '准备同步数据来源'
     const activeIndex = Math.max(currentIndex, completed + 1)
     const sourceProgress = Math.round(Number(props.crawlStatus.current_source_progress || 0) * 100)
-    return `第 ${activeIndex}/${total} 个来源 · 当前源 ${sourceProgress}%`
+    return `第 ${activeIndex}/${total} 个来源 · 当前来源 ${sourceProgress}%`
   }
-  return total ? `最近完成 ${completed || total}/${total} 个来源` : `已返回 ${props.sourceCoverageRows?.length || 0} 个来源覆盖`
+  return total ? `最近完成 ${completed || total}/${total} 个来源` : `已返回 ${props.sourceCoverageRows?.length || 0} 个来源`
 })
 const settingsScheduleDetail = computed(() => {
   if (!settingsScheduleEnabled.value) return '当前仅手动同步'
@@ -347,8 +352,8 @@ const settingsScheduleDetail = computed(() => {
 const settingsPanelTabs = computed<Array<{ key: SettingsPanelKey; label: string; detail: string }>>(() => [
   { key: 'schedule', label: '同步调度', detail: settingsScheduleEnabled.value ? '自动任务已开启' : '手动同步优先' },
   { key: 'source', label: '来源配置', detail: `${props.sourceCoverageRows?.length || 0} 个来源` },
-  { key: 'strategy', label: '抓取策略', detail: settingsSelectedSource.value?.source_name || '选择来源后配置' },
-  { key: 'alerts', label: '全局预警', detail: `${settingsGlobalAlertDraftRows.value.length} 条规则` },
+  { key: 'strategy', label: '采价方案', detail: settingsSelectedSource.value?.source_name || '选择来源后配置' },
+  { key: 'alerts', label: '预警规则', detail: `${settingsGlobalAlertDraftRows.value.length} 条规则` },
 ])
 const settingsSourceOptions = computed(() => (props.sourceCoverageRows || []).map((item) => ({
   value: String(item.source_url || ''),
@@ -470,6 +475,10 @@ function formatIntervalLabel(seconds: number) {
   return `${seconds} 秒`
 }
 
+function formatFetchModeLabel(value?: 'requests' | 'playwright' | 'api' | null) {
+  return value ? fetchModeLabels[value] : '未选择'
+}
+
 function syncSettingsScheduleDraft() {
   settingsScheduleDraftEnabled.value = Boolean(props.crawlStatus?.schedule_enabled)
   settingsScheduleDraftMode.value = props.crawlStatus?.schedule_mode === 'interval' ? 'interval' : 'daily_time'
@@ -556,9 +565,9 @@ function saveSettingsSchedule() {
     `自动同步：${settingsScheduleDraftEnabled.value ? '开启' : '关闭'}`,
     `同步方式：${modeLabel}`,
     settingsScheduleDraftMode.value === 'daily_time'
-      ? `抓取时间：${settingsScheduleDraftDailyRunTime.value || '03:30'}`
+      ? `同步时间：${settingsScheduleDraftDailyRunTime.value || '03:30'}`
       : `同步频率：${settingsScheduleDraftInterval.value} 秒`,
-    `抓取模式：${settingsFetchModeDraft.value}`,
+    `采价方式：${formatFetchModeLabel(settingsFetchModeDraft.value)}`,
   ]
   openSettingsConfirm('保存系统同步设置', '以下改动会立即写入当前系统设置。', nextLines, () => {
     settingsScheduleDraftTouched.value = false
@@ -599,16 +608,16 @@ function saveSettingsSourceStrategy() {
   if (!settingsSelectedSource.value?.source_name) return
   const nextLines = [
     `来源：${settingsSelectedSource.value.source_name}`,
-    `抓取模式：${settingsStrategyDraftFetchMode.value}`,
-    `抓取策略：${settingsStrategyDraftName.value || '未填写'}`,
+    `采价方式：${formatFetchModeLabel(settingsStrategyDraftFetchMode.value)}`,
+    `采价方案：${settingsStrategyDraftName.value || '未填写'}`,
     `超时秒数：${settingsStrategyDraftTimeout.value}`,
     `重试次数：${settingsStrategyDraftRetry.value}`,
-    `请求间隔：${settingsStrategyDraftDelay.value} 秒`,
-    `API策略：${settingsStrategyDraftApiStrategy.value || 'off'}`,
-    `拦截状态码：${settingsStrategyDraftBlockedCodes.value || '未填写'}`,
-    `证书校验：${settingsStrategyDraftVerifySsl.value ? '开启' : '关闭'}`,
+    `采价间隔：${settingsStrategyDraftDelay.value} 秒`,
+    `接口方案：${settingsStrategyDraftApiStrategy.value || '未填写'}`,
+    `失败返回码：${settingsStrategyDraftBlockedCodes.value || '未填写'}`,
+    `网站安全校验：${settingsStrategyDraftVerifySsl.value ? '开启' : '关闭'}`,
   ]
-  openSettingsConfirm('保存抓取策略', '以下改动会直接写入抓取策略配置。', nextLines, () => {
+  openSettingsConfirm('保存采价方案', '以下改动会直接写入当前来源的采价配置。', nextLines, () => {
     settingsStrategyDraftTouched.value = false
     emit('update-source-strategy', {
       source_name: String(settingsSelectedSource.value!.source_name),
@@ -656,8 +665,8 @@ function saveGlobalAlertRules() {
       group_name: String(item.group_name || '').trim(),
     }))
     .filter((item) => item.target_name)
-  const nextLines = normalizedItems.map((item) => `${item.target_name}：阈值 ${item.threshold}${item.group_name ? ` · 分组 ${item.group_name}` : ''}${item.note ? ` · ${item.note}` : ''}`)
-  openSettingsConfirm('保存全局预警规则', '以下规则会作为系统级预警阈值写入后端配置。', nextLines, () => {
+  const nextLines = normalizedItems.map((item) => `${item.target_name}：提醒价格 ${item.threshold}${item.group_name ? ` · 分组 ${item.group_name}` : ''}${item.note ? ` · ${item.note}` : ''}`)
+  openSettingsConfirm('保存全局预警规则', '以下规则会作为系统级价格提醒写入后端配置。', nextLines, () => {
     emit('update-global-alert-rules', normalizedItems)
   })
 }

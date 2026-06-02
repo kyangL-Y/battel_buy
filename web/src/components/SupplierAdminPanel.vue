@@ -694,6 +694,17 @@
             <strong>请先选择商品</strong>
             <span>未从 URL 或商品下拉明确选择商品前，不能提交报价，避免误录到错误商品。</span>
           </div>
+          <div v-if="showProcurementCarryTask" class="supplier-procurement-carry-task" data-testid="supplier-procurement-carry-task">
+            <div>
+              <span>{{ procurementCarryTaskKicker }}</span>
+              <strong>{{ procurementCarryTaskTitle }}</strong>
+              <p>{{ procurementCarryTaskDescription }}</p>
+            </div>
+            <div class="supplier-procurement-carry-actions">
+              <span>{{ selectedSupplier?.supplier_name || '先选供应商' }}</span>
+              <el-button size="small" type="primary" :disabled="quoteSubmitDisabled && !selectedProductKey" @click="focusQuotePriceInput">填写报价</el-button>
+            </div>
+          </div>
           <div v-if="showQuoteReadinessCard" class="supplier-quote-readiness-card">
             <div class="supplier-quote-readiness-copy">
               <span>录价前检查</span>
@@ -749,9 +760,9 @@
               <el-button size="small" text @click="clearCurrentQuoteDraft()">删除</el-button>
             </div>
           </div>
-          <div v-if="shouldShowQuoteEntryFields && isAdminSession && isQuoteWorkspace" class="supplier-quote-supplier-switcher">
+          <div v-if="shouldShowQuoteEntryFields && canSwitchQuoteSupplier && isQuoteWorkspace" class="supplier-quote-supplier-switcher">
             <label class="supplier-form-field">
-              <span>当前供应商</span>
+              <span>切换供应商</span>
               <el-select :model-value="selectedSupplierId" filterable placeholder="切换供应商" @change="selectSupplier">
                 <el-option
                   v-for="item in filteredSuppliers"
@@ -2057,6 +2068,7 @@ const props = defineProps<{
   selectedIdentityKey: string
   selectedProductLabel: string
   procurementSourceLabel?: string
+  procurementSourceType?: string
   mobile: boolean
   authRole?: AuthUserRole | null
   authSupplierId?: number | null
@@ -2316,7 +2328,9 @@ const settlementForm = reactive({
 const selectedSupplier = computed(() => suppliers.value.find((item) => item.id === selectedSupplierId.value) || null)
 const isAdminSession = computed(() => props.authRole === 'admin')
 const isSupplierSession = computed(() => props.authRole === 'supplier')
-const hasBackendAuthSession = computed(() => isAdminSession.value || isSupplierSession.value)
+const isProcurementSession = computed(() => props.authRole === 'procurement')
+const hasBackendAuthSession = computed(() => isAdminSession.value || isSupplierSession.value || isProcurementSession.value)
+const canSwitchQuoteSupplier = computed(() => isAdminSession.value || isProcurementSession.value)
 const resolvedBackendSection = computed(() => props.backendSection ?? null)
 const isProcurementAdminMode = computed(() => Boolean(props.procurementMode) && isAdminSession.value)
 const isProcurementSupplierManagement = computed(
@@ -2832,6 +2846,21 @@ const supplierCommandMetrics = computed(() => [
 const quoteSubmitDisabled = computed(
   () => !selectedSupplier.value || !selectedSupplier.value.is_active || !selectedProductKey.value,
 )
+const showProcurementCarryTask = computed(
+  () => isQuoteWorkspace.value && (props.procurementSourceType === 'menu_plan' || props.procurementSourceType === 'price_alert' || Boolean(props.procurementSourceLabel)),
+)
+const procurementCarryTaskKicker = computed(() => {
+  if (props.procurementSourceType === 'menu_plan') return '菜单采购待补价'
+  if (props.procurementSourceType === 'price_alert') return '价格预警待复核'
+  return '采购工作台带入'
+})
+const procurementCarryTaskTitle = computed(() => selectedProductLabelResolved.value || selectedProductKey.value || '待选择商品')
+const procurementCarryTaskDescription = computed(() => {
+  const sourceLabel = props.procurementSourceLabel ? `来源：${props.procurementSourceLabel}。` : ''
+  if (props.procurementSourceType === 'menu_plan') return `${sourceLabel}请选择绑定供应商，补一条真实报价后采购计划就能复核。`
+  if (props.procurementSourceType === 'price_alert') return `${sourceLabel}请复核当前供应商报价，避免预警只停留在公开行情。`
+  return `${sourceLabel}当前商品已从采购工作台带入，可直接补录供应商报价。`
+})
 const hasQuoteDraftContent = computed(() => (
   quoteForm.quote_price != null
   || quoteForm.box_price != null
@@ -7689,6 +7718,39 @@ void reloadAll()
   border: 1px solid rgba(148, 163, 184, 0.14);
   border-radius: 18px;
   background: rgba(248, 250, 252, 0.88);
+}
+
+.supplier-procurement-carry-task {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: center;
+  padding: 14px 16px;
+  border: 1px solid rgba(14, 165, 233, 0.24);
+  border-radius: 18px;
+  background: linear-gradient(135deg, rgba(239, 246, 255, 0.96), rgba(240, 253, 250, 0.94));
+  box-shadow: 0 14px 34px rgba(14, 116, 144, 0.08);
+}
+
+.supplier-procurement-carry-task span,
+.supplier-procurement-carry-task p {
+  margin: 0;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.supplier-procurement-carry-task strong {
+  display: block;
+  margin: 3px 0;
+  color: #0f172a;
+  font-size: 17px;
+}
+
+.supplier-procurement-carry-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
 }
 
 .supplier-quote-readiness-card {
