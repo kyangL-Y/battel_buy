@@ -1489,6 +1489,85 @@ def test_fetch_meicai_h5_decrypt_uses_sale_class_tree_and_h5_rows(tmp_path, monk
     assert result[0]["extra_fields"]["meicai_mapping_source"] == "meicai_app_gateway_h5_class_products"
 
 
+def test_fetch_meicai_h5_decrypt_prefers_current_address_file_without_changeaddress(tmp_path, monkeypatch):
+    observed_client_options: list[dict[str, object]] = []
+    observed_class_products: list[dict[str, object]] = []
+    current_address_path = tmp_path / "meicai_current_address_context.json"
+    current_address_path.write_text(
+        json.dumps(
+            {
+                "addressId": "22117779",
+                "locationTo": "current-location-token",
+                "poi_address": "上海市浦东新区羽山路陆家嘴金融贸易区桃林一小区",
+                "address_detail": "桃林一小区-27号楼",
+            }
+        ),
+        encoding="utf-8",
+    )
+    salts_path = tmp_path / "meicai_h5_salts.json"
+    salts_path.write_text('{"salts":{"online":["salt"]},"saltsType3":"abcdefghijklmnopqrstuvwxyz"}', encoding="utf-8")
+
+    class FakeMeicaiH5Client:
+        def __init__(self, **kwargs):
+            observed_client_options.append(kwargs)
+
+        def change_address(self, address_body):
+            raise AssertionError("current address context must not call changeaddress")
+
+        def class_products(self, **kwargs):
+            observed_class_products.append(kwargs)
+            return {
+                "ret": 1,
+                "code": 1,
+                "data": {
+                    "spus": [
+                        {
+                            "id": "spu-shanghai",
+                            "skus": [
+                                {
+                                    "skuBase": {
+                                        "skuName": "上海油麦菜",
+                                        "skuId": "sku-shanghai",
+                                        "saleC1Name": "蔬果豆类",
+                                        "saleC2Name": "叶菜花菜",
+                                    },
+                                    "skuPrice": {"minPrice": "3.10", "priceUnit": "斤"},
+                                }
+                            ],
+                        }
+                    ]
+                },
+                "encryption": {"type": 1},
+            }
+
+    monkeypatch.setattr("crawler.public_source_crawlers.MeicaiH5DecryptingGatewayClient", FakeMeicaiH5Client)
+    monkeypatch.setenv("MEICAI_REQUEST_HEADERS", '{"mc-gray":"cityId=17_saleArea=4402","x-mc-city":"17","x-mc-area":"4402"}')
+    monkeypatch.setenv("MEICAI_COMMON_BODY", '{"_ENV_":{"city_id":"17","area_id":"4402","location":"legacy-location-token"}}')
+    monkeypatch.setenv("MEICAI_ADDRESS_CONTEXT", '{"request_body":{"locationTo":"legacy-address-token","city_id":"17","area_id":"4402"}}')
+
+    rows = PublicSourceCrawler().fetch_meicai_h5_decrypt(
+        {"category": "推荐商品"},
+        {
+            "max_pages": 1,
+            "page_size": 20,
+            "category_filters": [{"category": "蔬果豆类 / 叶菜花菜", "class1_id": "6506", "class2_id": "6515"}],
+            "h5_salts_path": str(salts_path),
+            "current_address_context_path": str(current_address_path),
+            "request_source": "android",
+        },
+    )
+
+    common_body = observed_client_options[0]["common_body"]
+    request_headers = observed_client_options[0]["request_headers"]
+    assert common_body["_ENV_"]["location"] == "current-location-token"
+    assert request_headers["mc-gray"] == "cityId=17_saleArea=4402"
+    assert observed_class_products[0]["sale_c1_id"] == "6506"
+    assert observed_class_products[0]["sale_c2_id"] == "6515"
+    assert rows[0]["product_name"] == "上海油麦菜"
+    assert rows[0]["extra_fields"]["market_name"] == "上海美菜网"
+    assert rows[0]["extra_fields"]["city"] == "上海市"
+
+
 def test_fetch_meicai_h5_decrypt_applies_request_delay_between_requests(tmp_path, monkeypatch):
     observed_sleep_seconds: list[float] = []
     tree_path = tmp_path / "meicai_sale_class_tree.json"

@@ -16,18 +16,23 @@
         </div>
 
         <strong>账号登录</strong>
-        <el-input v-model="authForm.username" data-testid="auth-username-input" placeholder="账号" />
-        <el-input
+        <input v-model="authForm.username" class="supplier-native-input" data-testid="auth-username-input" autocomplete="username" placeholder="账号" />
+        <span class="supplier-native-password-field">
+          <input
           v-model="authForm.password"
           data-testid="auth-password-input"
-          type="password"
-          show-password
+          :type="authPasswordVisible ? 'text' : 'password'"
+          autocomplete="current-password"
           placeholder="密码"
           @keyup.enter="submitAuthLogin"
-        />
+          />
+          <button type="button" :aria-label="authPasswordVisible ? '隐藏密码' : '显示密码'" @click="authPasswordVisible = !authPasswordVisible">
+            {{ authPasswordVisible ? '隐藏' : '显示' }}
+          </button>
+        </span>
         <p v-if="authError" class="market-auth-error">{{ authError }}</p>
         <div class="market-auth-actions">
-          <el-button type="primary" data-testid="auth-login-button" :loading="authSubmitting" @click="submitAuthLogin">登录</el-button>
+          <button type="button" class="supplier-native-button primary" data-testid="auth-login-button" :disabled="authSubmitting" @click="submitAuthLogin">{{ authSubmitting ? '登录中' : '登录' }}</button>
         </div>
         <div class="supplier-backend-auth-foot">
           <button type="button" @click="showPasswordHelp">忘记密码</button>
@@ -35,7 +40,7 @@
       </div>
     </main>
 
-    <el-dialog v-model="passwordResetVisible" title="重置密码" width="min(92vw, 420px)">
+    <el-dialog v-if="passwordResetVisible" v-model="passwordResetVisible" title="重置密码" width="min(92vw, 420px)">
       <div class="market-auth-form supplier-backend-reset-form">
         <small>输入账号、旧密码和新密码。</small>
         <el-input v-model="passwordResetForm.username" placeholder="账号" autocomplete="username" />
@@ -194,18 +199,23 @@
                   <strong>账号登录</strong>
                 </div>
               </div>
-              <el-input v-model="authForm.username" data-testid="auth-username-input" placeholder="账号" />
-              <el-input
+              <input v-model="authForm.username" class="supplier-native-input" data-testid="auth-username-input" autocomplete="username" placeholder="账号" />
+              <span class="supplier-native-password-field">
+                <input
                 v-model="authForm.password"
                 data-testid="auth-password-input"
-                type="password"
-                show-password
+                :type="authPasswordVisible ? 'text' : 'password'"
+                autocomplete="current-password"
                 placeholder="密码"
                 @keyup.enter="submitAuthLogin"
-              />
+                />
+                <button type="button" :aria-label="authPasswordVisible ? '隐藏密码' : '显示密码'" @click="authPasswordVisible = !authPasswordVisible">
+                  {{ authPasswordVisible ? '隐藏' : '显示' }}
+                </button>
+              </span>
               <p v-if="authError" class="market-auth-error">{{ authError }}</p>
               <div class="market-auth-actions">
-                <el-button type="primary" data-testid="auth-login-button" :loading="authSubmitting" @click="submitAuthLogin">登录</el-button>
+                <button type="button" class="supplier-native-button primary" data-testid="auth-login-button" :disabled="authSubmitting" @click="submitAuthLogin">{{ authSubmitting ? '登录中' : '登录' }}</button>
               </div>
               <div class="supplier-backend-auth-foot">
                 <span>没有账号请联系负责人。</span>
@@ -245,8 +255,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { ElMessage } from 'element-plus/es/components/message/index.mjs'
+import { computed, defineAsyncComponent, onMounted, reactive, ref, watch } from 'vue'
 
 import {
   clearAuthSession,
@@ -261,8 +270,7 @@ import {
   writeAuthSession,
 } from './api'
 import { useViewport } from './composables/useViewport'
-import AccountAdminPanel from './components/AccountAdminPanel.vue'
-import SupplierAdminPanel from './components/SupplierAdminPanel.vue'
+import { lazyElMessage } from './lazyElementMessage'
 import type {
   AuthLoginResponse,
   AuthUserItem,
@@ -270,6 +278,8 @@ import type {
 } from './types'
 
 const MAIN_APP_PATH = '/'
+const AccountAdminPanel = defineAsyncComponent(() => import('./components/AccountAdminPanel.vue'))
+const SupplierAdminPanel = defineAsyncComponent(() => import('./components/SupplierAdminPanel.vue'))
 type BackendSection = 'suppliers' | 'accounts' | 'quote' | 'settlement' | 'logs'
 const { isMobileViewport } = useViewport()
 const searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : new URLSearchParams()
@@ -287,6 +297,7 @@ const authForm = reactive({
   username: '',
   password: '',
 })
+const authPasswordVisible = ref(false)
 const passwordResetVisible = ref(false)
 const passwordResetSubmitting = ref(false)
 const passwordResetError = ref('')
@@ -637,7 +648,7 @@ async function submitAuthLogin() {
     })
     applyAuthSession(session)
     authForm.password = ''
-    ElMessage.success(`已登录为${session.user.display_name || session.user.username}`)
+    ;(await lazyElMessage()).success(`已登录为${session.user.display_name || session.user.username}`)
   } catch (error) {
     authError.value = extractApiErrorDetail(error) || dataSourceState.lastError || '登录失败，请检查账号和密码'
   } finally {
@@ -645,10 +656,10 @@ async function submitAuthLogin() {
   }
 }
 
-function logoutAuthSession() {
+async function logoutAuthSession() {
   applyAuthSession(null)
   authForm.password = ''
-  ElMessage.success('已退出登录')
+  ;(await lazyElMessage()).success('已退出登录')
 }
 
 function showPasswordHelp() {
@@ -683,7 +694,7 @@ async function submitPasswordReset() {
     authForm.username = username
     authForm.password = ''
     passwordResetVisible.value = false
-    ElMessage.success('密码已重置')
+    ;(await lazyElMessage()).success('密码已重置')
   } catch (error) {
     passwordResetError.value = extractApiErrorDetail(error) || dataSourceState.lastError || '密码重置失败'
   } finally {

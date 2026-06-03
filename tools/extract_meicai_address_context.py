@@ -41,6 +41,7 @@ REQUIRED_CHANGE_ADDRESS_FIELDS = (
 
 def extract_latest_change_address_context(capture_path: Path) -> dict[str, Any]:
     selected_address_body: dict[str, Any] | None = None
+    selected_address_headers: dict[str, Any] = {}
     selected_feed_body: dict[str, Any] | None = None
     selected_feed_headers: dict[str, Any] = {}
     for flow_record in _iter_flow_records(capture_path):
@@ -51,14 +52,16 @@ def extract_latest_change_address_context(capture_path: Path) -> dict[str, Any]:
         request_headers = flow_record.get("request_headers") if isinstance(flow_record.get("request_headers"), dict) else {}
         if path == CHANGE_ADDRESS_PATH and request_body:
             selected_address_body = request_body
+            selected_address_headers = request_headers
         if path in FEED_PATHS and request_body:
             selected_feed_body = request_body
             selected_feed_headers = request_headers
     if selected_address_body is None:
         raise RuntimeError(f"未在抓包文件中找到 {CHANGE_ADDRESS_PATH}")
     source_body = selected_feed_body or selected_address_body
+    source_headers = selected_feed_headers or selected_address_headers
     selected_context = {
-        "request_headers": _extract_request_headers(selected_feed_headers),
+        "request_headers": _extract_request_headers(source_headers),
         "common_body": _extract_common_body(source_body),
         "address_context": {"request_body": selected_address_body},
     }

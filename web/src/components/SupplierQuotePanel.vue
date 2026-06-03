@@ -264,8 +264,8 @@
 
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
-import { ElMessage } from 'element-plus/es/components/message/index.mjs'
-import { fetchProductSupplierQuotes, fetchSuppliers, getAccessToken, submitSupplierQuote } from '../api'
+import { fetchProductSupplierQuotes, fetchSuppliers, getAccessToken, submitSupplierQuote } from '../lazyApi'
+import { lazyElMessage as ElMessage } from '../lazyElementMessage'
 import type {
   SupplierItem,
   SupplierQuoteCompareSummary,

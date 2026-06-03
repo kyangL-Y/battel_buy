@@ -6,7 +6,7 @@
         <button type="button" class="mobile-redesign-brand" @click="openProcurementEntry('summary')">
           <span>采</span>
           <div>
-            <strong>采购工作台</strong>
+            <strong>食采云</strong>
             <small>{{ selectedLocationLabel }} · {{ latestSyncLabel }}</small>
           </div>
         </button>
@@ -15,10 +15,10 @@
             <i></i>
             {{ selectedLocationLabel }}
           </button>
-          <button type="button" class="mobile-redesign-login-button" aria-label="采购账号登录" @click="openProcurementEntry()">
+          <button type="button" class="mobile-redesign-login-button" aria-label="账号登录" @click="openProcurementEntry()">
             登录
           </button>
-          <button type="button" class="mobile-redesign-alert-dot" aria-label="查看预警消息" @click="openProcurementEntry('alerts')">
+          <button type="button" class="mobile-redesign-alert-dot" aria-label="查看价格提醒" @click="openProcurementEntry('alerts')">
             <b>{{ mobileAlertBadge }}</b>
           </button>
         </div>
@@ -30,11 +30,11 @@
 
       <div v-if="showMobileLocationPanel" class="mobile-redesign-location-panel">
         <div class="mobile-redesign-location-panel-head">
-          <strong>{{ isAuthScopedLocationLocked ? '账号地区已锁定' : '选择默认市场' }}</strong>
-          <span>{{ isAuthScopedLocationLocked ? '由采购账号控制，不能覆盖' : '未登录时定位只作为默认筛选建议' }}</span>
+          <strong>{{ isAuthScopedLocationLocked ? '账号绑定地区' : '选择市场' }}</strong>
+          <span>{{ isAuthScopedLocationLocked ? '登录后按账号显示' : '先看这个市场的菜价' }}</span>
         </div>
-        <small v-if="isAuthScopedLocationLocked" class="mobile-redesign-location-loading">账号地区已固定，不能用定位或手选覆盖</small>
-        <small v-if="locationLoading" class="mobile-redesign-location-loading">正在同步地区列表</small>
+        <small v-if="isAuthScopedLocationLocked" class="mobile-redesign-location-loading">当前账号已绑定地区</small>
+        <small v-if="locationLoading" class="mobile-redesign-location-loading">正在加载市场</small>
         <small v-if="locationSuggestionHint" class="mobile-redesign-location-loading">{{ locationSuggestionHint }}</small>
         <button
           v-if="!isAuthScopedLocationLocked"
@@ -43,7 +43,7 @@
           :disabled="locationSuggestionLoading"
           @click="requestAuxiliaryLocationSuggestion"
         >
-          {{ locationSuggestionLoading ? '正在定位' : '用定位建议地区' }}
+          {{ locationSuggestionLoading ? '正在定位' : '按定位选择' }}
         </button>
         <button
           v-for="item in mobileLocationOptions"
@@ -58,48 +58,49 @@
       </div>
 
       <div class="mobile-redesign-hero-copy">
-        <p>TEAM MARKET</p>
-        <h1>先登录，再看本团队行情。</h1>
-        <small>{{ summaryStatusText }} · {{ selectedLocationLabel }} · {{ crawlResultLabel }}</small>
+        <p>今日采购</p>
+        <h1>登录后查看菜价</h1>
+        <small>{{ selectedLocationLabel }} · {{ latestSyncLabel }}</small>
       </div>
 
       <div class="mobile-redesign-auth-panel">
         <div class="mobile-redesign-auth-panel-copy">
-          <strong>采购账号登录</strong>
-          <span>一个采购账号只看自己的地区和已分配供应商。</span>
+          <strong>账号登录</strong>
+          <span>登录后查看自己的市场菜价。</span>
         </div>
         <div class="mobile-redesign-auth-panel-actions">
           <button type="button" class="primary" @click="openProcurementEntry()">
             登录
           </button>
-          <button type="button" @click="openSupplierPortal(false)">
-            供应商入口
+          <button type="button" data-testid="supplier-choice-button" @click="openSupplierPortal(false)">
+            我是供应商
           </button>
         </div>
       </div>
 
       <div class="mobile-redesign-search" :class="{ loading: summaryLoading || locationLoading }">
-        <el-input
+        <input
           v-model="filters.keyword"
+          class="mobile-redesign-search-input"
           type="search"
           inputmode="search"
           enterkeyhint="search"
           aria-label="搜索食材关键词"
-          placeholder="搜菜名、规格、档口"
-          clearable
-          @keyup.enter="openProcurementEntry('summary')"
-        />
-        <button type="button" data-testid="enter-workspace-button" @click="openProcurementEntry('summary')"><span>查行情</span></button>
+          placeholder="搜菜名或规格"
+          @keyup.enter="openPublicMarketSummary()"
+        >
+        <button v-if="filters.keyword" type="button" class="mobile-redesign-search-clear" aria-label="清空搜索" @click="filters.keyword = ''">清空</button>
+        <button type="button" data-testid="enter-workspace-button" @click="openPublicMarketSummary()"><span>查菜价</span></button>
       </div>
 
       <div class="mobile-redesign-command-grid" aria-label="采购快捷入口">
         <button type="button" class="alert" @click="openProcurementEntry('alerts')">
-          <span>价格预警</span>
+          <span>价格提醒</span>
           <strong>{{ mobileAlertBadge }} 条</strong>
-          <small>{{ mobileAlertBadge ? '优先处理异常价' : '暂无紧急异常' }}</small>
+          <small>{{ mobileAlertBadge ? '先看价格变化' : '暂无提醒' }}</small>
         </button>
         <button type="button" class="market" @click="openProcurementEntry('summary')">
-          <span>行情报价</span>
+          <span>查菜价</span>
           <strong>{{ mobileSpotlightRows.length }} 个</strong>
           <small>{{ lowestPriceSignal }}</small>
         </button>
@@ -115,8 +116,8 @@
       <section class="mobile-redesign-section mobile-redesign-today-card">
         <div class="mobile-redesign-section-head">
           <div>
-            <p>今日裁决</p>
-            <h2>{{ mobileAlertBadge ? '先处理价格异常' : '可直接进入采购执行' }}</h2>
+            <p>今日待办</p>
+            <h2>{{ mobileAlertBadge ? '先看价格提醒' : '开始做采购计划' }}</h2>
           </div>
           <button type="button" @click="mobileAlertBadge ? openProcurementEntry('alerts') : openProcurementEntry('menu')">
             {{ mobileAlertBadge ? '处理' : '采购' }}
@@ -124,20 +125,19 @@
         </div>
         <button type="button" class="mobile-redesign-priority-card is-main" @click="mobileAlertBadge ? openProcurementEntry('alerts') : openProcurementEntry('menu')">
           <p>{{ selectedLocationLabel }}</p>
-          <strong>{{ mobileAlertBadge ? `${mobileAlertBadge} 条价格提醒待处理` : '菜单、报价、供应商一起处理' }}</strong>
-          <small>{{ mobileAlertBadge ? '核对异常来源，必要时带商品去供应商报价。' : '录入菜单后自动匹配行情与供应商报价。' }}</small>
+          <strong>{{ mobileAlertBadge ? `${mobileAlertBadge} 条价格提醒待处理` : '菜单、菜价、供应商一起看' }}</strong>
+          <small>{{ mobileAlertBadge ? '点开商品，看价格变化和供应商报价。' : '录入菜单后查看采购建议。' }}</small>
         </button>
       </section>
 
       <section class="mobile-redesign-section mobile-redesign-products" data-testid="mobile-spotlight-feed-section">
         <div class="mobile-redesign-section-head">
           <div>
-            <p>可比价商品</p>
-            <h2>优先看的价格</h2>
-            <small class="mobile-redesign-section-note">保留原始报价规格，不强拆斤价，按真实可购买单位展示。</small>
+            <p>常看菜价</p>
+            <h2>今天常买的菜</h2>
           </div>
           <div class="mobile-redesign-head-actions">
-            <button type="button" class="mobile-trend-shortcut market-mobile-bottom-item" @click="openProcurementEntry('trend')">单品</button>
+            <button type="button" class="mobile-trend-shortcut market-mobile-bottom-item" @click="openProcurementEntry('trend')">明细</button>
             <button type="button" @click="openProcurementEntry('summary')">全部</button>
           </div>
         </div>
@@ -160,7 +160,7 @@
           </button>
           <div v-if="!mobileSpotlightRows.length" class="mobile-redesign-empty-card">
             <strong>待行情同步</strong>
-            <small>同步完成后展示可比价商品。</small>
+            <small>加载完成后显示常看菜价。</small>
           </div>
         </div>
       </section>
@@ -168,8 +168,8 @@
       <section class="mobile-redesign-section mobile-redesign-alert-preview">
         <div class="mobile-redesign-section-head">
           <div>
-            <p>预警队列</p>
-            <h2>需要复核的价格</h2>
+            <p>价格提醒</p>
+            <h2>需要看一下的价格</h2>
           </div>
           <button type="button" @click="openProcurementEntry('alerts')">全部</button>
         </div>
@@ -185,7 +185,7 @@
             <small>{{ item.rule }}</small>
           </button>
           <div v-if="!mobileAlertRows.length" class="mobile-redesign-empty-card compact">
-            <strong>暂无触发预警</strong>
+            <strong>暂无价格提醒</strong>
             <small>超过提醒价格后将在此显示。</small>
           </div>
         </div>
@@ -194,8 +194,8 @@
       <section class="mobile-redesign-section mobile-redesign-sources">
         <div class="mobile-redesign-section-head">
           <div>
-            <p>分类入口</p>
-            <h2>按品类找市场</h2>
+            <p>按分类查</p>
+            <h2>按分类找菜价</h2>
           </div>
           <button type="button" @click="openMobileCategoryDirectory()">全部</button>
         </div>
@@ -208,7 +208,7 @@
           >
             <span>{{ item.category }}</span>
             <strong>{{ item.subcategory }}</strong>
-            <small>{{ item.count }} 款可比价</small>
+            <small>{{ item.count }} 款商品</small>
           </button>
           <div v-if="!mobileCategoryTableRows.length" class="mobile-redesign-empty-card compact">
             <strong>暂无商品分类</strong>
@@ -231,8 +231,8 @@
             <small>菜单、建议、价格核对</small>
           </button>
           <button type="button" data-testid="mobile-supplier-nav-button" @click="openSupplierPortal(false)">
-            <span>供应商端</span>
-            <strong>报价录入</strong>
+            <span>供应商</span>
+            <strong>我要报价</strong>
             <small>账号由采购分配</small>
           </button>
         </div>
@@ -244,8 +244,7 @@
         <div class="mobile-redesign-section-head">
           <div>
             <p>全部分类</p>
-            <h2>点品类进入行情</h2>
-            <small class="mobile-redesign-section-note">展示当前可比价的全部分类。</small>
+            <h2>点分类查看菜价</h2>
           </div>
           <button type="button" @click="mobileHomePanel = 'home'">返回</button>
         </div>
@@ -259,7 +258,7 @@
           >
             <span>{{ item.category }}</span>
             <strong>{{ item.subcategory }}</strong>
-            <small>{{ item.count }} 款可比价</small>
+            <small>{{ item.count }} 款商品</small>
           </button>
           <div v-if="!mobileCategoryTableRows.length" class="mobile-redesign-empty-card compact">
             <strong>暂无商品分类</strong>
@@ -274,13 +273,13 @@
         <span class="market-mobile-nav-icon home"></span>
         <strong>首页</strong>
       </button>
-      <button type="button" class="market-mobile-bottom-item" aria-label="行情" @click="openProcurementEntry('summary')">
+      <button type="button" class="market-mobile-bottom-item" aria-label="菜价" @click="openProcurementEntry('summary')">
         <span class="market-mobile-nav-icon market"></span>
-        <strong>行情</strong>
+        <strong>菜价</strong>
       </button>
-      <button type="button" class="market-mobile-bottom-item" aria-label="价格预警" @click="openProcurementEntry('alerts')">
+      <button type="button" class="market-mobile-bottom-item" aria-label="价格提醒" @click="openProcurementEntry('alerts')">
         <span class="market-mobile-nav-icon alert"></span>
-        <strong>预警</strong>
+        <strong>提醒</strong>
       </button>
       <button type="button" class="market-mobile-bottom-item" aria-label="采购" @click="openProcurementEntry('menu')">
         <span class="market-mobile-nav-icon buy"></span>
@@ -295,7 +294,7 @@
 
     <header class="market-mobile-shell-head mobile-redesign-workspace-head">
 
-      <button type="button" class="market-mobile-back-button market-mobile-back-icon" :aria-label="mobileBackAriaLabel" @click="handleMobileBack()">‹</button>
+      <button type="button" class="market-mobile-back-button market-mobile-back-icon" :aria-label="mobileBackAriaLabel" :disabled="mobileNavigationLocked" @click="handleMobileBack()">‹</button>
 
       <div class="market-mobile-shell-copy">
         <p>{{ selectedLocationLabel }}</p>
@@ -303,9 +302,9 @@
         <small>{{ mobileTabMeta.description }}</small>
       </div>
 
-      <button type="button" class="mobile-trend-shortcut market-mobile-bottom-item" aria-label="单品" @click="enterWorkspace('trend')">单品</button>
+      <button type="button" class="mobile-trend-shortcut market-mobile-bottom-item" aria-label="明细" :disabled="mobileNavigationLocked || mobileActiveTab === 'trend'" @click="enterWorkspace('trend')">明细</button>
 
-      <button type="button" class="market-mobile-message-button" aria-label="查看预警消息" @click="enterWorkspace('alerts')">
+      <button type="button" class="market-mobile-message-button" aria-label="查看价格提醒" :disabled="mobileNavigationLocked || mobileActiveTab === 'alerts'" @click="enterWorkspace('alerts')">
 
         <span></span>
 
@@ -321,13 +320,13 @@
 
       <div>
 
-        <h2>真实接口连接失败</h2>
+        <h2>数据加载失败</h2>
 
-        <p class="active-strip-copy">请先确认 API 已启动，再刷新页面查看真实抓取结果。</p>
+        <p class="active-strip-copy">请稍后刷新，或联系管理员处理。</p>
 
       </div>
 
-      <div class="source-warning-text">{{ pageError || dataSourceState.lastError || '接口连接失败' }}</div>
+      <div class="source-warning-text">{{ pageError || dataSourceState.lastError || '数据暂时不可用' }}</div>
 
     </section>
 
@@ -411,14 +410,14 @@
       <section v-else-if="mobileActiveTab === 'alerts'" class="market-mobile-alert-page">
         <header class="market-mobile-alert-hero">
           <div>
-            <p class="market-mobile-kicker">价格预警</p>
-            <h2>异常价格处理</h2>
+            <p class="market-mobile-kicker">价格提醒</p>
+            <h2>需要看一下的价格</h2>
             <span>{{ mobileAlertHeroText }}</span>
           </div>
           <strong>{{ mobileAlertBadge }}</strong>
         </header>
 
-        <div class="market-mobile-alert-pills" aria-label="预警概览">
+        <div class="market-mobile-alert-pills" aria-label="价格提醒概览">
           <article v-for="item in mobileAlertSummaryPills" :key="item.label" :class="item.tone">
             <strong>{{ item.value }}</strong>
             <span>{{ item.label }}</span>
@@ -428,7 +427,7 @@
         <section class="market-mobile-alert-card market-mobile-alert-feed-card">
           <div class="market-mobile-section-head">
             <div>
-              <p class="market-mobile-kicker">待办列表</p>
+              <p class="market-mobile-kicker">待办</p>
               <h2>今天要看的商品</h2>
             </div>
             <span>{{ mobileAlertRows.length }} 条</span>
@@ -465,8 +464,8 @@
             </article>
 
             <div v-if="!mobileAlertRows.length" class="market-mobile-alert-empty">
-              <strong>暂无触发预警</strong>
-              <p>当前商品与市场继续监控，超过提醒价格后会出现在这里。</p>
+              <strong>暂无价格提醒</strong>
+              <p>超过提醒价格后会出现在这里。</p>
             </div>
           </div>
         </section>
@@ -474,20 +473,20 @@
         <section class="market-mobile-alert-card market-mobile-alert-rule-card" :class="{ collapsed: !showMobileAlertRuleForm }">
           <div class="market-mobile-section-head">
             <div>
-              <p class="market-mobile-kicker">规则</p>
-              <h2>设置价格线</h2>
+              <p class="market-mobile-kicker">提醒设置</p>
+              <h2>设置提醒价格</h2>
             </div>
             <button
               type="button"
               class="market-mobile-rule-toggle"
               @click="showMobileAlertRuleForm = !showMobileAlertRuleForm"
             >
-              {{ showMobileAlertRuleForm ? '收起' : '新建规则' }}
+              {{ showMobileAlertRuleForm ? '收起' : '新增提醒' }}
             </button>
           </div>
 
           <p v-if="!showMobileAlertRuleForm" class="market-mobile-rule-summary">
-            如需持续监控某个商品的最高价或最低价，可在此新增规则。
+            选择商品后，设置到价提醒。
           </p>
 
           <div v-else class="market-mobile-rule-form">
@@ -513,7 +512,7 @@
             <label><span>最高价</span><input v-model.number="mobileAlertRuleDraft.maxPrice" type="number" min="0" step="0.01" placeholder="例如 12.50" /></label>
             <label><span>最低价</span><input v-model.number="mobileAlertRuleDraft.minPrice" type="number" min="0" step="0.01" placeholder="例如 8.80" /></label>
             <label><span>提醒价格</span><strong>{{ mobileAlertThresholdLabel }}</strong></label>
-            <button type="button" @click="saveMobileAlertRule">保存规则</button>
+            <button type="button" @click="saveMobileAlertRule">保存提醒</button>
           </div>
         </section>
 
@@ -523,7 +522,7 @@
 
         <div class="market-mobile-menu-intro">
 
-          <p class="market-mobile-kicker">采购表单</p>
+          <p class="market-mobile-kicker">采购计划</p>
 
           <h2>录菜单，直接出采购建议</h2>
 
@@ -573,7 +572,7 @@
 
     <nav class="market-mobile-bottom-nav">
 
-      <button type="button" class="market-mobile-bottom-item" @click="goToLanding()">
+      <button type="button" class="market-mobile-bottom-item" :disabled="mobileNavigationLocked" @click="goToLanding()">
 
         <span class="market-mobile-nav-icon home"></span>
 
@@ -589,7 +588,9 @@
 
         :class="{ active: mobileActiveTab === 'summary' }"
 
-        aria-label="行情"
+        aria-label="菜价"
+
+        :disabled="mobileNavigationLocked || mobileActiveTab === 'summary'"
 
         @click="enterWorkspace('summary')"
 
@@ -597,7 +598,7 @@
 
         <span class="market-mobile-nav-icon market"></span>
 
-        <strong>行情</strong>
+        <strong>菜价</strong>
 
       </button>
 
@@ -609,7 +610,9 @@
 
         :class="{ active: mobileActiveTab === 'alerts' }"
 
-        aria-label="价格预警"
+        aria-label="价格提醒"
+
+        :disabled="mobileNavigationLocked || mobileActiveTab === 'alerts'"
 
         @click="enterWorkspace('alerts')"
 
@@ -617,7 +620,7 @@
 
         <span class="market-mobile-nav-icon alert"></span>
 
-        <strong>预警</strong>
+        <strong>提醒</strong>
 
       </button>
 
@@ -630,6 +633,8 @@
         :class="{ active: mobileActiveTab === 'menu' }"
 
         aria-label="采购"
+
+        :disabled="mobileNavigationLocked || mobileActiveTab === 'menu'"
 
         @click="enterWorkspace('menu')"
 
@@ -656,7 +661,7 @@
       <div class="platform-choice-nav-links" aria-label="首页导航">
         <button type="button" @click="openProcurementEntry('summary')">查菜价</button>
         <button type="button" @click="openProcurementEntry('menu')">采购计划</button>
-        <button type="button" @click="openProcurementEntry('alerts')">价格预警</button>
+        <button type="button" @click="openProcurementEntry('alerts')">价格提醒</button>
       </div>
     </nav>
 
@@ -703,7 +708,7 @@
           <button type="submit" class="platform-choice-login-submit" :disabled="procurementAuthSubmitting">
             {{ procurementAuthSubmitting ? '登录中' : '登录' }}
           </button>
-          <button type="button" class="platform-choice-login-secondary" @click="openSupplierPortal(false)">
+          <button type="button" class="platform-choice-login-secondary" data-testid="supplier-choice-button" @click="openSupplierPortal(false)">
             我是供应商
           </button>
         </form>
@@ -718,6 +723,7 @@
     :rows="activeSupplierSummaryRow && activeTab === 'summary' ? [activeSupplierSummaryRow, ...marketRows] : marketRows"
     :summary-loading="summaryLoading"
     :summary-status-text="summaryStatusText"
+    :summary-has-more-rows="summaryCanLoadMore"
     :source-coverage-rows="sourceCoverageRows"
     :crawl-status="crawlStatus"
     :summary-liancai-filter="summaryLiancaiFilter"
@@ -755,10 +761,11 @@
     :location-suggestion-loading="locationSuggestionLoading"
     :global-alert-rules="globalAlertRules"
     :settings-change-logs="settingsChangeLogs"
-    :auth-role="authSession?.user.role || null"
-    :auth-supplier-id="authSession?.user.supplier_id || null"
-    :auth-display-name="authSession?.user.display_name || authSession?.user.username || null"
+    :auth-role="authSession?.user?.role || null"
+    :auth-supplier-id="authSession?.user?.supplier_id || null"
+    :auth-display-name="authSession?.user?.display_name || authSession?.user?.username || null"
     @select-tab="enterWorkspace"
+    @section-change="handleWorkbenchSectionChange"
     @select-product="handleWorkbenchSelectProduct"
     @update-summary-liancai-filter="handleWorkbenchSummaryLiancaiFilter"
     @ensure-trend="ensureWorkbenchTrend"
@@ -772,7 +779,8 @@
     @menu-confirm-row="handleMenuPlanConfirmRow"
     @menu-fill-missing-quotes="handleMenuPlanFillMissingQuotes"
     @request-location-suggestion="requestAuxiliaryLocationSuggestion"
-    @refresh="reloadAll"
+    @request-summary-next-page="loadNextSummaryPage"
+    @refresh="refreshVisibleWorkspaceAssets"
     @open-procurement-auth="openProcurementAuthDialog"
     @logout-procurement-auth="logoutProcurementAuth"
     @open-supplier-backend="openSupplierBackend"
@@ -784,25 +792,88 @@
     @update-global-alert-rules="handleWorkbenchUpdateGlobalAlertRules"
   />
 
-  <el-dialog v-model="imagePreviewVisible" :title="imagePreviewTitle || '图片预览'" width="min(92vw, 960px)">
+  <el-dialog v-if="imagePreviewVisible" v-model="imagePreviewVisible" :title="imagePreviewTitle || '图片预览'" width="min(92vw, 960px)">
     <div class="market-image-preview-shell">
       <img v-if="imagePreviewUrl" :src="imagePreviewUrl" :alt="imagePreviewTitle || ''" class="market-image-preview" />
     </div>
   </el-dialog>
 
-  <el-dialog v-model="procurementAuthVisible" title="采购端登录" width="min(92vw, 420px)">
+  <div
+    v-if="isMobileViewport && procurementAuthVisible"
+    class="market-auth-mobile-layer"
+    role="dialog"
+    aria-modal="true"
+    aria-label="账号登录"
+  >
+    <div class="market-auth-mobile-backdrop" @click="closeProcurementAuthDialog"></div>
+    <section class="market-auth-mobile-sheet">
+      <div class="market-auth-dialog">
+        <div class="market-auth-notice">
+          <strong>账号登录</strong>
+          <span>没有账号请联系负责人。</span>
+        </div>
+        <label>
+          <span>账号</span>
+          <input v-model="procurementAuthForm.username" type="text" autocomplete="username" placeholder="采购账号或管理员账号" />
+        </label>
+        <label>
+          <span>密码</span>
+          <span class="market-auth-password-field">
+            <input
+              v-model="procurementAuthForm.password"
+              :type="landingProcurementPasswordVisible ? 'text' : 'password'"
+              autocomplete="current-password"
+              placeholder="请输入密码"
+              @keyup.enter="submitProcurementAuth"
+            />
+            <button
+              type="button"
+              :aria-label="landingProcurementPasswordVisible ? '隐藏密码' : '显示密码'"
+              @click="landingProcurementPasswordVisible = !landingProcurementPasswordVisible"
+            >
+              {{ landingProcurementPasswordVisible ? '隐藏' : '显示' }}
+            </button>
+          </span>
+        </label>
+        <p v-if="procurementAuthError" class="market-auth-error">{{ procurementAuthError }}</p>
+        <div class="market-auth-actions">
+          <button type="button" @click="closeProcurementAuthDialog">取消</button>
+          <button type="button" class="primary" :disabled="procurementAuthSubmitting" @click="submitProcurementAuth">
+            {{ procurementAuthSubmitting ? '登录中' : '登录' }}
+          </button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <el-dialog v-if="!isMobileViewport && procurementAuthVisible" v-model="procurementAuthVisible" title="账号登录" width="min(92vw, 420px)">
     <div class="market-auth-dialog">
       <div class="market-auth-notice">
-        <strong>公司账号登录</strong>
+        <strong>账号登录</strong>
         <span>没有账号请联系负责人。</span>
       </div>
       <label>
         <span>账号</span>
-        <input v-model="procurementAuthForm.username" type="text" autocomplete="username" placeholder="采购账号 / 管理员账号" />
+        <input v-model="procurementAuthForm.username" type="text" autocomplete="username" placeholder="采购账号或管理员账号" />
       </label>
       <label>
         <span>密码</span>
-        <input v-model="procurementAuthForm.password" type="password" autocomplete="current-password" placeholder="请输入密码" @keyup.enter="submitProcurementAuth" />
+        <span class="market-auth-password-field">
+          <input
+            v-model="procurementAuthForm.password"
+            :type="landingProcurementPasswordVisible ? 'text' : 'password'"
+            autocomplete="current-password"
+            placeholder="请输入密码"
+            @keyup.enter="submitProcurementAuth"
+          />
+          <button
+            type="button"
+            :aria-label="landingProcurementPasswordVisible ? '隐藏密码' : '显示密码'"
+            @click="landingProcurementPasswordVisible = !landingProcurementPasswordVisible"
+          >
+            {{ landingProcurementPasswordVisible ? '隐藏' : '显示' }}
+          </button>
+        </span>
       </label>
       <p v-if="procurementAuthError" class="market-auth-error">{{ procurementAuthError }}</p>
       <div class="market-auth-actions">
@@ -823,7 +894,8 @@
 <script setup lang="ts">
 
 import { computed, defineAsyncComponent, defineComponent, h, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
-import { ElMessage } from 'element-plus/es/components/message/index.mjs'
+import './styles.css'
+import { lazyElMessage as ElMessage } from './lazyElementMessage'
 
 import {
 
@@ -867,7 +939,7 @@ import {
   updateSourceCoverage,
   updateSourceStrategy,
   writeAuthSession,
-} from './api'
+} from './lazyApi'
 import type {
   AuthLoginResponse,
   CrawlStatusItem,
@@ -899,6 +971,8 @@ import type {
 } from './types'
 
 import { useViewport } from './composables/useViewport'
+import { isWorkbenchSectionId } from './components/PcPriceWorkbench.shared'
+import type { SectionId } from './components/PcPriceWorkbench.shared'
 
 import { buildMarketCategoryTabs, resolveMarketCategory } from './utils/marketCategories'
 import {
@@ -965,13 +1039,14 @@ const SUPPLIER_PLATFORM_PATH = '/supplier-backend'
 const SUPPLIER_PORTAL_PATH = '/supplier-portal'
 const MARKET_SUMMARY_INITIAL_LIMIT = 200
 const MARKET_SUMMARY_BACKGROUND_LIMIT = 1000
+const MOBILE_SUMMARY_FALLBACK_WAIT_MS = 650
 const MOBILE_PRODUCT_OPTIONS_LIMIT = 240
 
 const tabs = [
   { key: 'signals', label: '经营总览', code: 'SIG' },
-  { key: 'summary', label: '汇总行情', code: 'SUM' },
-  { key: 'trend', label: '单品趋势', code: 'TRD' },
-  { key: 'alerts', label: '价格预警', code: 'ALT' },
+  { key: 'summary', label: '查菜价', code: 'SUM' },
+  { key: 'trend', label: '价格明细', code: 'TRD' },
+  { key: 'alerts', label: '价格提醒', code: 'ALT' },
   { key: 'menu', label: '菜单采购', code: 'BUY' },
 ] as const
 const shouldRedirectToStandaloneSupplier = initialPathname !== SUPPLIER_PLATFORM_PATH && (initialMode === 'supplier' || initialTab === 'supplier')
@@ -980,6 +1055,17 @@ const defaultTab = tabs.some((item) => item.key === initialTab)
   ? (initialTab as (typeof tabs)[number]['key'])
 
   : 'summary'
+
+const initialWorkbenchSectionParam = searchParams.get('section')
+const initialWorkbenchSection = isWorkbenchSectionId(initialWorkbenchSectionParam)
+  ? initialWorkbenchSectionParam
+  : defaultTab === 'trend'
+    ? 'trend'
+    : defaultTab === 'alerts'
+      ? 'alerts'
+      : defaultTab === 'menu'
+        ? 'plan'
+        : 'summary'
 
 const viewMode = ref<'landing' | 'workspace'>(
 
@@ -992,6 +1078,7 @@ const viewMode = ref<'landing' | 'workspace'>(
 )
 
 const activeTab = ref<(typeof tabs)[number]['key']>(defaultTab)
+const activeWorkbenchSection = ref<SectionId>(initialWorkbenchSection)
 const trendDeepLinkTarget = initialTab === 'trend' ? searchParams.get('product') || searchParams.get('identity_key') || searchParams.get('identityKey') || '' : ''
 const trendDeepLinkLabel = initialTab === 'trend' ? searchParams.get('product_label') || searchParams.get('label') || '' : ''
 const trendTestTargetLabels = ['三黄鸡 | 公斤', '一级豆油 | 公斤']
@@ -1052,6 +1139,7 @@ const demoContent = ref<SalesDemoContentResponse | null>(null)
 const pageError = ref('')
 const summaryLoading = ref(false)
 const summaryBackfillLoading = ref(false)
+const summaryCanLoadMore = ref(false)
 const locationLoading = ref(false)
 const locationSuggestionLoading = ref(false)
 const locationSuggestionHint = ref('')
@@ -1090,15 +1178,20 @@ const selectedProductTouched = ref(false)
 let crawlStatusTimer: number | undefined
 let productOptionsPromise: Promise<void> | null = null
 let productOptionsPromiseContextKey = ''
+let productSupplierQuotesPromise: Promise<void> | null = null
+let productSupplierQuotesPromiseIdentityKey = ''
+let productSupplierQuotesLoadedIdentityKey = ''
 let productOptionsLoadSequence = 0
 let trendRequestSequence = 0
 let summaryRequestSequence = 0
+let summaryNextOffset = 0
+let summaryNextPageParams: ReturnType<typeof buildFilterParams> | null = null
 let suppressNextTrendWatch = false
 let workspaceTabActivationToken = 0
 let mobileTrendSearchRequestSequence = 0
 let locationFilterReloadSequence = 0
-let trendPrefetchContextKey = ''
-const trendPrefetchPromises = new Map<string, Promise<void>>()
+const loadedWorkspaceTabs = new Set<(typeof tabs)[number]['key']>()
+const loadedWorkbenchSections = new Set<SectionId>()
 const SETTINGS_CHANGE_LOG_STORAGE_KEY = 'battel.settings-change-log.v1'
 
 const activeMarketCategory = ref('全部')
@@ -1331,6 +1424,7 @@ const mobileActiveTab = computed(() => {
   return 'summary'
 })
 const mobileRouteFeedbackTab = ref<(typeof tabs)[number]['key'] | ''>('')
+const mobileNavigationLocked = ref(false)
 const mobileRouteFeedbackLabel = computed(() => {
   const target = tabs.find((item) => item.key === mobileRouteFeedbackTab.value)
   return target ? `打开${target.label}` : '打开页面'
@@ -1339,11 +1433,15 @@ const mobilePreviousWorkspaceTab = ref<(typeof tabs)[number]['key'] | ''>('')
 const mobileBackAriaLabel = computed(() => {
   if (mobileActiveTab.value === 'trend' && mobilePreviousWorkspaceTab.value && mobilePreviousWorkspaceTab.value !== 'trend') {
     const target = tabs.find((item) => item.key === mobilePreviousWorkspaceTab.value)
+    if (target?.key === 'summary') {
+      return '返回汇总行情'
+    }
     return `返回${target?.label || '上一页'}`
   }
   return '返回首页'
 })
 let mobileRouteFeedbackTimer: number | undefined
+let mobileNavigationUnlockTimer: number | undefined
 
 function startMobileRouteFeedback(tabKey: (typeof tabs)[number]['key']) {
   if (!isMobileViewport.value) return
@@ -1351,6 +1449,11 @@ function startMobileRouteFeedback(tabKey: (typeof tabs)[number]['key']) {
     window.clearTimeout(mobileRouteFeedbackTimer)
     mobileRouteFeedbackTimer = undefined
   }
+  if (mobileNavigationUnlockTimer) {
+    window.clearTimeout(mobileNavigationUnlockTimer)
+    mobileNavigationUnlockTimer = undefined
+  }
+  mobileNavigationLocked.value = true
   mobileRouteFeedbackTab.value = tabKey
 }
 
@@ -1366,6 +1469,13 @@ function finishMobileRouteFeedback(tabKey?: (typeof tabs)[number]['key']) {
     }
     mobileRouteFeedbackTimer = undefined
   }, 180)
+  if (mobileNavigationUnlockTimer) {
+    window.clearTimeout(mobileNavigationUnlockTimer)
+  }
+  mobileNavigationUnlockTimer = window.setTimeout(() => {
+    mobileNavigationLocked.value = false
+    mobileNavigationUnlockTimer = undefined
+  }, 260)
 }
 
 function waitForNextFrame() {
@@ -1373,6 +1483,20 @@ function waitForNextFrame() {
   return new Promise<void>((resolve) => {
     window.requestAnimationFrame(() => resolve())
   })
+}
+
+function schedulePostRenderRequest(requestCallback: () => void, delayMs = 320) {
+  if (typeof window === 'undefined') {
+    requestCallback()
+    return
+  }
+  window.setTimeout(() => {
+    if ('requestIdleCallback' in window) {
+      window.requestIdleCallback(() => requestCallback(), { timeout: 1800 })
+      return
+    }
+    requestCallback()
+  }, delayMs)
 }
 
 function scrollMobileViewportTop() {
@@ -1393,6 +1517,7 @@ function rememberMobileTrendSource() {
 
 function handleRepeatedMobileTab(tabKey: (typeof tabs)[number]['key']) {
   if (!isMobileViewport.value) return
+  if (mobileNavigationLocked.value && mobileRouteFeedbackTab.value === tabKey) return
   showMobileLocationPanel.value = false
   if (tabKey === 'trend' && (!selectedIdentityKey.value || (!trendLoading.value && !trendRows.value.length))) {
     startMobileRouteFeedback('trend')
@@ -1406,6 +1531,7 @@ function handleRepeatedMobileTab(tabKey: (typeof tabs)[number]['key']) {
 }
 
 function handleMobileBack() {
+  if (mobileNavigationLocked.value) return
   if (mobileActiveTab.value === 'trend' && mobilePreviousWorkspaceTab.value && mobilePreviousWorkspaceTab.value !== 'trend') {
     const targetTab = mobilePreviousWorkspaceTab.value
     mobilePreviousWorkspaceTab.value = ''
@@ -1444,7 +1570,7 @@ function saveMobileAlertRule() {
   })
   mobileProductAlertRules.value = nextRules
   writeProductAlertRules(nextRules)
-  ElMessage.success('价格预警规则已保存')
+  ElMessage.success('价格提醒已保存')
 }
 
 type MobileAlertActionRow = {
@@ -1494,9 +1620,9 @@ const mobileTabMeta = computed(() => {
 
     return {
 
-      title: '单品趋势',
+      title: '价格明细',
 
-      description: '查看当前价格区间，并在跨市场与单市场之间切换分析。',
+      description: '查看单个商品的价格变化。',
 
     }
 
@@ -1506,9 +1632,9 @@ const mobileTabMeta = computed(() => {
 
     return {
 
-      title: '价格预警',
+      title: '价格提醒',
 
-      description: '处理异常波动，并为重点商品设置提醒价格。',
+      description: '查看需要关注的价格。',
 
     }
 
@@ -1518,9 +1644,9 @@ const mobileTabMeta = computed(() => {
 
     return {
 
-      title: '采购表单',
+      title: '采购计划',
 
-      description: '把菜单、桌数和地区转成可执行的采购建议。',
+      description: '录入菜单后查看采购建议。',
 
     }
 
@@ -1528,9 +1654,9 @@ const mobileTabMeta = computed(() => {
 
   return {
 
-    title: '汇总行情',
+    title: '查菜价',
 
-    description: '按分类、地区和关键词查看本地食材行情。',
+    description: '按分类、地区和关键词查看本地菜价。',
 
   }
 
@@ -1540,10 +1666,13 @@ const hasLiveSummary = computed(() => marketRows.value.length > 0)
 const summaryStatusText = computed(() => {
   const loaded = marketRows.value.length
   if (summaryLoading.value) {
-    return loaded > 0 ? `首批已加载 ${loaded} 条，仍在整理中` : '行情加载中'
+    return loaded > 0 ? `已加载 ${loaded} 条，仍在整理中` : '菜价加载中'
   }
   if (summaryBackfillLoading.value) {
-    return `已加载 ${loaded} 条，后台继续补齐中`
+    return `已加载 ${loaded} 条，继续加载中`
+  }
+  if (summaryCanLoadMore.value) {
+    return `已加载 ${loaded} 条，翻页继续加载`
   }
   return loaded > 0 ? `共 ${loaded} 条真实报价` : '暂无报价'
 })
@@ -1582,11 +1711,11 @@ const homeHeroStats = computed(() => [
 
   {
 
-    label: '待处理预警',
+    label: '价格提醒',
 
     value: `${mobileAlertBadge.value || 0}`,
 
-    detail: mobileAlertBadge.value ? '建议核对异常价格' : '当前没有紧急项',
+    detail: mobileAlertBadge.value ? '有价格需要查看' : '暂无提醒',
 
   },
 
@@ -2387,11 +2516,11 @@ const mobileAlertKpis = computed(() => {
 
     { label: '待处理', value: String(pending || mobileAlertBadge.value), detail: '个商品', tone: 'pending' },
 
-    { label: '上涨预警', value: String(up), detail: '个商品', tone: 'up' },
+    { label: '价格上涨', value: String(up), detail: '个商品', tone: 'up' },
 
-    { label: '下跌预警', value: String(down), detail: '个商品', tone: 'down' },
+    { label: '价格下跌', value: String(down), detail: '个商品', tone: 'down' },
 
-    { label: '波动预警', value: String(warn), detail: '个商品', tone: 'warn' },
+    { label: '变化较大', value: String(warn), detail: '个商品', tone: 'warn' },
 
   ]
 
@@ -2399,9 +2528,9 @@ const mobileAlertKpis = computed(() => {
 
 const mobileAlertHeroText = computed(() => {
   const pending = mobileAlertRows.value.filter((item) => item.state === '待处理').length
-  if (pending > 0) return `当前有 ${pending} 个待处理商品，请优先核对价格提醒。`
-  if (mobileAlertRows.value.length > 0) return '当前无待处理项，可继续关注波动较大的商品。'
-  return '当前未触发异常，系统将继续监控提醒价格。'
+  if (pending > 0) return `当前有 ${pending} 个商品需要查看。`
+  if (mobileAlertRows.value.length > 0) return '当前没有急需处理的商品。'
+  return '暂无价格提醒。'
 })
 
 const mobileAlertSummaryPills = computed(() => {
@@ -2773,30 +2902,6 @@ function extractTrendSiteOptions(rows: ProductTrendRow[]) {
     ),
 
   ) as string[]
-
-}
-
-
-
-function getPrefetchSnapshotQueue(identityKey: string) {
-
-  const existing = trendPrefetchPromises.get(identityKey)
-
-  if (existing) {
-
-    return existing
-
-  }
-
-  const promise = prefetchTrendSnapshot(identityKey).finally(() => {
-
-    trendPrefetchPromises.delete(identityKey)
-
-  })
-
-  trendPrefetchPromises.set(identityKey, promise)
-
-  return promise
 
 }
 
@@ -3280,6 +3385,8 @@ function handleSelectProduct(identityKey: string) {
   const isSwitchingProduct = selectedIdentityKey.value !== identityKey
   if (isSwitchingProduct) {
     productSummary.value = buildSnapshotProductSummary(resolveCanonicalIdentityKey(identityKey), marketRows.value)
+    productSupplierQuotes.value = []
+    productSupplierQuotesLoadedIdentityKey = ''
     trendRows.value = []
     trendSiteOptions.value = []
     selectedSiteName.value = ''
@@ -3326,6 +3433,8 @@ function handleWorkbenchSelectProduct(identityKey: string) {
   const isSwitchingProduct = selectedIdentityKey.value !== identityKey
   if (isSwitchingProduct) {
     productSummary.value = buildSnapshotProductSummary(resolveCanonicalIdentityKey(identityKey), marketRows.value)
+    productSupplierQuotes.value = []
+    productSupplierQuotesLoadedIdentityKey = ''
     trendRows.value = []
     trendSiteOptions.value = []
     selectedSiteName.value = ''
@@ -3373,10 +3482,15 @@ async function handleWorkbenchSummaryLiancaiFilter(payload: { source_name?: stri
 
   void reloadLiancaiFacets()
   await reloadSummary()
-  window.setTimeout(() => {
-    void ensureProductOptionsLoaded(true)
-    void reloadLiancaiCategorySummary()
-  }, 300)
+  loadedWorkspaceTabs.delete('trend')
+  loadedWorkbenchSections.delete('market')
+  if (activeTab.value === 'trend') {
+    refreshLazyWorkspaceAssets('trend', activeWorkbenchSection.value)
+  } else if (activeWorkbenchSection.value === 'market') {
+    schedulePostRenderRequest(() => {
+      void reloadLiancaiCategorySummary()
+    }, 300)
+  }
 }
 
 function goToLanding() {
@@ -3384,10 +3498,15 @@ function goToLanding() {
   mobileHomePanel.value = 'home'
   showMobileLocationPanel.value = false
   mobileRouteFeedbackTab.value = ''
+  mobileNavigationLocked.value = false
   mobilePreviousWorkspaceTab.value = ''
   if (mobileRouteFeedbackTimer) {
     window.clearTimeout(mobileRouteFeedbackTimer)
     mobileRouteFeedbackTimer = undefined
+  }
+  if (mobileNavigationUnlockTimer) {
+    window.clearTimeout(mobileNavigationUnlockTimer)
+    mobileNavigationUnlockTimer = undefined
   }
   if (typeof window !== 'undefined') {
     const params = new URLSearchParams(window.location.search)
@@ -3415,13 +3534,19 @@ function goToLanding() {
 }
 
 
-function warmMobileWorkspacePanels() {
+function warmMobileWorkspacePanel(tabKey: (typeof tabs)[number]['key'] = activeTab.value) {
   if (!isMobileViewport.value) return
-  void loadMarketSummaryPanel()
-  window.setTimeout(() => {
+  if (tabKey === 'summary') {
+    void loadMarketSummaryPanel()
+    return
+  }
+  if (tabKey === 'trend') {
     void loadProductTrendPanel()
+    return
+  }
+  if (tabKey === 'menu') {
     void loadMenuPlanPanel()
-  }, 120)
+  }
 }
 
 
@@ -3502,7 +3627,7 @@ function openSupplierBackend(
 
 function mirrorProcurementSessionToSupplierBackend() {
   const session = authSession.value
-  const role = session?.user.role
+  const role = session?.user?.role
   if (!session?.access_token || (role !== 'admin' && role !== 'procurement')) return
   writeAuthSession(session, 'supplier')
 }
@@ -3551,6 +3676,7 @@ async function openCategoryMarket(categoryKey: string, subcategoryKey = '') {
 
 
 function openProductDetail(identityKey: string) {
+  if (isMobileViewport.value && mobileNavigationLocked.value && mobileRouteFeedbackTab.value === 'trend') return
 
   if (!identityKey || identityKey === 'placeholder') {
 
@@ -3697,7 +3823,7 @@ function applyAuthSession(session: AuthLoginResponse | null) {
   }
 
   locationSuggestionHint.value = hasLockedAuthScopedLocation()
-    ? '账号地区已锁定，不能用定位或手选覆盖'
+    ? '当前账号已绑定地区'
     : ''
 
 }
@@ -3709,7 +3835,7 @@ function openProcurementAuthDialog() {
 
   pendingProcurementEntryTab.value = ''
 
-  procurementAuthForm.username = authSession.value?.user.username || procurementAuthForm.username
+  procurementAuthForm.username = authSession.value?.user?.username || procurementAuthForm.username
 
   procurementAuthForm.password = ''
 
@@ -3748,6 +3874,13 @@ function openProcurementEntry(targetTab: (typeof tabs)[number]['key'] = 'summary
 
   pendingProcurementEntryTab.value = targetTab
 
+}
+
+function openPublicMarketSummary() {
+  enterWorkspace('summary')
+  if (!marketRows.value.length && !summaryLoading.value) {
+    void reloadSummary()
+  }
 }
 
 
@@ -3817,10 +3950,10 @@ async function submitProcurementAuth() {
 
     }
 
-    void Promise.allSettled([
-      reloadSummary(),
-      reloadSupplierOverview(),
-    ])
+    if ((entryTabAfterLogin || activeTab.value) === 'summary') {
+      void reloadSummary()
+    }
+    refreshLazyWorkspaceAssets(entryTabAfterLogin || activeTab.value, activeWorkbenchSection.value)
 
   } catch (error) {
 
@@ -3842,12 +3975,15 @@ function logoutProcurementAuth() {
   supplierOverview.value = null
 
   productSupplierQuotes.value = []
+  productSupplierQuotesLoadedIdentityKey = ''
 
   procurementAuthError.value = ''
 
   procurementAuthForm.password = ''
 
-  void reloadSummary()
+  if (shouldReloadSummaryForCurrentView()) {
+    void reloadSummary()
+  }
 
   ElMessage.success('已退出采购端账号')
 
@@ -3886,6 +4022,7 @@ async function restoreAuthSession() {
 
 
 function enterWorkspace(targetTab: (typeof tabs)[number]['key'] = 'summary', options: { preserveSummaryFilters?: boolean } = {}) {
+  if (isMobileViewport.value && mobileNavigationLocked.value && mobileRouteFeedbackTab.value === targetTab) return
   if (targetTab === 'summary' && activeTab.value !== 'summary' && !options.preserveSummaryFilters) {
     resetSummaryFilters()
   }
@@ -3900,6 +4037,7 @@ function enterWorkspace(targetTab: (typeof tabs)[number]['key'] = 'summary', opt
   } else if (!sameWorkspaceTab) {
     mobilePreviousWorkspaceTab.value = ''
   }
+  warmMobileWorkspacePanel(targetTab)
   viewMode.value = 'workspace'
   showMobileLocationPanel.value = false
   const urlTab = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('tab') : ''
@@ -3930,6 +4068,11 @@ function enterWorkspace(targetTab: (typeof tabs)[number]['key'] = 'summary', opt
     }
     window.history.replaceState({}, '', `${MAIN_APP_PATH}?${params.toString()}`)
   }
+  if (targetTab !== 'trend') {
+    schedulePostRenderRequest(() => {
+      void loadWorkspaceTabAssets(targetTab)
+    }, 120)
+  }
 }
 
 
@@ -3952,15 +4095,15 @@ async function activateTab(tabKey: (typeof tabs)[number]['key']) {
     if (isMobileViewport.value && !selectedIdentityKey.value) {
       void (async () => {
         let mobileTarget = resolveInitialTrendTarget()
-        if (!mobileTarget.identityKey && !marketRows.value.length) {
-          await reloadSummary()
+        if (!mobileTarget.identityKey) {
+          await ensureProductOptionsLoaded()
           if (activationToken !== workspaceTabActivationToken) {
             return
           }
           mobileTarget = resolveInitialTrendTarget()
         }
-        if (!mobileTarget.identityKey) {
-          await ensureProductOptionsLoaded()
+        if (!mobileTarget.identityKey && !marketRows.value.length) {
+          await reloadSummary()
           if (activationToken !== workspaceTabActivationToken) {
             return
           }
@@ -3999,14 +4142,14 @@ async function activateTab(tabKey: (typeof tabs)[number]['key']) {
     }
 
     if (!marketRows.value.length) {
-      await reloadSummary()
+      await ensureProductOptionsLoaded()
       if (activationToken !== workspaceTabActivationToken) {
         return
       }
     }
     let loadedTarget = resolveInitialTrendTarget()
     if (!loadedTarget.identityKey) {
-      await ensureProductOptionsLoaded()
+      await reloadSummary()
       if (activationToken !== workspaceTabActivationToken) {
         return
       }
@@ -4034,6 +4177,7 @@ async function activateTab(tabKey: (typeof tabs)[number]['key']) {
 
 function openMobileCategoryDirectory() {
   mobileHomePanel.value = 'categories'
+  scrollMobileViewportTop()
 }
 
 function toggleMobileLocationPanel() {
@@ -4045,7 +4189,7 @@ function toggleMobileLocationPanel() {
 
 function selectMobileLocation(value: string) {
   if (isAuthScopedLocationLocked.value) {
-    locationSuggestionHint.value = '账号地区已锁定，不能切换到其他市场'
+    locationSuggestionHint.value = '当前账号已绑定地区'
     ElMessage.info(locationSuggestionHint.value)
     return
   }
@@ -4096,9 +4240,6 @@ function readBrowserCoordinates() {
 }
 
 async function fetchAuxiliaryLocationSuggestion() {
-  if (!provinces.value.length || !Object.keys(provinceCityMap.value).length) {
-    await reloadLocations(true)
-  }
   const browserCoordinates = await readBrowserCoordinates()
   return fetchLocationSuggestion(
     browserCoordinates?.latitude,
@@ -4108,7 +4249,7 @@ async function fetchAuxiliaryLocationSuggestion() {
 
 function applyAuxiliaryLocationSuggestion(suggestion: LocationSuggestionResponse) {
   if (isAuthScopedLocationLocked.value) {
-    locationSuggestionHint.value = '账号地区已锁定，辅助定位仅作未登录默认建议'
+    locationSuggestionHint.value = '当前账号已绑定地区'
     return false
   }
   if (!suggestion.matched) {
@@ -4142,7 +4283,7 @@ function applyAuxiliaryLocationSuggestion(suggestion: LocationSuggestionResponse
 async function requestAuxiliaryLocationSuggestion() {
   if (locationSuggestionLoading.value) return
   if (hasLockedAuthScopedLocation()) {
-    locationSuggestionHint.value = '账号地区已锁定，辅助定位仅作未登录默认建议'
+    locationSuggestionHint.value = '当前账号已绑定地区'
     ElMessage.info(locationSuggestionHint.value)
     return
   }
@@ -4183,9 +4324,12 @@ async function applyInitialLocationSuggestion() {
     }
     const suggestionLabel = suggestion.label || selectedLocationLabel.value
     locationSuggestionHint.value = `${suggestion.source_label} · ${suggestionLabel}`
+    if (viewMode.value !== 'workspace') {
+      return
+    }
     if (activeTab.value === 'trend' && selectedIdentityKey.value) {
       await reloadTrend(selectedIdentityKey.value)
-    } else {
+    } else if (shouldReloadSummaryForCurrentView()) {
       await reloadSummary()
     }
   } catch {
@@ -4210,49 +4354,24 @@ async function ensureWorkbenchTrend() {
   if (!trendRows.value.length || productSummary.value?.price_identity_key !== identityKey) {
     await reloadTrend(identityKey)
   }
-  const loadedRows = trendRows.value
-  // 用户或测试显式选择了商品时，不再自动跳到“趋势更丰富”的其它商品。
-  if (trendMode.value === 'cross_market' && loadedRows.length < 2 && !selectedProductTouched.value) {
-    await ensureProductOptionsLoaded()
-    if (isMobileViewport.value) {
-      return
-    }
-    const trendReadyOption = await findTrendReadyProductOption(identityKey)
-    if (trendReadyOption && trendReadyOption.price_identity_key !== selectedIdentityKey.value) {
-      setTrendSelection(trendReadyOption.price_identity_key, trendReadyOption.price_identity_label)
-      await reloadTrend(trendReadyOption.price_identity_key)
-    }
-  }
 }
 
 
 
 async function reloadSummary() {
-  const requestId = ++summaryRequestSequence
-  summaryLoading.value = true
-  summaryBackfillLoading.value = false
+    const requestId = ++summaryRequestSequence
+    summaryLoading.value = true
+    summaryBackfillLoading.value = false
+    summaryCanLoadMore.value = false
+    summaryNextOffset = 0
+    summaryNextPageParams = null
   try {
     pageError.value = ''
-    if (selectedIdentityKey.value && getAccessToken()) {
-      const canonicalIdentityKey = resolveCanonicalIdentityKey(selectedIdentityKey.value)
-      fetchProductSupplierQuotes(canonicalIdentityKey)
-        .then((response) => {
-          if (canonicalIdentityKey === resolveCanonicalIdentityKey(selectedIdentityKey.value)) {
-            productSupplierQuotes.value = response.items ?? []
-          }
-        })
-        .catch(() => {
-          if (canonicalIdentityKey === resolveCanonicalIdentityKey(selectedIdentityKey.value)) {
-            productSupplierQuotes.value = []
-          }
-        })
-    } else {
+    if (!selectedIdentityKey.value) {
       productSupplierQuotes.value = []
+      productSupplierQuotesLoadedIdentityKey = ''
     }
     const params = buildFilterParams()
-    // Start the lightweight product catalog request before the heavier summary request.
-    // This keeps the first screen usable even if /api/market/summary is slow or stalls.
-    void ensureProductOptionsLoaded(true)
     const cachedRows = readSummaryCache(params)
     if (cachedRows?.length) {
 
@@ -4302,41 +4421,20 @@ async function reloadSummary() {
     if (!loadedRows.length && firstItems.length) {
       loadedRows = firstItems
     }
-    if (selectedIdentityKey.value) {
-      try {
-        const canonicalIdentityKey = resolveCanonicalIdentityKey(selectedIdentityKey.value)
-        const trend = await fetchProductTrend(canonicalIdentityKey, { mode: 'cross_market', ...params })
-        const supplierRow = buildSupplierSummaryRowFromTrendRows(
-          trend.items ?? [],
-          canonicalIdentityKey,
-          selectedProductFallbackLabel.value,
-        )
-        if (supplierRow) {
-          loadedRows = [
-            supplierRow,
-            ...loadedRows.filter((row) => !(String(row.source_names || row.lowest_price_site || '').includes('供应平台'))),
-          ]
-        }
-      } catch {
-        // Keep summary usable even if supplier trend backfill fails.
-      }
-    }
     loadedRows = fillSummaryRowImageUrls(loadedRows, productOptions.value)
     marketRows.value = loadedRows
-    if (selectedIdentityKey.value) {
-      void syncSupplierSummaryRow(selectedIdentityKey.value)
-    }
     summaryLoading.value = false
 
-    let hasMore = Boolean(firstSummary.has_more)
-    let nextOffset = Number(firstSummary.next_offset || 0) || Number(firstSummary.offset || 0) + Number(hasMore ? firstSummary.limit || firstItems.length : firstItems.length)
+    const hasMore = Boolean(firstSummary.has_more)
+    summaryNextOffset = Number(firstSummary.next_offset || 0) || Number(firstSummary.offset || 0) + Number(hasMore ? firstSummary.limit || firstItems.length : firstItems.length)
+    summaryNextPageParams = hasMore ? params : null
+    summaryCanLoadMore.value = hasMore && shouldContinueSummaryBackfill(requestId)
     writeSummaryCache(params, marketRows.value)
-    summaryBackfillLoading.value = hasMore
-    void loadRemainingSummaryPages(requestId, params, loadedRows, nextOffset, hasMore)
   } catch (error) {
     if (requestId === summaryRequestSequence) {
       pageError.value = dataSourceState.lastError || '报价接口读取失败，请检查 API 服务'
       summaryBackfillLoading.value = false
+      summaryCanLoadMore.value = false
     }
   } finally {
     if (requestId === summaryRequestSequence) {
@@ -4345,37 +4443,33 @@ async function reloadSummary() {
   }
 }
 
-async function loadRemainingSummaryPages(
-  requestId: number,
-  params: ReturnType<typeof buildFilterParams>,
-  initialRows: MarketSummaryItem[],
-  nextOffset: number,
-  hasMore: boolean,
-) {
-  if (!hasMore) return
-  let loadedRows = [...initialRows]
-  await new Promise((resolve) => window.setTimeout(resolve, 120))
+async function loadNextSummaryPage() {
+  if (summaryBackfillLoading.value || !summaryCanLoadMore.value || !summaryNextPageParams) return
+  const requestId = summaryRequestSequence
+  const params = summaryNextPageParams
+  summaryBackfillLoading.value = true
   try {
-    while (hasMore) {
-      const page = await fetchMarketSummary({
-        ...params,
-        limit: MARKET_SUMMARY_BACKGROUND_LIMIT,
-        offset: nextOffset,
-      })
-      if (requestId !== summaryRequestSequence) return
-      const pageItems = page.items ?? []
-      let pageRows = filterProductMarketSummaryRows(pageItems)
-      if (!pageRows.length && pageItems.length) {
-        pageRows = pageItems
-      }
-      loadedRows = fillSummaryRowImageUrls([...loadedRows, ...pageRows], productOptions.value)
-      marketRows.value = loadedRows.length ? loadedRows : marketRows.value
-      hasMore = Boolean(page.has_more) && pageItems.length > 0
-      nextOffset = Number(page.next_offset || 0) || Number(page.offset || nextOffset) + Number(hasMore ? page.limit || pageItems.length : pageItems.length)
+    if (!shouldContinueSummaryBackfill(requestId)) return
+    const page = await fetchMarketSummary({
+      ...params,
+      limit: MARKET_SUMMARY_BACKGROUND_LIMIT,
+      offset: summaryNextOffset,
+    })
+    if (!shouldContinueSummaryBackfill(requestId)) return
+    const pageItems = page.items ?? []
+    let pageRows = filterProductMarketSummaryRows(pageItems)
+    if (!pageRows.length && pageItems.length) {
+      pageRows = pageItems
     }
+    const loadedRows = fillSummaryRowImageUrls([...marketRows.value, ...pageRows], productOptions.value)
+    marketRows.value = loadedRows.length ? loadedRows : marketRows.value
+    const hasMore = Boolean(page.has_more) && pageItems.length > 0
+    summaryNextOffset = Number(page.next_offset || 0) || Number(page.offset || summaryNextOffset) + Number(hasMore ? page.limit || pageItems.length : pageItems.length)
+    summaryNextPageParams = hasMore ? params : null
+    summaryCanLoadMore.value = hasMore
     writeSummaryCache(params, marketRows.value)
   } catch {
-    // 首屏数据已可用，后台补齐失败时不打断用户查看行情列表。
+    // 首屏数据已可用，后续页加载失败时不打断用户查看行情列表。
   } finally {
     if (requestId === summaryRequestSequence) {
       summaryBackfillLoading.value = false
@@ -4587,9 +4681,7 @@ function startCrawlPolling() {
 
       stopCrawlPolling()
 
-      await reloadAll()
-
-      await ensureProductOptionsLoaded(true)
+      await refreshVisibleWorkspaceAssets()
 
       if (activeTab.value === 'trend') {
         await reloadTrend()
@@ -4642,7 +4734,7 @@ function readSettingsChangeLogs(): SettingsChangeLogItem[] {
 }
 
 function appendSettingsChangeLog(action_type: SettingsChangeLogItem['action_type'], target_name: string, summary: string) {
-  const actor_name = authSession.value?.user.display_name || authSession.value?.user.username || '当前用户'
+  const actor_name = authSession.value?.user?.display_name || authSession.value?.user?.username || '当前用户'
   const nextItem: SettingsChangeLogItem = {
     id: `${action_type}-${Date.now()}`,
     changed_at: new Date().toISOString(),
@@ -4786,36 +4878,6 @@ function marketSummaryRowsFromProductOptions(options: ProductOptionItem[]): Mark
   })) as MarketSummaryItem[]
 }
 
-function buildSupplierSummaryRowFromTrendRows(
-  rows: ProductTrendRow[],
-  identityKey: string,
-  fallbackLabel: string,
-): MarketSummaryItem | null {
-  const supplierRows = (rows || []).filter((item) => String(item.source_name || '').includes('供应平台') && item.current_price != null)
-  if (!supplierRows.length) return null
-  const lowest = [...supplierRows].sort((left, right) => Number(left.current_price) - Number(right.current_price))[0]
-  const productLabel = lowest.price_identity_label || fallbackLabel || identityKey
-  return {
-    product_name: productLabel,
-    price_identity_key: identityKey,
-    group_name: productLabel,
-    category: lowest.liancai_top_category || lowest.category || '供应商报价',
-    liancai_top_category: lowest.liancai_top_category || lowest.category || '供应商报价',
-    liancai_subcategory: lowest.liancai_subcategory || lowest.category || '供应商报价',
-    average_price: Number(lowest.current_price),
-    lowest_price: Number(lowest.current_price),
-    highest_price: Number(lowest.current_price),
-    market_count: supplierRows.length,
-    site_count: supplierRows.length,
-    lowest_price_site: '供应平台',
-    highest_price_site: '供应平台',
-    source_names: '供应平台',
-    source_display_names: supplierRows.map((item) => item.site_name).filter(Boolean).join('、') || '供应平台',
-    latest_captured_at: lowest.captured_at || null,
-    price_unit_basis: lowest.spec_text || '公斤',
-  }
-}
-
 const activeSupplierSummaryRow = computed<MarketSummaryItem | null>(() => {
   if (!selectedIdentityKey.value) return null
   const supplierTrendRows = trendRows.value.filter((item) => String(item.source_name || '').includes('供应平台') && item.current_price != null)
@@ -4868,25 +4930,6 @@ const activeSupplierSummaryRow = computed<MarketSummaryItem | null>(() => {
   }
 })
 
-
-async function syncSupplierSummaryRow(identityKey: string) {
-  const canonicalIdentityKey = resolveCanonicalIdentityKey(identityKey)
-  if (!canonicalIdentityKey) return
-  try {
-    const trend = await fetchProductTrend(canonicalIdentityKey, { mode: 'cross_market', ...buildFilterParams() })
-    const supplierRow = buildSupplierSummaryRowFromTrendRows(
-      trend.items ?? [],
-      canonicalIdentityKey,
-      selectedProductFallbackLabel.value,
-    )
-    marketRows.value = marketRows.value.filter((row) => !String(row.source_names || row.lowest_price_site || '').includes('供应平台'))
-    if (supplierRow) {
-      marketRows.value = [supplierRow, ...marketRows.value]
-    }
-  } catch {
-    // Ignore supplier summary sync failure and keep market rows visible.
-  }
-}
 
 async function searchMobileTrendProducts(query = '') {
   if (!isMobileViewport.value) return
@@ -4960,34 +5003,41 @@ async function ensureProductOptionsLoaded(force = false) {
       if (trendDeepLinkTarget) {
         const matchedDeepLink = selectableCachedOptions.find((item) => item.price_identity_key === trendDeepLinkTarget || item.price_identity_label === trendDeepLinkTarget)
         if (matchedDeepLink) {
-          selectedIdentityKey.value = matchedDeepLink.price_identity_key
-          selectedProductFallbackLabel.value = matchedDeepLink.price_identity_label || trendDeepLinkLabel || selectedProductFallbackLabel.value
+          if (activeTab.value === 'trend') {
+            setTrendSelection(matchedDeepLink.price_identity_key, matchedDeepLink.price_identity_label || trendDeepLinkLabel || selectedProductFallbackLabel.value)
+          } else {
+            selectedIdentityKey.value = matchedDeepLink.price_identity_key
+            selectedProductFallbackLabel.value = matchedDeepLink.price_identity_label || trendDeepLinkLabel || selectedProductFallbackLabel.value
+          }
         }
       } else if (trendDeepLinkLabel) {
         const matchedLabel = selectableCachedOptions.find((item) => item.price_identity_label === trendDeepLinkLabel)
         if (matchedLabel) {
-          selectedIdentityKey.value = matchedLabel.price_identity_key
-          selectedProductFallbackLabel.value = matchedLabel.price_identity_label || selectedProductFallbackLabel.value
+          if (activeTab.value === 'trend') {
+            setTrendSelection(matchedLabel.price_identity_key, matchedLabel.price_identity_label || selectedProductFallbackLabel.value)
+          } else {
+            selectedIdentityKey.value = matchedLabel.price_identity_key
+            selectedProductFallbackLabel.value = matchedLabel.price_identity_label || selectedProductFallbackLabel.value
+          }
         }
       }
       if (!selectedIdentityKey.value && shouldAutoSelectProductOption()) {
         const preferredOption = pickPreferredProductOption(selectableCachedOptions)
-        selectedIdentityKey.value = preferredOption?.price_identity_key || ''
-        selectedProductFallbackLabel.value = preferredOption?.price_identity_label || ''
+        if (activeTab.value === 'trend' && preferredOption?.price_identity_key) {
+          setTrendSelection(preferredOption.price_identity_key, preferredOption.price_identity_label || '')
+        } else {
+          selectedIdentityKey.value = preferredOption?.price_identity_key || ''
+          selectedProductFallbackLabel.value = preferredOption?.price_identity_label || ''
+        }
       }
-      void prefetchTopTrendSnapshots(contextKey)
       return
     }
   }
   if (!force && productOptionsContextKey.value === contextKey && productOptions.value.length) {
-    void prefetchTopTrendSnapshots(contextKey)
     return
   }
   if (productOptionsPromise && productOptionsLoading.value && productOptionsPromiseContextKey === contextKey) {
     await productOptionsPromise
-
-    void prefetchTopTrendSnapshots(contextKey)
-
     return
 
   }
@@ -5021,12 +5071,20 @@ async function ensureProductOptionsLoaded(force = false) {
       writeLocalCache(PRODUCT_OPTIONS_CACHE_KEY, contextKey, productOptions.value)
       if (!selectedIdentityKey.value && shouldAutoSelectProductOption() && productOptions.value.length) {
         const preferredOption = pickPreferredProductOption(productOptions.value)
-        selectedIdentityKey.value = preferredOption?.price_identity_key || ''
-        selectedProductFallbackLabel.value = preferredOption?.price_identity_label || ''
+        if (activeTab.value === 'trend' && preferredOption?.price_identity_key) {
+          setTrendSelection(preferredOption.price_identity_key, preferredOption.price_identity_label || '')
+        } else {
+          selectedIdentityKey.value = preferredOption?.price_identity_key || ''
+          selectedProductFallbackLabel.value = preferredOption?.price_identity_label || ''
+        }
       } else if (selectedIdentityKey.value && !productOptions.value.some((item) => item.price_identity_key === selectedIdentityKey.value)) {
         const preferredOption = pickPreferredProductOption(productOptions.value)
-        selectedIdentityKey.value = preferredOption?.price_identity_key || ''
-        selectedProductFallbackLabel.value = preferredOption?.price_identity_label || ''
+        if (activeTab.value === 'trend' && preferredOption?.price_identity_key) {
+          setTrendSelection(preferredOption.price_identity_key, preferredOption.price_identity_label || '')
+        } else {
+          selectedIdentityKey.value = preferredOption?.price_identity_key || ''
+          selectedProductFallbackLabel.value = preferredOption?.price_identity_label || ''
+        }
         selectedSiteName.value = ''
       }
     } catch (error) {
@@ -5061,41 +5119,221 @@ async function ensureProductOptionsLoaded(force = false) {
 
   await loadPromise
 
-  if (requestId === productOptionsLoadSequence && contextKey === buildContextKey(buildFilterParams())) {
-    void prefetchTopTrendSnapshots(contextKey)
-  }
-
 }
 
 
 
-async function reloadAll() {
+function shouldReloadSummaryForCurrentView() {
+  if (viewMode.value !== 'workspace') return false
+  if (isMobileViewport.value) return activeTab.value === 'summary'
+  return activeWorkbenchSection.value === 'summary'
+}
+
+function shouldContinueSummaryBackfill(requestId: number) {
+  return requestId === summaryRequestSequence && shouldReloadSummaryForCurrentView()
+}
+
+async function refreshVisibleWorkspaceAssets() {
   if (workbenchRefreshing.value) return
   workbenchRefreshing.value = true
   try {
-    await reloadSummary()
-    void Promise.allSettled([
-      ensureProductOptionsLoaded(true),
-      reloadSalesAssets(),
-      reloadSupplierOverview(),
-      reloadSourceCoverage(),
-      reloadLiancaiCategorySummary(),
-      reloadCrawlStatus(),
-      reloadGlobalAlertRules(),
-    ]).then(async () => {
-      if (!marketRows.value.length) {
-        await reloadSummary()
-      }
+    const needsSummaryRows = shouldReloadSummaryForCurrentView()
+    if (needsSummaryRows) {
+      await reloadSummary()
+    }
+    loadedWorkspaceTabs.delete(activeTab.value)
+    loadedWorkbenchSections.delete(activeWorkbenchSection.value)
+    productSupplierQuotesLoadedIdentityKey = ''
+    await Promise.allSettled([
+      loadWorkspaceTabAssets(activeTab.value),
+      loadWorkbenchSectionAssets(activeWorkbenchSection.value),
+    ])
+    if (activeTab.value === 'trend') {
       if (selectedIdentityKey.value) {
         await reloadTrend(selectedIdentityKey.value)
+      } else {
+        await ensureWorkbenchTrend()
       }
-    })
-    if (!marketRows.value.length) {
-      void reloadSummary()
+    }
+    if (needsSummaryRows && !marketRows.value.length) {
+      await reloadSummary()
     }
   } finally {
     workbenchRefreshing.value = false
   }
+}
+
+async function loadWorkspaceTabAssets(tabKey: (typeof tabs)[number]['key']) {
+  if (loadedWorkspaceTabs.has(tabKey)) return
+  loadedWorkspaceTabs.add(tabKey)
+
+  if (tabKey === 'signals') {
+    await reloadSalesAssets()
+    return
+  }
+
+  if (tabKey === 'alerts') {
+    await reloadGlobalAlertRules()
+    return
+  }
+
+  if (tabKey === 'menu') {
+    if (isMobileViewport.value) {
+      return
+    }
+    await reloadSalesAssets()
+    return
+  }
+
+  if (tabKey === 'trend') {
+    await ensureProductOptionsLoaded()
+    return
+  }
+
+  if (tabKey === 'summary' && isMobileViewport.value) {
+    if (!marketRows.value.length && !summaryLoading.value) {
+      void reloadSummary()
+    }
+    if (!marketRows.value.length && summaryLoading.value) {
+      await new Promise((resolve) => window.setTimeout(resolve, MOBILE_SUMMARY_FALLBACK_WAIT_MS))
+    }
+    if (!marketRows.value.length) {
+      await ensureProductOptionsLoaded()
+    }
+    return
+  }
+
+  return
+}
+
+async function loadWorkbenchSectionAssets(sectionId: SectionId) {
+  activeWorkbenchSection.value = sectionId
+  if (loadedWorkbenchSections.has(sectionId)) return
+  loadedWorkbenchSections.add(sectionId)
+
+  if (sectionId === 'market') {
+    await Promise.allSettled([
+      reloadSourceCoverage(),
+      reloadLiancaiCategorySummary(),
+      reloadCrawlStatus(),
+    ])
+    return
+  }
+
+  if (sectionId === 'suppliers') {
+    await reloadSupplierOverview()
+    return
+  }
+
+  if (sectionId === 'quotes') {
+    await Promise.allSettled([
+      reloadSupplierOverview(),
+      loadCurrentProductSupplierQuotes(),
+    ])
+    return
+  }
+
+  if (sectionId === 'purchase') {
+    await Promise.allSettled([
+      reloadSalesAssets(),
+      loadCurrentProductSupplierQuotes(),
+    ])
+    return
+  }
+
+  if (sectionId === 'reports') {
+    await reloadSalesAssets()
+    return
+  }
+
+  if (sectionId === 'settings') {
+    await Promise.allSettled([
+      reloadSourceCoverage(),
+      reloadCrawlStatus(),
+      reloadGlobalAlertRules(),
+    ])
+    if (crawlStatus.value?.is_running) {
+      startCrawlPolling()
+    }
+    return
+  }
+
+  if (sectionId === 'alerts') {
+    await loadWorkspaceTabAssets('alerts')
+    return
+  }
+
+  if (sectionId === 'trend') {
+    await Promise.allSettled([
+      loadWorkspaceTabAssets('trend'),
+      loadCurrentProductSupplierQuotes(),
+    ])
+    return
+  }
+
+  if (sectionId === 'plan') {
+    await loadWorkspaceTabAssets('menu')
+    return
+  }
+
+  if (sectionId === 'summary') {
+    return
+  }
+}
+
+async function loadCurrentProductSupplierQuotes() {
+  const identityKey = resolveCanonicalIdentityKey(selectedIdentityKey.value)
+  if (!identityKey || !getAccessToken()) {
+    productSupplierQuotes.value = []
+    productSupplierQuotesPromise = null
+    productSupplierQuotesPromiseIdentityKey = ''
+    productSupplierQuotesLoadedIdentityKey = ''
+    return
+  }
+  if (productSupplierQuotesLoadedIdentityKey === identityKey) return
+  if (productSupplierQuotesPromise && productSupplierQuotesPromiseIdentityKey === identityKey) {
+    await productSupplierQuotesPromise
+    return
+  }
+
+  productSupplierQuotesPromiseIdentityKey = identityKey
+  productSupplierQuotesPromise = (async () => {
+    try {
+      const response = await fetchProductSupplierQuotes(identityKey)
+      if (identityKey === resolveCanonicalIdentityKey(selectedIdentityKey.value)) {
+        productSupplierQuotes.value = response.items ?? []
+        productSupplierQuotesLoadedIdentityKey = identityKey
+      }
+    } catch {
+      if (identityKey === resolveCanonicalIdentityKey(selectedIdentityKey.value)) {
+        productSupplierQuotes.value = []
+        productSupplierQuotesLoadedIdentityKey = ''
+      }
+    } finally {
+      if (productSupplierQuotesPromiseIdentityKey === identityKey) {
+        productSupplierQuotesPromise = null
+        productSupplierQuotesPromiseIdentityKey = ''
+      }
+    }
+  })()
+
+  await productSupplierQuotesPromise
+}
+
+function handleWorkbenchSectionChange(sectionId: SectionId) {
+  activeWorkbenchSection.value = sectionId
+  schedulePostRenderRequest(() => {
+    void loadWorkbenchSectionAssets(sectionId)
+  }, 120)
+}
+
+function refreshLazyWorkspaceAssets(tabKey: (typeof tabs)[number]['key'], sectionId: SectionId) {
+  loadedWorkspaceTabs.delete(tabKey)
+  loadedWorkbenchSections.delete(sectionId)
+  schedulePostRenderRequest(() => {
+    void loadWorkspaceTabAssets(tabKey)
+    void loadWorkbenchSectionAssets(sectionId)
+  })
 }
 
 
@@ -5288,22 +5526,6 @@ async function reloadTrend(identityKeyOverride?: string) {
 
     const filterParams = buildFilterParams()
 
-    if (getAccessToken()) {
-      fetchProductSupplierQuotes(identityKey)
-        .then((response) => {
-          if (identityKey === resolveCanonicalIdentityKey(selectedIdentityKey.value)) {
-            productSupplierQuotes.value = response.items ?? []
-          }
-        })
-        .catch(() => {
-          if (identityKey === resolveCanonicalIdentityKey(selectedIdentityKey.value)) {
-            productSupplierQuotes.value = []
-          }
-        })
-    } else {
-      productSupplierQuotes.value = []
-    }
-
     const summaryRequest = fetchProductSummary(identityKey, filterParams)
       .then((summary) => {
         if (requestId !== trendRequestSequence || identityKey !== selectedIdentityKey.value) {
@@ -5430,236 +5652,6 @@ async function reloadTrend(identityKeyOverride?: string) {
     }
 
   }
-
-}
-
-
-
-async function prefetchTrendSnapshot(identityKey: string) {
-
-  if (!identityKey) return
-
-  const summaryCacheKey = normalizeIdentityCacheKey(identityKey)
-
-  const trendCacheKey = buildTrendRequestKey(normalizeIdentityCacheKey(identityKey), 'cross_market')
-
-  const cachedSummary = readLocalCache<Record<string, any>>(PRODUCT_SUMMARY_CACHE_KEY, summaryCacheKey)
-
-  const cachedTrend = readLocalCache<ProductTrendRow[]>(PRODUCT_TREND_CACHE_KEY, trendCacheKey)
-
-  if (cachedSummary && cachedTrend?.length) {
-
-    return
-
-  }
-
-  try {
-
-    const [summary, trend] = await Promise.all([
-
-      cachedSummary ? Promise.resolve({ item: cachedSummary }) : fetchProductSummary(identityKey, buildFilterParams()),
-
-      cachedTrend?.length ? Promise.resolve({ items: cachedTrend }) : fetchProductTrend(identityKey, { mode: 'cross_market', ...buildFilterParams() }),
-
-    ])
-
-    if (summary.item) {
-
-      writeLocalCache(PRODUCT_SUMMARY_CACHE_KEY, summaryCacheKey, summary.item)
-
-    }
-
-    if (trend.items?.length) {
-
-      writeLocalCache(PRODUCT_TREND_CACHE_KEY, trendCacheKey, trend.items)
-
-    }
-
-  } catch {
-
-    // Ignore prefetch failures and keep interactive fetch as fallback.
-
-  }
-
-}
-
-
-
-async function findTrendReadyProductOption(currentIdentityKey: string) {
-
-  const contextParams = buildFilterParams()
-
-  const trendSeedKeywords = ['三黄鸡', '鸡', '肉', '鱼', '虾', '菜', '蛋', '豆油', '大米', '土豆']
-
-  const getTrendCandidateScore = (item: ProductOptionItem) => {
-
-    const label = `${item.price_identity_label || ''} ${item.price_identity_key || ''}`
-
-    const cachedTrend = readLocalCache<ProductTrendRow[]>(
-
-      PRODUCT_TREND_CACHE_KEY,
-
-      buildTrendRequestKey(item.price_identity_key, 'cross_market'),
-
-    )
-
-    if (cachedTrend?.length) return 0
-
-    if (item.price_identity_key === currentIdentityKey) return 1
-
-    if (label.includes('三黄鸡')) return 2
-
-    if (trendSeedKeywords.some((keyword) => label.includes(keyword)) && Number(item.site_count || 0) > 1) return 3
-
-    if (trendSeedKeywords.some((keyword) => label.includes(keyword))) return 4
-
-    if (Number(item.site_count || 0) > 1) return 5
-
-    return 6
-
-  }
-
-  const candidates = [
-
-    ...productOptions.value.filter((item) => item.price_identity_key === currentIdentityKey),
-
-    ...productOptions.value.filter((item) => Number(item.site_count || 0) > 1 && item.price_identity_key !== currentIdentityKey),
-
-    ...productOptions.value.filter((item) => item.price_identity_key !== currentIdentityKey),
-
-  ]
-
-  const uniqueCandidates = Array.from(
-
-    new Map(candidates.map((item) => [item.price_identity_key, item])).values(),
-
-  )
-
-    .sort((left, right) => {
-
-      const scoreDiff = getTrendCandidateScore(left) - getTrendCandidateScore(right)
-
-      if (scoreDiff) return scoreDiff
-
-      return Number(right.site_count || 0) - Number(left.site_count || 0)
-
-    })
-
-    .slice(0, 60)
-
-
-
-  for (const option of uniqueCandidates) {
-
-    const identityKey = option.price_identity_key
-
-    if (!identityKey) continue
-
-    const trendCacheKey = buildTrendRequestKey(normalizeIdentityCacheKey(identityKey), 'cross_market')
-
-    const cachedTrend = readLocalCache<ProductTrendRow[]>(PRODUCT_TREND_CACHE_KEY, trendCacheKey)
-
-    if (cachedTrend?.length) {
-
-      return option
-
-    }
-
-    try {
-
-      const trend = await fetchProductTrend(identityKey, { mode: 'cross_market', ...contextParams })
-
-      const rows = trend.items ?? []
-
-      if (rows.length) {
-
-        writeLocalCache(PRODUCT_TREND_CACHE_KEY, trendCacheKey, rows)
-
-        return option
-
-      }
-
-    } catch {
-
-      // Continue scanning other real products; the active product can still fall back to its current行情快照.
-
-    }
-
-  }
-
-  return null
-
-}
-
-
-
-async function prefetchTopTrendSnapshots(contextKey: string) {
-  if (isMobileViewport.value) return
-  if (!productOptions.value.length) return
-  if (activeTab.value !== 'trend' || selectedIdentityKey.value) return
-  trendPrefetchContextKey = contextKey
-  const keys = productOptions.value
-    .slice(0, 3)
-    .map((item) => item.price_identity_key)
-
-    .filter(Boolean)
-
-  await runPrefetchQueue(keys, contextKey)
-
-}
-
-
-
-async function prefetchNearbyTrendSnapshots(identityKey: string) {
-  if (isMobileViewport.value) return
-  if (!identityKey || !productOptions.value.length) return
-  if (trendLoading.value) return
-  const contextKey = buildContextKey(buildFilterParams())
-  const currentIndex = productOptions.value.findIndex((item) => item.price_identity_key === identityKey)
-  if (currentIndex < 0) return
-  const keys = productOptions.value
-    .slice(Math.max(0, currentIndex - 1), currentIndex + 2)
-    .map((item) => item.price_identity_key)
-    .filter((item) => item !== identityKey)
-    .filter(Boolean)
-  await runPrefetchQueue(keys, contextKey)
-}
-
-
-async function runPrefetchQueue(identityKeys: string[], contextKey: string) {
-
-  const uniqueKeys = Array.from(new Set(identityKeys.filter(Boolean)))
-
-  if (!uniqueKeys.length) return
-
-  trendPrefetchContextKey = contextKey
-
-  const concurrency = 1
-  let cursor = 0
-
-  await Promise.all(
-
-    Array.from({ length: concurrency }, async () => {
-
-      while (cursor < uniqueKeys.length) {
-
-        if (trendPrefetchContextKey !== contextKey) {
-
-          return
-
-        }
-
-        const key = uniqueKeys[cursor]
-
-        cursor += 1
-
-        await getPrefetchSnapshotQueue(key)
-
-      }
-
-    }),
-
-  )
 
 }
 
@@ -5801,24 +5793,34 @@ watch([() => filters.province, () => filters.city], async () => {
 
   trendLoading.value = false
 
-  trendPrefetchContextKey = ''
-
   await nextTick()
   if (reloadId !== locationFilterReloadSequence) return
 
   if (isMobileViewport.value) {
-    await reloadSummary()
-    if (reloadId !== locationFilterReloadSequence) return
-    void Promise.allSettled([
-      ensureProductOptionsLoaded(true),
-      reloadSalesAssets(),
-      reloadLiancaiCategorySummary(),
-      reloadCrawlStatus(),
-    ])
+    if (shouldReloadSummaryForCurrentView()) {
+      await reloadSummary()
+      if (reloadId !== locationFilterReloadSequence) return
+    }
+    loadedWorkspaceTabs.delete(activeTab.value)
+    if (viewMode.value === 'workspace') {
+      schedulePostRenderRequest(() => {
+        void loadWorkspaceTabAssets(activeTab.value)
+      })
+    }
     return
   }
 
-  await reloadAll()
+  await reloadSummary()
+  if (reloadId !== locationFilterReloadSequence) return
+  loadedWorkspaceTabs.delete(activeTab.value)
+  loadedWorkbenchSections.delete(activeWorkbenchSection.value)
+  if (activeTab.value === 'trend') {
+    void activateTab('trend')
+  }
+  schedulePostRenderRequest(() => {
+    void loadWorkspaceTabAssets(activeTab.value)
+    void loadWorkbenchSectionAssets(activeWorkbenchSection.value)
+  })
 
 })
 
@@ -5828,7 +5830,12 @@ watch(() => selectedCategorySourceName.value, () => {
 
   activeMarketCategory.value = '全部'
 
-  void reloadLiancaiCategorySummary()
+  loadedWorkbenchSections.delete('market')
+  if (activeWorkbenchSection.value === 'market') {
+    schedulePostRenderRequest(() => {
+      void reloadLiancaiCategorySummary()
+    }, 180)
+  }
 
 })
 
@@ -5841,15 +5848,17 @@ watch(() => filters.province, async (province) => {
     mobileLocationPreset.value = 'henan'
   }
 
-  if (province && !(provinceCityMap.value[province] || []).length) {
+  if (province && showMobileLocationPanel.value && !(provinceCityMap.value[province] || []).length) {
 
     await reloadLocations(true)
 
   }
 
+  const hasLocationOptions = Boolean(provinces.value.length || cities.value.length || Object.keys(provinceCityMap.value).length)
+
   const availableCities = province ? (provinceCityMap.value[province] || []) : cities.value
 
-  if (filters.city && !availableCities.includes(filters.city)) {
+  if (filters.city && hasLocationOptions && availableCities.length && !availableCities.includes(filters.city)) {
 
     filters.city = ''
 
@@ -5859,7 +5868,7 @@ watch(() => filters.province, async (province) => {
 
   const locationCandidates = new Set<string>(['当前位置', ...availableCities, ...provinces.value])
 
-  if (menuForm.preferredLocation && !locationCandidates.has(menuForm.preferredLocation)) {
+  if (menuForm.preferredLocation && hasLocationOptions && !locationCandidates.has(menuForm.preferredLocation)) {
 
     menuForm.preferredLocation = ''
 
@@ -5882,24 +5891,35 @@ watch([selectedIdentityKey, trendMode, selectedSiteName], async ([identityKey, m
 })
 
 watch(selectedIdentityKey, async (identityKey, prevIdentityKey) => {
-  if (activeTab.value !== 'summary') return
   if (!identityKey || identityKey === prevIdentityKey) return
-  await syncSupplierSummaryRow(identityKey)
+  if (activeWorkbenchSection.value !== 'trend' && activeWorkbenchSection.value !== 'quotes' && activeWorkbenchSection.value !== 'purchase') return
+  await loadCurrentProductSupplierQuotes()
 })
 
-
 onMounted(async () => {
-  warmMobileWorkspacePanels()
   if (shouldRedirectToStandaloneSupplier) {
     openSupplierBackend()
     return
   }
-  const isMobileLanding = isMobileViewport.value && viewMode.value === 'landing'
-  const authSessionRestore = restoreAuthSession()
-  const eagerLocationLoad = reloadLocations()
-  void Promise.allSettled([authSessionRestore, eagerLocationLoad]).then(() => {
-    void applyInitialLocationSuggestion()
-  })
+  await restoreAuthSession()
+  if (viewMode.value === 'landing') {
+    syncMobileAlertDraftFromSelection()
+    schedulePostRenderRequest(() => {
+      void applyInitialLocationSuggestion()
+    }, 180)
+    return
+  }
+  warmMobileWorkspacePanel()
+  if (isMobileViewport.value) {
+    schedulePostRenderRequest(() => {
+      void applyInitialLocationSuggestion()
+    }, 180)
+  } else {
+    const eagerLocationLoad = reloadLocations()
+    void Promise.allSettled([eagerLocationLoad]).then(() => {
+      void applyInitialLocationSuggestion()
+    })
+  }
   if (activeTab.value === 'trend') {
     if (trendDeepLinkLabel || trendDeepLinkTarget) {
       await ensureProductOptionsLoaded()
@@ -5908,36 +5928,20 @@ onMounted(async () => {
       void ensureProductOptionsLoaded()
     }
     await activateTab('trend')
-    await Promise.all([
-      marketRows.value.length ? Promise.resolve() : reloadSummary(),
-      eagerLocationLoad,
-      reloadSalesAssets(),
-      reloadSupplierOverview(),
-      reloadSourceCoverage(),
-      reloadLiancaiCategorySummary(),
-      reloadCrawlStatus(),
-    ])
+    schedulePostRenderRequest(() => {
+      void loadWorkspaceTabAssets('trend')
+      void loadWorkbenchSectionAssets(activeWorkbenchSection.value)
+    })
   } else {
-    const initialSummaryLoad = reloadSummary()
-    if (!isMobileViewport.value) {
+    const shouldLoadInitialSummary = shouldReloadSummaryForCurrentView()
+    const initialSummaryLoad = shouldLoadInitialSummary ? reloadSummary() : Promise.resolve()
+    if (shouldLoadInitialSummary && !isMobileViewport.value) {
       await initialSummaryLoad
     }
-    void Promise.allSettled([
-      ensureProductOptionsLoaded(),
-      eagerLocationLoad,
-      ...(isMobileLanding ? [] : [reloadSalesAssets()]),
-      reloadSupplierOverview(),
-      reloadSourceCoverage(),
-      reloadLiancaiCategorySummary(),
-      reloadCrawlStatus(),
-    ]).then(() => {
-      if (crawlStatus.value?.is_running) {
-        startCrawlPolling()
-      }
-      if (isMobileLanding) return
-      const identityKey = selectedIdentityKey.value || pickPreferredProductOption(productOptions.value)?.price_identity_key || ''
-      if (identityKey && activeTab.value !== 'trend') {
-        void prefetchTrendSnapshot(identityKey)
+    schedulePostRenderRequest(() => {
+      void loadWorkspaceTabAssets(activeTab.value)
+      if (!isMobileViewport.value) {
+        void loadWorkbenchSectionAssets(activeWorkbenchSection.value)
       }
     })
   }
@@ -5954,6 +5958,10 @@ onBeforeUnmount(() => {
   if (mobileRouteFeedbackTimer) {
     window.clearTimeout(mobileRouteFeedbackTimer)
     mobileRouteFeedbackTimer = undefined
+  }
+  if (mobileNavigationUnlockTimer) {
+    window.clearTimeout(mobileNavigationUnlockTimer)
+    mobileNavigationUnlockTimer = undefined
   }
 
 })
@@ -8720,7 +8728,7 @@ onBeforeUnmount(() => {
 
 .market-mobile-alert-pills span {
   margin-top: 5px;
-  color: #64748b;
+  color: currentColor;
   font-size: 10px;
   font-weight: 700;
 }
@@ -8809,6 +8817,31 @@ onBeforeUnmount(() => {
   gap: 14px;
 }
 
+.market-auth-mobile-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 2400;
+  display: grid;
+  align-items: end;
+}
+
+.market-auth-mobile-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, .42);
+}
+
+.market-auth-mobile-sheet {
+  position: relative;
+  width: min(100%, 420px);
+  margin: 0 auto;
+  padding: 18px 16px calc(18px + env(safe-area-inset-bottom, 0px));
+  border: 1px solid rgba(216, 231, 221, .9);
+  border-radius: 22px 22px 0 0;
+  background: #ffffff;
+  box-shadow: 0 -18px 46px rgba(20, 37, 30, .18);
+}
+
 .market-auth-switch {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -8856,6 +8889,31 @@ onBeforeUnmount(() => {
   outline: none;
   border-color: #93c5fd;
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+.market-auth-password-field {
+  position: relative;
+  display: block;
+}
+
+.market-auth-password-field input {
+  width: 100%;
+  padding-right: 64px;
+}
+
+.market-auth-password-field button {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  min-height: 30px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 10px;
+  background: #eef6f1;
+  color: #176a51;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .market-auth-error {
@@ -9391,11 +9449,45 @@ onBeforeUnmount(() => {
 
 }
 
+.market-mobile-nav-icon.buy::before {
+
+  left: 3px;
+
+  top: 6px;
+
+  width: 12px;
+
+  height: 9px;
+
+  border: 1.8px solid currentColor;
+
+  border-radius: 2px 2px 4px 4px;
+
+}
+
+.market-mobile-nav-icon.buy::after {
+
+  left: 5px;
+
+  top: 3px;
+
+  width: 8px;
+
+  height: 6px;
+
+  border: 1.8px solid currentColor;
+
+  border-bottom: 0;
+
+  border-radius: 6px 6px 0 0;
+
+}
+
 
 
 .market-mobile-bottom-item.active .market-mobile-nav-icon {
 
-  color: #eff6ff;
+  color: currentColor;
 
 }
 
@@ -10701,914 +10793,59 @@ onBeforeUnmount(() => {
   to { transform: rotate(360deg); }
 }
 
-/* Mobile Experience v2: rebuild the phone flow as a procurement-first app. */
+/* Mobile Experience v4: align phone UI with the light PC login/workbench style. */
+.mobile-redesign-home,
+.mobile-redesign-workspace {
+  --phone-bg: #f5fbf7;
+  --phone-ink: #14251e;
+  --phone-muted: #5f756b;
+  --phone-line: #d8e7dd;
+  --phone-card: #ffffff;
+  --phone-green: #1f8b68;
+  --phone-green-dark: #176a51;
+  --phone-soft-green: #e8f6ef;
+  --phone-red: #c94336;
+  --phone-orange: #b86b2c;
+  --phone-lime: #e8f6ef;
+  background: linear-gradient(135deg, #f5fbf7 0%, #eef8f2 48%, #f9fbf4 100%);
+  color: var(--phone-ink);
+}
+
 .mobile-redesign-home {
-  display: grid;
-  gap: 10px;
-  min-height: 100dvh;
-  padding: 10px 10px calc(112px + env(safe-area-inset-bottom, 0px));
-  background:
-    radial-gradient(circle at 18% 0%, rgba(37, 99, 235, .08), transparent 26%),
-    linear-gradient(180deg, #f4f7fb 0%, #f8fafc 36%, #ffffff 100%);
-  color: #0f172a;
+  padding: 10px 10px calc(88px + env(safe-area-inset-bottom, 0px));
 }
 
 .mobile-redesign-hero-card,
-.mobile-redesign-section {
-  border: 1px solid #dbe4ef;
-  border-radius: 18px;
-  background: #ffffff;
-  box-shadow: 0 8px 22px rgba(15, 23, 42, .05);
-}
-
-.mobile-redesign-hero-card {
-  display: grid;
-  gap: 14px;
-  padding: 14px;
-}
-
-.mobile-redesign-topbar,
-.mobile-redesign-section-head,
-.mobile-redesign-search,
-.mobile-redesign-product-card footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.mobile-redesign-topbar {
-  flex-wrap: wrap;
-}
-
-.mobile-redesign-brand {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex: 1 1 100%;
-  min-width: 0;
-}
-
-.mobile-redesign-top-actions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.mobile-redesign-location-panel {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-  padding: 8px;
-  border: 1px solid #dbe4ef;
-  border-radius: 14px;
-  background: #ffffff;
-}
-
-.mobile-redesign-location-panel-head {
-  grid-column: 1 / -1;
-  display: grid;
-  gap: 2px;
-  padding: 2px 2px 6px;
-}
-
-.mobile-redesign-location-panel-head strong {
-  color: #0f172a;
-  font-size: 13px;
-  line-height: 1.2;
-}
-
-.mobile-redesign-location-panel-head span {
-  color: #64748b;
-  font-size: 11px;
-  line-height: 1.35;
-}
-
-.mobile-redesign-location-loading {
-  grid-column: 1 / -1;
-  color: #64748b;
-  font-size: 11px;
-  font-weight: 700;
-  text-align: center;
-}
-
-.mobile-redesign-location-status {
-  display: inline-flex;
-  align-items: center;
-  width: fit-content;
-  max-width: 100%;
-  margin-top: 0;
-  padding: 8px 10px;
-  border: 1px solid #dbe4ef;
-  border-radius: 999px;
-  background: #f8fafc;
-  color: #475569;
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 1.45;
-}
-
-.mobile-redesign-location-panel-empty {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.mobile-redesign-location-panel-empty small {
-  grid-column: 1 / -1;
-  color: #64748b;
-  font-size: 11px;
-  text-align: center;
-}
-
-.mobile-redesign-location-panel-empty .skeleton-pill {
-  display: block;
-  min-height: 38px;
-  border-radius: 12px;
-  background: linear-gradient(90deg, #eef2f7 0%, #f8fafc 50%, #eef2f7 100%);
-  background-size: 200% 100%;
-  animation: mobile-redesign-search-shimmer 1.2s linear infinite;
-}
-
-.mobile-redesign-location-panel button {
-  min-height: 38px;
-  border: 1px solid #dbe4ef;
-  border-radius: 12px;
-  background: #f8fafc;
-  color: #334155;
-  font: inherit;
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.mobile-redesign-location-panel button.active {
-  border-color: #2563eb;
-  background: #eff6ff;
-  color: #1d4ed8;
-}
-
-.mobile-redesign-brand > span {
-  display: grid;
-  place-items: center;
-  width: 38px;
-  height: 38px;
-  border-radius: 12px;
-  background: linear-gradient(135deg, #2563eb, #1d4ed8);
-  color: #fff;
-  font-size: 19px;
-  font-weight: 900;
-  box-shadow: 0 8px 18px rgba(37, 99, 235, .18);
-}
-
-.mobile-redesign-brand strong,
-.mobile-redesign-hero-copy h1,
-.mobile-redesign-section-head h2,
-.mobile-redesign-priority-card strong,
-.mobile-redesign-product-card strong,
-.mobile-redesign-entry-grid strong {
-  color: #071226;
-}
-
-.mobile-redesign-brand strong {
-  display: block;
-  font-size: 16px;
-  line-height: 1.1;
-}
-
-.mobile-redesign-section-note {
-  display: block;
-  margin-top: 4px;
-  color: #64748b;
-  font-size: 11px;
-  line-height: 1.45;
-}
-
-.mobile-redesign-brand small,
-.mobile-redesign-hero-copy small,
-.mobile-redesign-location-status,
-.mobile-redesign-priority-card small,
-.mobile-redesign-product-card span,
-.mobile-redesign-product-card span,
-.mobile-redesign-alert-list span,
-.mobile-redesign-alert-list small,
-.mobile-redesign-source-grid small,
-.mobile-redesign-entry-grid small {
-  color: #64748b;
-}
-
-.mobile-redesign-location,
-.mobile-redesign-location-hint,
-.mobile-redesign-login-button,
-.mobile-redesign-alert-dot,
-.mobile-redesign-search button,
-.mobile-redesign-section-head button {
-  min-height: 40px;
-  border: 1px solid #dbe4ef;
-  border-radius: 12px;
-  font: inherit;
-  font-weight: 800;
-  cursor: pointer;
-}
-
-.mobile-redesign-location {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  max-width: 128px;
-  padding: 0 12px;
-  background: #ffffff;
-  color: #334155;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.mobile-redesign-location-hint {
-  padding: 0 10px;
-  background: #f8fafc;
-  color: #1d4ed8;
-  white-space: nowrap;
-}
-
-.mobile-redesign-location-hint:disabled,
-.mobile-redesign-location-panel button:disabled {
-  opacity: .62;
-  cursor: not-allowed;
-}
-
-.mobile-redesign-location-hint-button {
-  grid-column: 1 / -1;
-  border-color: #bfdbfe !important;
-  background: #eff6ff !important;
-  color: #1d4ed8 !important;
-}
-
-.mobile-redesign-login-button {
-  padding: 0 12px;
-  border-color: #2563eb;
-  background: #eff6ff;
-  color: #1d4ed8;
-}
-
-.mobile-redesign-location i {
-  width: 8px;
-  height: 8px;
-  border-radius: 999px;
-  background: #2563eb;
-  box-shadow: 0 0 0 5px rgba(37, 99, 235, .12);
-}
-
-.mobile-redesign-alert-dot {
-  position: relative;
-  display: grid;
-  place-items: center;
-  width: 40px;
-  flex: 0 0 40px;
-  background: #ffffff;
-  color: #e11d48;
-}
-
-.mobile-redesign-alert-dot::before {
-  content: "";
-  width: 17px;
-  height: 15px;
-  border: 2px solid currentColor;
-  border-radius: 8px;
-}
-
-.mobile-redesign-alert-dot b {
-  position: absolute;
-  top: -5px;
-  right: -4px;
-  display: grid;
-  place-items: center;
-  min-width: 22px;
-  height: 22px;
-  padding: 0 5px;
-  border: 2px solid #fff;
-  border-radius: 999px;
-  background: #ef4444;
-  color: #fff;
-  font-size: 12px;
-}
-
-.mobile-redesign-search {
-  padding: 6px;
-  border-radius: 14px;
-  background: #ffffff;
-  box-shadow: inset 0 0 0 1px #e2e8f0;
-}
-
-.mobile-redesign-search :deep(.el-input__wrapper) {
-  min-height: 40px;
-  border: 0;
-  box-shadow: none !important;
-  background: transparent;
-}
-
-.mobile-redesign-search button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 42px;
-  padding: 0 18px;
-  min-width: 76px;
-  border-color: #2563eb;
-  background: #2563eb;
-  color: #fff;
-  line-height: 1;
-  white-space: nowrap;
-  text-align: center;
-}
-
-.mobile-redesign-search button span {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-}
-
-.mobile-redesign-search.loading {
-  position: relative;
-  overflow: hidden;
-}
-
-.mobile-redesign-search.loading::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(37,99,235,0.08) 50%, rgba(255,255,255,0) 100%);
-  background-size: 200% 100%;
-  animation: mobile-redesign-search-shimmer 1.2s linear infinite;
-  pointer-events: none;
-}
-
-@keyframes mobile-redesign-search-shimmer {
-  0% { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
-}
-
-.mobile-redesign-hero-copy {
-  display: grid;
-  gap: 4px;
-}
-
-.mobile-redesign-hero-copy p,
-.mobile-redesign-section-head p {
-  margin: 0;
-  color: #2563eb;
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: .04em;
-}
-
-.mobile-redesign-hero-copy h1 {
-  margin: 0;
-  max-width: 320px;
-  font-size: clamp(21px, 5.8vw, 25px);
-  line-height: 1.16;
-  letter-spacing: -.03em;
-  font-weight: 800;
-}
-
-.mobile-redesign-auth-panel {
-  display: grid;
-  gap: 12px;
-  padding: 14px;
-  border: 1px solid #dbe4ef;
-  border-radius: 18px;
-  background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
-  box-shadow: 0 8px 22px rgba(15, 23, 42, .04);
-}
-
-.mobile-redesign-auth-panel-copy {
-  display: grid;
-  gap: 4px;
-}
-
-.mobile-redesign-auth-panel-copy strong {
-  color: #071226;
-  font-size: 17px;
-  letter-spacing: -.03em;
-}
-
-.mobile-redesign-auth-panel-copy span {
-  color: #64748b;
-  font-size: 12px;
-  line-height: 1.55;
-}
-
-.mobile-redesign-auth-panel-actions {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.mobile-redesign-auth-panel-actions button {
-  min-height: 42px;
-  border: 1px solid #dbe4ef;
-  border-radius: 14px;
-  background: #ffffff;
-  color: #334155;
-  font: inherit;
-  font-size: 13px;
-  font-weight: 800;
-}
-
-.mobile-redesign-auth-panel-actions button.primary {
-  border-color: #2563eb;
-  background: #2563eb;
-  color: #ffffff;
-}
-
-.mobile-redesign-stat-strip {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.mobile-redesign-stat-strip button,
-.mobile-redesign-priority-card,
+.mobile-redesign-section,
 .mobile-redesign-product-card,
 .mobile-redesign-alert-list button,
 .mobile-redesign-source-grid button,
-.mobile-redesign-entry-grid button {
-  border: 0;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.mobile-redesign-stat-strip button {
-  display: grid;
-  gap: 6px;
-  min-height: 68px;
-  padding: 10px;
-  border: 1px solid #dbe4ef;
-  border-radius: 14px;
-  background: #ffffff;
-}
-
-.mobile-redesign-stat-strip button span {
-  color: #475569;
-  font-size: 10px;
-  font-weight: 800;
-}
-
-.mobile-redesign-stat-strip button strong {
-  color: #0f172a;
-  font-size: 20px;
-  line-height: 1;
-}
-
-.mobile-redesign-stat-strip .danger {
-  border-color: #fecaca;
-  background: linear-gradient(180deg, #fff7f7, #ffffff);
-}
-
-.mobile-redesign-stat-strip .primary {
-  border-color: #bfdbfe;
-  background: linear-gradient(180deg, #f5f9ff, #ffffff);
-}
-
-.mobile-redesign-stat-strip .success {
-  border-color: #bbf7d0;
-  background: linear-gradient(180deg, #f2fbf6, #ffffff);
-}
-
-.mobile-redesign-main {
-  display: grid;
-  gap: 10px;
-}
-
-.mobile-redesign-section {
-  display: grid;
-  gap: 12px;
-  padding: 12px;
-}
-
-.mobile-redesign-section-head h2 {
-  margin: 2px 0 0;
-  font-size: 17px;
-  line-height: 1.2;
-  letter-spacing: -.02em;
-}
-
-.mobile-redesign-section-head button {
-  padding: 0 14px;
-  background: #ffffff;
-  color: #2563eb;
-}
-
-.mobile-redesign-head-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.mobile-redesign-priority-grid {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 0;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  box-shadow: none;
-}
-
-.mobile-redesign-workbench-head {
-  display: grid;
-  gap: 4px;
-  margin-bottom: 10px;
-  padding: 0 4px;
-}
-
-.mobile-redesign-workbench-head p {
-  margin: 0;
-  color: #2563eb;
-  font-size: 12px;
-  font-weight: 900;
-  letter-spacing: .04em;
-}
-
-.mobile-redesign-workbench-head h2 {
-  margin: 0;
-  color: #071226;
-  font-size: 18px;
-  line-height: 1.18;
-  letter-spacing: -.02em;
-}
-
-.mobile-redesign-priority-card {
-  display: grid;
-  gap: 10px;
-  min-height: 96px;
-  padding: 14px;
-  border: 1px solid #dbe4ef;
-  border-radius: 16px;
-  background: #ffffff;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.035);
-}
-
-.mobile-redesign-priority-card p {
-  margin: 0;
-  font-size: 11px;
-  font-weight: 900;
-  letter-spacing: .04em;
-  text-transform: uppercase;
-}
-
-.mobile-redesign-priority-card strong {
-  font-size: 15px;
-  line-height: 1.28;
-  letter-spacing: -.03em;
-}
-
-.mobile-redesign-priority-card small {
-  font-size: 12px;
-  line-height: 1.4;
-}
-
-.mobile-redesign-priority-card.is-alert {
-  border-color: #fed7aa;
-  background: linear-gradient(180deg, #fff8f3, #ffffff);
-}
-
-.mobile-redesign-priority-card.is-alert p {
-  color: #c2410c;
-}
-
-.mobile-redesign-priority-card.is-menu {
-  border-color: #bfdbfe;
-  background: linear-gradient(180deg, #f5f9ff, #ffffff);
-}
-
-.mobile-redesign-priority-card.is-menu p {
-  color: #1d4ed8;
-}
-
-.mobile-redesign-priority-card.is-main {
-  min-height: 104px;
-  border-color: #bfdbfe;
-  background: linear-gradient(180deg, #f7fbff, #ffffff 70%);
-}
-
-.mobile-redesign-priority-card.is-main p {
-  color: #1d4ed8;
-}
-
-.mobile-trend-shortcut.market-mobile-bottom-item {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 52px;
-  width: auto;
-  min-height: 44px;
-  padding: 0 14px;
-  border: 0;
-  border-radius: 999px;
-  background: #f8fafc;
-  color: #475569;
-  box-shadow: inset 0 0 0 1px #dbe4ef;
-  font-size: 13px;
-  font-weight: 900;
-}
-
-.market-mobile-shell-head {
-  grid-template-columns: 44px minmax(0, 1fr) auto 44px;
-  gap: 8px;
-}
-
-.market-mobile-shell-head .mobile-trend-shortcut.market-mobile-bottom-item {
-  min-width: 52px;
-  min-height: 44px;
-  padding-inline: 12px;
-}
-
-.mobile-redesign-alert-list strong {
-  display: block;
-  overflow: hidden;
-  font-size: 15px;
-  line-height: 1.3;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.mobile-redesign-alert-list small {
-  display: -webkit-box;
-  overflow: hidden;
-  margin-top: 3px;
-  font-size: 12px;
-  line-height: 1.35;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-}
-
-.mobile-redesign-product-rail {
-  display: grid;
-  gap: 12px;
-  margin: 0;
-  padding: 0;
-  overflow: visible;
-}
-
-.mobile-redesign-product-rail::-webkit-scrollbar,
-.mobile-redesign-sources::-webkit-scrollbar {
-  display: none;
-}
-
-.mobile-redesign-product-card {
-  display: grid;
-  gap: 10px;
-  min-height: 98px;
-  padding: 12px;
-  border: 1px solid #dbe4ef;
-  border-radius: 16px;
-  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.035);
-}
-
-.mobile-redesign-product-copy {
-  display: grid;
-  gap: 4px;
-}
-
-.mobile-redesign-product-card strong {
-  display: -webkit-box;
-  overflow: hidden;
-  font-size: 14px;
-  line-height: 1.24;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-}
-
-.mobile-redesign-product-copy span {
-  font-size: 12px;
-  font-weight: 800;
-}
-
-.mobile-redesign-product-card b {
-  color: #1d4ed8;
-  font-size: 17px;
-  line-height: 1;
-}
-
-.mobile-redesign-product-card small {
-  font-size: 11px;
-}
-
-.mobile-redesign-product-card em {
-  color: #0f766e;
-  font-size: 12px;
-  font-style: normal;
-  font-weight: 800;
-}
-
-.mobile-redesign-alert-list,
-.mobile-redesign-source-grid,
-.mobile-redesign-directory-grid,
-.mobile-redesign-entry-grid {
-  display: grid;
-  gap: 10px;
-}
-
-.mobile-redesign-alert-list button {
-  display: grid;
-  gap: 4px;
-  min-height: 82px;
-  padding: 12px;
-  border: 1px solid #fed7aa;
-  border-radius: 16px;
-  background: linear-gradient(180deg, #fff8f2, #ffffff);
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
-}
-
-.mobile-redesign-source-grid,
-.mobile-redesign-directory-grid,
-.mobile-redesign-entry-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.mobile-redesign-source-grid button,
 .mobile-redesign-directory-card,
-.mobile-redesign-entry-grid button {
-  display: grid;
-  gap: 6px;
-  min-height: 88px;
-  padding: 12px;
-  border: 1px solid #dbe4ef;
-  border-radius: 16px;
-  background: #ffffff;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
-}
-
-.mobile-redesign-source-grid span,
-.mobile-redesign-directory-card span,
-.mobile-redesign-entry-grid span {
-  color: #2563eb;
-  font-size: 12px;
-  font-weight: 900;
-}
-
-.mobile-redesign-source-grid strong,
-.mobile-redesign-directory-card strong,
-.mobile-redesign-entry-grid strong {
-  display: -webkit-box;
-  overflow: hidden;
-  font-size: 15px;
-  line-height: 1.24;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-}
-
-.mobile-redesign-directory-card small {
-  color: #64748b;
-  font-size: 12px;
-}
-
-.mobile-redesign-empty-card {
-  display: grid;
-  gap: 6px;
-  min-height: 112px;
-  padding: 16px;
-  border: 1px dashed #cbd5e1;
-  border-radius: 16px;
-  background: #f8fafc;
-}
-
-.mobile-redesign-empty-card.compact {
-  min-height: 84px;
-  grid-column: 1 / -1;
-}
-
-.mobile-redesign-nav {
-  left: 0;
-  right: 0;
-  bottom: 0;
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  min-height: 62px;
-  padding: 6px 10px calc(6px + env(safe-area-inset-bottom, 0px));
-  border-top: 1px solid rgba(226, 232, 240, .96);
-  border-left: 0;
-  border-right: 0;
-  border-bottom: 0;
-  border-radius: 0;
-  background: rgba(255, 255, 255, .98);
-  box-shadow: 0 -6px 18px rgba(15, 23, 42, .06);
-  backdrop-filter: blur(14px);
-}
-
-.mobile-redesign-nav .market-mobile-bottom-item {
-  min-height: 44px;
-  border-radius: 10px;
-}
-
-.mobile-redesign-nav .market-mobile-bottom-item.active {
-  background: #2563eb;
-  color: #ffffff;
-  box-shadow: none;
-}
-
-@media (max-width: 374px) {
-  .mobile-redesign-home {
-    padding-inline: 10px;
-  }
-
-  .mobile-redesign-topbar {
-    gap: 8px;
-  }
-
-  .mobile-redesign-location {
-    max-width: 104px;
-  }
-
-  .mobile-redesign-priority-grid,
-  .mobile-redesign-stat-strip {
-    gap: 8px;
-  }
-
-  .mobile-redesign-priority-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
-/* Mobile Experience v3: procurement-first phone UI with clearer touch targets. */
-.mobile-redesign-home,
-.mobile-redesign-workspace {
-  --phone-bg: #f2f6ef;
-  --phone-ink: #182114;
-  --phone-muted: #66735f;
-  --phone-line: rgba(48, 74, 43, .14);
-  --phone-card: rgba(255, 255, 248, .96);
-  --phone-green: #315b2c;
-  --phone-lime: #d8f26a;
-  --phone-orange: #e98332;
-  --phone-red: #d94d36;
-  background:
-    radial-gradient(circle at 15% 2%, rgba(216, 242, 106, .36), transparent 28%),
-    radial-gradient(circle at 85% 8%, rgba(233, 131, 50, .16), transparent 26%),
-    linear-gradient(180deg, #f5f8ef 0%, #edf4e7 48%, #f8f5eb 100%);
-  color: var(--phone-ink);
-}
-
-.mobile-redesign-home {
-  display: block;
-  min-height: 100dvh;
-  padding: 12px 12px calc(92px + env(safe-area-inset-bottom, 0px));
-}
-
-.mobile-redesign-hero-card,
-.mobile-redesign-section {
+.mobile-redesign-entry-grid button,
+.mobile-redesign-workspace .market-mobile-alert-card,
+.mobile-redesign-workspace .market-mobile-alert-hero,
+.mobile-redesign-workspace .market-mobile-menu-intro {
   border: 1px solid var(--phone-line);
-  border-radius: 28px;
+  border-radius: 18px;
   background: var(--phone-card);
-  box-shadow: 0 18px 36px rgba(40, 63, 36, .11);
+  box-shadow: 0 12px 28px rgba(31, 139, 104, .08);
 }
 
 .mobile-redesign-hero-card {
-  position: relative;
-  overflow: hidden;
-  gap: 10px;
-  padding: 14px;
+  padding: 12px;
 }
 
 .mobile-redesign-hero-card::before {
-  content: "";
-  position: absolute;
-  inset: auto -36px -58px auto;
-  width: 148px;
-  height: 148px;
-  border-radius: 999px;
-  background: rgba(216, 242, 106, .5);
-  pointer-events: none;
-}
-
-.mobile-redesign-topbar {
-  position: relative;
-  z-index: 1;
-  flex-wrap: nowrap;
-  align-items: flex-start;
-  gap: 8px;
-}
-
-.mobile-redesign-brand {
-  border: 0;
-  background: transparent;
-  padding: 0;
-  flex: 1 1 116px;
-  text-align: left;
+  display: none;
 }
 
 .mobile-redesign-brand > span {
-  width: 42px;
-  height: 42px;
-  border-radius: 16px;
-  background: #1f3d1f;
-  color: var(--phone-lime);
-  box-shadow: 0 10px 20px rgba(31, 61, 31, .18);
+  width: 40px;
+  height: 40px;
+  border-radius: 13px;
+  background: var(--phone-green);
+  color: #ffffff;
+  box-shadow: 0 8px 18px rgba(31, 139, 104, .18);
 }
 
 .mobile-redesign-brand strong,
@@ -11616,9 +10853,10 @@ onBeforeUnmount(() => {
 .mobile-redesign-section-head h2,
 .mobile-redesign-priority-card strong,
 .mobile-redesign-product-card strong,
-.mobile-redesign-entry-grid strong {
+.mobile-redesign-entry-grid strong,
+.mobile-redesign-workspace-head .market-mobile-shell-copy h1 {
   color: var(--phone-ink);
-  letter-spacing: -.03em;
+  letter-spacing: 0;
 }
 
 .mobile-redesign-brand small,
@@ -11631,343 +10869,182 @@ onBeforeUnmount(() => {
 .mobile-redesign-alert-list span,
 .mobile-redesign-alert-list small,
 .mobile-redesign-source-grid small,
-.mobile-redesign-entry-grid small {
+.mobile-redesign-entry-grid small,
+.mobile-redesign-workspace-head .market-mobile-shell-copy p,
+.mobile-redesign-workspace-head .market-mobile-shell-copy small {
   color: var(--phone-muted);
 }
 
+.mobile-redesign-hero-copy p,
+.mobile-redesign-section-head p,
+.mobile-redesign-source-grid span,
+.mobile-redesign-directory-card span,
+.mobile-redesign-entry-grid span {
+  color: var(--phone-green);
+  letter-spacing: 0;
+}
+
+.mobile-redesign-hero-copy h1 {
+  max-width: 280px;
+  font-size: 24px;
+  line-height: 1.18;
+}
+
 .mobile-redesign-location,
-.mobile-redesign-location-hint,
 .mobile-redesign-login-button,
 .mobile-redesign-alert-dot,
 .mobile-redesign-section-head button,
-.mobile-redesign-search button {
+.mobile-redesign-search button,
+.mobile-redesign-auth-panel-actions button,
+.mobile-redesign-location-panel button {
   border-color: var(--phone-line);
-  border-radius: 999px;
-}
-
-.mobile-redesign-location {
-  max-width: 104px;
-  min-height: 38px;
-  padding-inline: 10px;
-  background: rgba(255,255,248,.86);
+  border-radius: 12px;
+  background: #ffffff;
   color: var(--phone-green);
 }
 
-.mobile-redesign-top-actions {
-  flex: 0 0 auto;
-  justify-content: flex-end;
-  gap: 6px;
-}
-
-.mobile-redesign-location-hint {
-  background: rgba(231, 246, 197, .78);
-  color: #203f1f;
-}
-
-.mobile-redesign-login-button {
-  min-height: 38px;
-  padding: 0 12px;
-  background: #e7f6c5;
-  color: #203f1f;
+.mobile-redesign-login-button,
+.mobile-redesign-auth-panel-actions button.primary,
+.mobile-redesign-search button,
+.mobile-redesign-workspace .mobile-trend-shortcut.market-mobile-bottom-item {
+  border-color: var(--phone-green);
+  background: var(--phone-green);
+  color: #ffffff;
 }
 
 .mobile-redesign-location i {
-  background: var(--phone-orange);
-  box-shadow: 0 0 0 5px rgba(233, 131, 50, .15);
+  background: var(--phone-green);
+  box-shadow: 0 0 0 4px rgba(31, 139, 104, .14);
 }
 
 .mobile-redesign-alert-dot {
-  min-height: 38px;
-  width: 38px;
-  flex-basis: 38px;
-  background: #fffaf1;
   color: var(--phone-red);
 }
 
 .mobile-redesign-alert-dot b {
   background: var(--phone-red);
+  color: #ffffff;
 }
 
-.mobile-redesign-location-panel {
-  position: relative;
-  z-index: 2;
-  max-height: 236px;
-  overflow: auto;
-  border-color: var(--phone-line);
-  border-radius: 20px;
-  background: #fffdf4;
-}
-
-.mobile-redesign-location-panel-head strong {
-  color: var(--phone-ink);
-}
-
-.mobile-redesign-location-status {
-  min-height: 28px;
-  padding: 5px 9px;
-  border-color: var(--phone-line);
-  background: rgba(255, 253, 244, .9);
-}
-
-.mobile-redesign-location-panel button {
-  border-color: var(--phone-line);
+.mobile-redesign-location-panel,
+.mobile-redesign-location-status,
+.mobile-redesign-auth-panel,
+.mobile-redesign-search,
+.mobile-redesign-command-grid button,
+.mobile-redesign-empty-card {
+  border: 1px solid var(--phone-line);
   border-radius: 16px;
-  background: #f6f2e7;
-  color: var(--phone-green);
+  background: #ffffff;
+  box-shadow: none;
 }
 
 .mobile-redesign-location-panel button.active {
   border-color: var(--phone-green);
-  background: #e7f6c5;
-  color: #203f1f;
-}
-
-.mobile-redesign-hero-copy {
-  position: relative;
-  z-index: 1;
-  margin-top: 0;
-}
-
-.mobile-redesign-hero-copy p,
-.mobile-redesign-section-head p {
-  color: var(--phone-orange);
-  font-size: 11px;
-  font-weight: 950;
-  letter-spacing: .12em;
-}
-
-.mobile-redesign-hero-copy h1 {
-  max-width: 310px;
-  margin-top: 2px;
-  font-size: clamp(23px, 6.6vw, 28px);
-  line-height: 1.02;
+  background: var(--phone-soft-green);
+  color: var(--phone-green-dark);
 }
 
 .mobile-redesign-auth-panel {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 118px;
-  align-items: center;
-  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) 108px;
   padding: 10px;
-  border: 1px solid var(--phone-line);
-  border-radius: 20px;
-  background: linear-gradient(180deg, #fffef8 0%, #fffdf4 100%);
-  box-shadow: 0 10px 22px rgba(40, 63, 36, .08);
-}
-
-.mobile-redesign-auth-panel-copy {
-  display: grid;
-  gap: 4px;
 }
 
 .mobile-redesign-auth-panel-copy strong {
   color: var(--phone-ink);
-  font-size: 16px;
-  letter-spacing: -.03em;
+  letter-spacing: 0;
 }
 
 .mobile-redesign-auth-panel-copy span {
   color: var(--phone-muted);
-  font-size: 11px;
-  line-height: 1.35;
-  display: -webkit-box;
-  overflow: hidden;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-}
-
-.mobile-redesign-auth-panel-actions {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 6px;
 }
 
 .mobile-redesign-auth-panel-actions button {
-  min-height: 32px;
-  border: 1px solid var(--phone-line);
-  border-radius: 16px;
-  background: #fffdf4;
-  color: var(--phone-green);
-  font: inherit;
+  min-height: 34px;
   font-size: 13px;
-  font-weight: 900;
-}
-
-.mobile-redesign-auth-panel-actions button.primary {
-  border-color: var(--phone-green);
-  background: var(--phone-green);
-  color: var(--phone-lime);
 }
 
 .mobile-redesign-search {
-  position: relative;
-  z-index: 1;
-  padding: 5px;
-  border: 1px solid var(--phone-line);
-  border-radius: 20px;
-  background: rgba(255,255,248,.9);
-  box-shadow: none;
+  padding: 4px;
 }
 
 .mobile-redesign-search :deep(.el-input__wrapper) {
-  min-height: 38px;
+  min-height: 36px;
+  border-radius: 12px;
 }
 
 .mobile-redesign-search button {
-  min-height: 40px;
-  min-width: 78px;
-  border-color: var(--phone-green);
-  background: var(--phone-green);
+  min-height: 38px;
 }
 
 .mobile-redesign-command-grid {
-  position: relative;
-  z-index: 1;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
 }
 
-.mobile-redesign-command-grid button {
-  display: grid;
-  gap: 4px;
-  min-height: 58px;
-  padding: 8px;
-  border: 1px solid var(--phone-line);
-  border-radius: 18px;
-  background: #fffdf4;
-  color: var(--phone-ink);
-  font: inherit;
-  text-align: left;
-}
-
-.mobile-redesign-command-grid .alert {
-  background: linear-gradient(160deg, #fff4e8 0%, #fffdf4 68%);
-}
-
-.mobile-redesign-command-grid .market {
-  background: linear-gradient(160deg, #edf9c9 0%, #fffdf4 74%);
-}
-
+.mobile-redesign-command-grid button,
+.mobile-redesign-command-grid .alert,
+.mobile-redesign-command-grid .market,
 .mobile-redesign-command-grid .buy {
-  background: linear-gradient(160deg, #eef6ff 0%, #fffdf4 74%);
+  min-height: 62px;
+  background: #ffffff;
 }
 
 .mobile-redesign-command-grid span {
   color: var(--phone-muted);
-  font-size: 11px;
-  font-weight: 900;
 }
 
 .mobile-redesign-command-grid strong {
   color: var(--phone-ink);
-  font-size: 17px;
-  line-height: 1;
-}
-
-.mobile-redesign-command-grid small {
-  color: var(--phone-muted);
-  display: none;
-}
-
-.mobile-redesign-priority-card.is-main {
-  border-color: rgba(49, 91, 44, .22);
-  background: linear-gradient(160deg, #1f3d1f 0%, #315b2c 100%);
-  color: #f8ffe9;
-}
-
-.mobile-redesign-priority-card.is-main p {
-  color: var(--phone-lime);
-}
-
-.mobile-redesign-priority-card.is-main strong {
-  color: #ffffff;
-}
-
-.mobile-redesign-priority-card.is-main small {
-  color: rgba(248, 255, 233, .82);
-}
-
-.mobile-redesign-main {
-  display: grid;
-  gap: 20px;
-  margin-top: 20px;
+  letter-spacing: 0;
 }
 
 .mobile-redesign-section {
-  gap: 14px;
-  padding: 14px;
-}
-
-.mobile-redesign-today-card {
-  scroll-margin-bottom: 120px;
+  padding: 12px;
 }
 
 .mobile-redesign-section-head h2 {
-  font-size: 19px;
+  font-size: 18px;
+  line-height: 1.25;
 }
 
 .mobile-redesign-section-head button {
-  min-height: 38px;
-  background: #f5f0e3;
-  color: var(--phone-green);
+  min-height: 34px;
+  padding: 0 12px;
 }
 
-.mobile-redesign-priority-card {
-  min-height: 116px;
-  border-color: rgba(49, 91, 44, .2);
-  border-radius: 24px;
-  background: #1f3d1f;
-  color: #f8ffe9;
+.mobile-redesign-priority-card,
+.mobile-redesign-priority-card.is-main {
+  min-height: 104px;
+  border: 1px solid rgba(31, 139, 104, .22);
+  border-radius: 16px;
+  background: linear-gradient(180deg, #ffffff 0%, #eef8f2 100%);
+  color: var(--phone-ink);
   box-shadow: none;
 }
 
 .mobile-redesign-priority-card p,
+.mobile-redesign-priority-card.is-main p {
+  color: var(--phone-green);
+}
+
 .mobile-redesign-priority-card strong,
-.mobile-redesign-priority-card small {
-  color: inherit;
+.mobile-redesign-priority-card.is-main strong {
+  color: var(--phone-ink);
+  font-size: 18px;
+  letter-spacing: 0;
 }
 
-.mobile-redesign-priority-card p {
-  color: var(--phone-lime);
-}
-
-.mobile-redesign-priority-card strong {
-  font-size: 19px;
-}
-
-.mobile-redesign-priority-card small {
-  color: rgba(248, 255, 233, .78);
-}
-
-.mobile-redesign-product-rail {
-  grid-template-columns: 1fr;
-}
-
-.mobile-redesign-product-card,
-.mobile-redesign-alert-list button,
-.mobile-redesign-source-grid button,
-.mobile-redesign-directory-card,
-.mobile-redesign-entry-grid button {
-  border-color: var(--phone-line);
-  border-radius: 22px;
-  background: #fffdf4;
-  box-shadow: none;
-}
-
-.mobile-redesign-product-card {
-  grid-template-columns: minmax(0, 1fr);
-  min-height: 108px;
+.mobile-redesign-priority-card small,
+.mobile-redesign-priority-card.is-main small {
+  color: var(--phone-muted);
 }
 
 .mobile-redesign-product-card footer {
-  padding-top: 8px;
-  border-top: 1px dashed rgba(48, 74, 43, .18);
+  border-top: 1px solid var(--phone-line);
 }
 
 .mobile-redesign-product-card b {
   color: var(--phone-green);
-  font-size: 20px;
+  font-size: 19px;
 }
 
 .mobile-redesign-product-card em {
@@ -11975,75 +11052,58 @@ onBeforeUnmount(() => {
 }
 
 .mobile-redesign-alert-list button {
-  border-color: rgba(217, 77, 54, .18);
-  background: linear-gradient(160deg, #fff4ec 0%, #fffdf4 72%);
-}
-
-.mobile-redesign-source-grid,
-.mobile-redesign-directory-grid,
-.mobile-redesign-entry-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border-color: rgba(201, 67, 54, .18);
+  background: #fffdfc;
 }
 
 .mobile-redesign-source-grid button,
 .mobile-redesign-directory-card,
 .mobile-redesign-entry-grid button {
-  min-height: 96px;
-}
-
-.mobile-redesign-source-grid span,
-.mobile-redesign-directory-card span,
-.mobile-redesign-entry-grid span {
-  color: var(--phone-orange);
-}
-
-.mobile-redesign-empty-card {
-  border-color: rgba(48, 74, 43, .22);
-  border-radius: 22px;
-  background: rgba(255, 253, 244, .78);
-}
-
-.mobile-redesign-nav {
-  position: sticky;
-  left: auto;
-  right: auto;
-  bottom: 10px;
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  margin-top: 20px;
-  border: 1px solid rgba(48, 74, 43, .13);
-  border-radius: 24px;
-  background: rgba(255, 253, 244, .94);
-  box-shadow: 0 14px 32px rgba(40, 63, 36, .16);
-  z-index: 30;
-}
-
-.mobile-redesign-workspace .market-mobile-bottom-nav {
-  left: 10px;
-  right: 10px;
-  bottom: 10px;
-  border: 1px solid rgba(48, 74, 43, .13);
-  border-radius: 24px;
-  background: rgba(255, 253, 244, .94);
-  box-shadow: 0 14px 32px rgba(40, 63, 36, .16);
-}
-
-.mobile-redesign-workspace .market-mobile-shell-content::after {
-  content: "";
-  display: block;
   min-height: 88px;
+}
+
+.mobile-redesign-nav,
+.mobile-redesign-workspace .market-mobile-bottom-nav {
+  border: 1px solid var(--phone-line);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, .96);
+  box-shadow: 0 12px 30px rgba(20, 37, 30, .12);
+  backdrop-filter: blur(14px);
 }
 
 .mobile-redesign-nav .market-mobile-bottom-item,
 .mobile-redesign-workspace .market-mobile-bottom-item {
-  min-height: 48px;
-  border-radius: 18px;
+  min-height: 46px;
+  border-radius: 14px;
+  color: var(--phone-muted);
+  touch-action: manipulation;
+  transition: background .16s ease, color .16s ease, transform .16s ease;
 }
 
 .mobile-redesign-nav .market-mobile-bottom-item.active,
 .mobile-redesign-workspace .market-mobile-bottom-item.active {
-  background: #1f3d1f;
-  color: var(--phone-lime);
+  background: var(--phone-soft-green);
+  color: var(--phone-green-dark);
+}
+
+.mobile-redesign-nav .market-mobile-bottom-item:disabled,
+.mobile-redesign-workspace .market-mobile-bottom-item:disabled,
+.mobile-redesign-workspace .market-mobile-back-button:disabled,
+.mobile-redesign-workspace .market-mobile-message-button:disabled {
+  cursor: default;
+  opacity: .72;
+}
+
+.mobile-redesign-nav .market-mobile-bottom-item:not(:disabled):active,
+.mobile-redesign-workspace .market-mobile-bottom-item:not(:disabled):active,
+.mobile-redesign-workspace .market-mobile-back-button:not(:disabled):active,
+.mobile-redesign-workspace .market-mobile-message-button:not(:disabled):active,
+.mobile-redesign-product-card:active,
+.mobile-redesign-alert-list button:active,
+.mobile-redesign-source-grid button:active,
+.mobile-redesign-directory-card:active,
+.mobile-redesign-entry-grid button:active {
+  transform: translateY(1px) scale(.99);
 }
 
 .mobile-redesign-workspace {
@@ -12051,135 +11111,98 @@ onBeforeUnmount(() => {
 }
 
 .mobile-redesign-workspace-head {
-  position: sticky;
-  top: 0;
-  z-index: 20;
-  grid-template-columns: 44px minmax(0, 1fr) auto 44px;
-  align-items: center;
-  padding: 10px 12px;
-  border-bottom: 1px solid rgba(48, 74, 43, .1);
-  background: rgba(245, 248, 239, .92);
+  border-bottom: 1px solid var(--phone-line);
+  background: rgba(245, 251, 247, .94);
   backdrop-filter: blur(16px);
+  grid-template-columns: 38px minmax(0, 1fr) 40px 38px;
+  gap: 7px;
+  min-height: 56px;
+  padding: 8px 10px;
 }
 
 .mobile-redesign-workspace-head .market-mobile-shell-copy {
   min-width: 0;
 }
 
-.mobile-redesign-workspace-head .market-mobile-shell-copy p,
-.mobile-redesign-workspace-head .market-mobile-shell-copy small {
-  overflow: hidden;
-  margin: 0;
-  color: var(--phone-muted);
-  font-size: 11px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.mobile-redesign-workspace-head .market-mobile-shell-copy p {
+  display: none;
 }
 
 .mobile-redesign-workspace-head .market-mobile-shell-copy h1 {
-  overflow: hidden;
-  margin: 0;
-  color: var(--phone-ink);
-  font-size: 18px;
-  line-height: 1.1;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-size: 17px;
+  line-height: 1.15;
+}
+
+.mobile-redesign-workspace-head .market-mobile-shell-copy small {
+  display: block;
+  max-width: 100%;
+  font-size: 10px;
+  line-height: 1.2;
+}
+
+.mobile-redesign-workspace .market-mobile-back-button,
+.mobile-redesign-workspace .market-mobile-message-button,
+.mobile-redesign-workspace .mobile-trend-shortcut.market-mobile-bottom-item {
+  width: 38px;
+  min-width: 38px;
+  min-height: 38px;
+  border-radius: 12px;
+}
+
+.mobile-redesign-workspace .mobile-trend-shortcut.market-mobile-bottom-item {
+  padding: 0;
+  font-size: 12px;
+}
+
+.mobile-redesign-nav .market-mobile-nav-icon,
+.mobile-redesign-workspace .market-mobile-nav-icon {
+  color: currentColor;
 }
 
 .mobile-redesign-workspace .market-mobile-shell-content {
-  padding: 12px 12px calc(102px + env(safe-area-inset-bottom, 0px));
+  padding: 10px 10px calc(76px + env(safe-area-inset-bottom, 0px));
 }
 
-.mobile-redesign-workspace .market-mobile-menu-page,
-.mobile-redesign-workspace .market-mobile-alert-page,
-.mobile-redesign-workspace .market-summary-panel,
-.mobile-redesign-workspace .product-trend-panel {
-  padding-bottom: 96px;
+.mobile-redesign-workspace :deep(.market-mobile-feed-hero),
+.mobile-redesign-workspace :deep(.market-mobile-feed-toolbar),
+.mobile-redesign-workspace :deep(.market-mobile-feed-tabs),
+.mobile-redesign-workspace :deep(.market-mobile-feed-list),
+.mobile-redesign-workspace :deep(.market-mobile-feed-search) {
+  border-color: var(--phone-line);
 }
 
-.mobile-redesign-workspace :deep(.market-mobile-feed-hero) {
-  padding: 12px 10px;
+.mobile-redesign-workspace :deep(.market-mobile-feed-card),
+.mobile-redesign-workspace :deep(.market-mobile-feed-skeleton-card) {
+  border: 1px solid var(--phone-line);
+  border-radius: 16px;
+  background: #ffffff;
+  box-shadow: 0 10px 24px rgba(31, 139, 104, .08);
+  touch-action: manipulation;
+  transition: border-color .16s ease, box-shadow .16s ease, transform .16s ease;
+}
+
+.mobile-redesign-workspace :deep(.market-mobile-feed-card:active) {
+  border-color: rgba(31, 139, 104, .32);
+  box-shadow: 0 8px 18px rgba(31, 139, 104, .10);
+  transform: translateY(1px) scale(.995);
 }
 
 .mobile-redesign-workspace :deep(.market-mobile-feed-hero h2) {
-  font-size: 22px;
-  line-height: 1.1;
+  color: var(--phone-ink);
+  font-size: 20px;
+  letter-spacing: 0;
 }
 
-.mobile-redesign-workspace :deep(.market-mobile-feed-hero small) {
-  font-size: 11px;
-}
-
-.mobile-redesign-workspace :deep(.market-mobile-feed-toolbar),
-.mobile-redesign-workspace :deep(.market-mobile-feed-tabs),
-.mobile-redesign-workspace :deep(.market-mobile-feed-list) {
-  gap: 8px;
-}
-
-.mobile-redesign-workspace :deep(.market-mobile-feed-search) {
-  padding: 4px 6px;
+.mobile-redesign-workspace :deep(.market-mobile-feed-hero small),
+.mobile-redesign-workspace :deep(.market-mobile-feed-meta),
+.mobile-redesign-workspace :deep(.market-mobile-feed-card p) {
+  color: var(--phone-muted);
 }
 
 .mobile-redesign-workspace :deep(.market-mobile-feed-clear),
 .mobile-redesign-workspace :deep(.market-mobile-feed-tabs button),
 .mobile-redesign-workspace :deep(.market-mobile-feed-hero button) {
-  min-height: 36px;
-}
-
-.mobile-redesign-workspace :deep(.market-mobile-feed-card),
-.mobile-redesign-workspace :deep(.market-mobile-feed-skeleton-card) {
-  min-height: 122px;
-  padding: 12px;
-  gap: 8px;
-  border-radius: 18px;
-}
-
-.mobile-redesign-workspace :deep(.market-mobile-feed-card-main) {
-  grid-template-columns: 40px minmax(0, 1fr);
-  gap: 10px;
-}
-
-.mobile-redesign-workspace :deep(.market-mobile-feed-thumb-shell) {
-  width: 40px;
-  height: 40px;
   border-radius: 12px;
-}
-
-.mobile-redesign-workspace :deep(.market-mobile-feed-card-main strong) {
-  font-size: 16px;
-  line-height: 1.18;
-}
-
-.mobile-redesign-workspace :deep(.market-mobile-feed-price b) {
-  font-size: 22px;
-}
-
-.mobile-redesign-workspace :deep(.market-mobile-feed-price b small) {
-  font-size: 11px;
-}
-
-.mobile-redesign-workspace :deep(.market-mobile-feed-meta),
-.mobile-redesign-workspace :deep(.market-mobile-feed-card p) {
-  font-size: 11px;
-}
-
-.mobile-redesign-workspace :deep(.market-mobile-feed-card p) {
-  display: none;
-}
-
-.mobile-redesign-workspace .market-mobile-alert-card,
-.mobile-redesign-workspace .market-mobile-alert-hero,
-.mobile-redesign-workspace .market-mobile-menu-intro {
-  border-color: var(--phone-line);
-  border-radius: 24px;
-  background: var(--phone-card);
-  box-shadow: 0 14px 30px rgba(40, 63, 36, .1);
-}
-
-.mobile-redesign-workspace .mobile-trend-shortcut.market-mobile-bottom-item {
-  background: #1f3d1f;
-  color: var(--phone-lime);
-  box-shadow: none;
 }
 
 @media (max-width: 374px) {
@@ -12190,8 +11213,12 @@ onBeforeUnmount(() => {
     grid-template-columns: 1fr;
   }
 
+  .mobile-redesign-auth-panel {
+    grid-template-columns: 1fr;
+  }
+
   .mobile-redesign-hero-copy h1 {
-    font-size: 26px;
+    font-size: 22px;
   }
 }
 

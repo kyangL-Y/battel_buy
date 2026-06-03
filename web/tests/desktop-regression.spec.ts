@@ -59,7 +59,7 @@ test('桌面端账号绑定地区时辅助定位不会覆盖账号市场', async
   expect(locationSuggestionRequestCount).toBe(0)
 
   await page.getByRole('button', { name: '智能定位' }).click()
-  await expect(page.getByText('账号地区已锁定')).toBeVisible()
+  await expect(page.getByText('账号地区已固定')).toBeVisible()
   await expect(page.locator('.platform-choice-hero-tags')).toContainText('南京')
   await expect(page.locator('.platform-choice-hero-tags')).not.toContainText('郑州')
   expect(locationSuggestionRequestCount).toBe(0)
@@ -84,11 +84,11 @@ test('桌面端供应商门户独立承载供应商录价前端', async ({ page 
   await page.goto('/supplier-portal', { waitUntil: 'domcontentloaded' })
 
   await expect(page.getByTestId('supplier-portal-screen')).toBeVisible()
-  await expect(page.getByRole('heading', { name: '供应商报价门户', exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '供应商报价登录', exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: '返回采购工作台', exact: true })).toBeVisible()
   await page.getByPlaceholder('账号').fill('admin')
   await page.getByPlaceholder('密码').fill('admin123')
-  await page.getByRole('button', { name: '登录门户' }).click()
+  await page.getByRole('button', { name: '登录', exact: true }).click()
 
   await expect(page.getByTestId('auth-session-status')).toContainText('系统管理员')
   await expect(page.getByTestId('supplier-admin-panel')).toBeVisible()

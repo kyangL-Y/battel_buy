@@ -8,6 +8,7 @@ def test_build_readiness_report_summarizes_env_without_secret_values(tmp_path, m
     products_path = tmp_path / "products.json"
     sites_path = tmp_path / "sites.json"
     sale_class_tree_path = tmp_path / "meicai_sale_class_tree.json"
+    current_address_path = tmp_path / "meicai_current_address_context.json"
     products_path.write_text(
         json.dumps(
             [
@@ -25,6 +26,17 @@ def test_build_readiness_report_summarizes_env_without_secret_values(tmp_path, m
         '{"flat":[{"saleC1Id":"6506","saleC2Id":"6515"},{"saleC1Id":"6506","saleC2Id":"6205"}]}',
         encoding="utf-8",
     )
+    current_address_path.write_text(
+        json.dumps(
+            {
+                "addressId": "22117779",
+                "locationTo": "secret-current-location",
+                "poi_address": "上海市浦东新区羽山路陆家嘴金融贸易区桃林一小区",
+                "address_detail": "桃林一小区-27号楼",
+            }
+        ),
+        encoding="utf-8",
+    )
     sites_path.write_text(
         json.dumps(
             [
@@ -38,6 +50,7 @@ def test_build_readiness_report_summarizes_env_without_secret_values(tmp_path, m
                     "page_size": 20,
                     "max_pages": 5,
                     "sale_class_tree_path": str(sale_class_tree_path),
+                    "current_address_context_path": str(current_address_path),
                     "category_filters": [
                         {"category": "推荐商品", "class1_id": "-1", "class2_id": ""},
                         {"category": "蔬菜", "class1_id": "6506", "class2_id": ""},
@@ -62,10 +75,15 @@ def test_build_readiness_report_summarizes_env_without_secret_values(tmp_path, m
     assert report["product_enabled"] is True
     assert report["category_filter_count"] == 2
     assert report["sale_class_filter_count"] == 2
+    assert report["current_address_context"]["present"] is True
+    assert report["current_address_context"]["has_location"] is True
+    assert report["current_address_context"]["address_id_present"] is True
+    assert report["current_address_context"]["inferred_region"] == "上海市"
     assert report["env"]["MEICAI_REQUEST_HEADERS"]["top_level_keys"] == ["Device-Token", "x-mc-city"]
     assert "secret-token" not in serialized_report
     assert "secret-ticket" not in serialized_report
     assert "secret-location" not in serialized_report
+    assert "secret-current-location" not in serialized_report
 
 
 def test_build_readiness_report_loads_secret_env_file_without_overriding_existing(tmp_path, monkeypatch):

@@ -32,14 +32,14 @@ test.describe('当前采购端全界面冒烟', () => {
     await page.goto('/', { waitUntil: 'domcontentloaded' })
 
     await expect(page.getByTestId('sales-landing-view')).toBeVisible()
-    await expect(page.getByRole('heading', { name: /先登录/ })).toBeVisible()
-    await expect(page.locator('.platform-choice-login-card')).toContainText('采购账号登录')
+    await expect(page.getByRole('heading', { name: '欢迎登录食采云' })).toBeVisible()
+    await expect(page.locator('.platform-choice-login-card')).toContainText('账号登录')
     await expect(page.getByTestId('supplier-choice-button')).toBeVisible()
 
     const loginForm = page.locator('.platform-choice-login-form')
-    await loginForm.getByPlaceholder('请输入采购账号').fill('admin')
+    await loginForm.getByPlaceholder('采购账号或管理员账号').fill('admin')
     await loginForm.getByPlaceholder('请输入密码').fill('admin123')
-    await loginForm.getByRole('button', { name: '登录采购端' }).click()
+    await loginForm.getByRole('button', { name: '登录', exact: true }).click()
 
     await expect(page.getByTestId('pc-price-workbench')).toBeVisible({ timeout: 45_000 })
     await expect(page).toHaveURL(/mode=workspace/)
@@ -94,15 +94,15 @@ test.describe('当前采购端全界面冒烟', () => {
     await page.goto('/', { waitUntil: 'domcontentloaded' })
 
     await expect(page.getByTestId('sales-landing-view')).toBeVisible()
-    await expect(page.getByText('先登录，再看本团队行情。')).toBeVisible()
-    await expect(page.getByText('采购账号登录').first()).toBeVisible()
-    await expect(page.getByText('供应商入口').first()).toBeVisible()
+    await expect(page.getByText('账号登录').first()).toBeVisible()
+    await expect(page.getByText('登录后查看自己的市场菜价。')).toBeVisible()
+    await expect(page.getByRole('button', { name: '我是供应商' }).first()).toBeVisible()
 
-    await page.getByRole('button', { name: '登录采购端' }).click()
-    await expect(page.getByRole('dialog', { name: '采购端登录' })).toBeVisible()
-    await page.getByPlaceholder('采购账号 / 管理员账号').fill('admin')
+    await page.getByRole('button', { name: '登录', exact: true }).first().click()
+    await expect(page.getByRole('dialog', { name: '账号登录' })).toBeVisible()
+    await page.getByPlaceholder('采购账号或管理员账号').fill('admin')
     await page.getByPlaceholder('请输入密码').fill('admin123')
-    await page.getByRole('dialog', { name: '采购端登录' }).getByRole('button', { name: '登录采购端' }).click()
+    await page.getByRole('dialog', { name: '账号登录' }).getByRole('button', { name: '登录', exact: true }).click()
 
     await expect(page.getByTestId('market-mobile-list')).toBeVisible({ timeout: 45_000 })
     await expect(page).toHaveURL(/mode=workspace/)

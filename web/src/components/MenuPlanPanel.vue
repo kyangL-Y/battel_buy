@@ -4,7 +4,7 @@
       <div class="panel-header content-panel-header">
         <div>
           <p class="panel-kicker">菜单录入</p>
-          <h2>菜单采购</h2>
+          <h2>采购计划</h2>
           <p class="panel-hint">
             {{ isMobileViewport ? '先录菜单，再生成采购建议。' : '录菜单、补食材、直接出采购建议（按总人数口径）。' }}
           </p>
@@ -96,7 +96,7 @@
             <el-button aria-label="生成采购方案" type="primary" :loading="loading" :disabled="!hasMenuInput" @click="emit('submit')">生成采购方案</el-button>
             <p v-if="!hasMenuInput" class="menu-input-required" role="status" aria-live="polite">请先输入至少 1 个菜名</p>
             <p v-if="loading" :class="['menu-ai-status', { warning: isPlanTakingLong }]" role="status" aria-live="polite" data-testid="menu-ai-status">
-              {{ isPlanTakingLong ? '匹配超过 9 秒，可能是接口较慢；可继续等待，或在下方重新尝试。' : 'AI 正在联网拆分食材，并匹配今日行情报价' }}
+              {{ isPlanTakingLong ? '处理时间有点久，可继续等待或稍后重试。' : '正在拆分食材，并匹配今日菜价' }}
             </p>
           </div>
         </div>
@@ -270,7 +270,7 @@
                 {{ row.remarks }}
               </p>
               <div class="menu-plan-row-actions mobile" data-testid="menu-plan-row-actions">
-                <el-button size="small" plain @click="emit('view-market', row)">看行情</el-button>
+                <el-button size="small" plain @click="emit('view-market', row)">看菜价</el-button>
                 <el-button size="small" type="warning" plain @click="emit('fill-supplier-price', row)">补供应商价</el-button>
                 <el-button size="small" type="success" plain :disabled="isRowConfirmed(row)" @click="emit('confirm-row', row)">{{ isRowConfirmed(row) ? '已确认' : '标记确认' }}</el-button>
               </div>
@@ -325,7 +325,7 @@
             <el-table-column label="操作" width="252" fixed="right">
               <template #default="{ row }">
                 <div class="menu-plan-row-actions" data-testid="menu-plan-row-actions">
-                  <el-button size="small" plain @click="emit('view-market', row)">看行情</el-button>
+                  <el-button size="small" plain @click="emit('view-market', row)">看菜价</el-button>
                   <el-button size="small" type="warning" plain @click="emit('fill-supplier-price', row)">补供应商价</el-button>
                   <el-button size="small" type="success" plain :disabled="isRowConfirmed(row)" @click="emit('confirm-row', row)">{{ isRowConfirmed(row) ? '已确认' : '标记确认' }}</el-button>
                 </div>
@@ -396,9 +396,9 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { ElMessage } from 'element-plus/es/components/message/index.mjs'
 import type { MenuPlanRow } from '../types'
 import { useViewport } from '../composables/useViewport'
+import { lazyElMessage as ElMessage } from '../lazyElementMessage'
 
 const props = defineProps<{
   menuText: string
@@ -957,6 +957,13 @@ const ingredientTableHeight = computed(() => calculatePanelTableHeight(props.ing
     border-radius: 18px;
     background: linear-gradient(180deg, #ffffff, #f8fafc);
     box-shadow: 0 8px 18px rgba(15, 23, 42, 0.04);
+    touch-action: manipulation;
+    transition: transform .16s ease, box-shadow .16s ease;
+  }
+
+  .menu-mobile-card:active {
+    transform: translateY(1px) scale(.995);
+    box-shadow: 0 6px 14px rgba(15, 23, 42, 0.06);
   }
 
   .menu-mobile-card-head {
@@ -1077,6 +1084,7 @@ const ingredientTableHeight = computed(() => calculatePanelTableHeight(props.ing
     border-radius: 12px;
     font-size: 12px;
     font-weight: 800;
+    touch-action: manipulation;
   }
 
   .ingredient-mobile-card .price-chip.avg {

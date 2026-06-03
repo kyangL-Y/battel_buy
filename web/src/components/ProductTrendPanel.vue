@@ -39,21 +39,24 @@
         <small>{{ latestTrendSourceSummary }}</small>
       </div>
     </div>
+    <div v-if="isMobileViewport && (currentProductLabel || selectedIdentityKey)" class="trend-mobile-current-product">
+      <span>当前商品</span>
+      <strong>{{ currentProductLabel || selectedIdentityKey }}</strong>
+      <small>{{ currentProductCoverageLabel }}</small>
+    </div>
     <div class="trend-toolbar content-toolbar">
       <div class="trend-picker-inline">
         <span>商品</span>
         <el-select
+          v-if="!isMobileViewport"
           class="trend-product-select"
           :model-value="selectedIdentityKey"
           aria-label="选择商品"
-          placeholder="选择单品"
+          placeholder="选择商品"
           popper-class="trend-product-select-popper"
           :fit-input-width="false"
           filterable
-          :filter-method="isMobileViewport ? undefined : handleProductFilter"
-          :remote="isMobileViewport"
-          :remote-method="handleProductRemoteSearch"
-          :loading="isMobileViewport && Boolean(productSearchLoading)"
+          :filter-method="handleProductFilter"
           @visible-change="handleProductSelectVisibleChange"
           @change="emit('select-product', $event)"
         >
@@ -72,10 +75,28 @@
             </span>
           </el-option>
         </el-select>
+        <select
+          v-else
+          class="trend-native-select trend-product-native-select"
+          :value="selectedIdentityKey"
+          aria-label="选择商品"
+          @focus="handleProductSelectVisibleChange(true)"
+          @change="handleNativeProductChange"
+        >
+          <option value="" disabled>选择商品</option>
+          <option
+            v-for="item in visibleProductOptions"
+            :key="item.price_identity_key"
+            :value="item.price_identity_key"
+          >
+            {{ item.price_identity_label }}
+          </option>
+        </select>
       </div>
       <div v-if="trendMode === 'single_market'" class="trend-picker-inline site-inline">
         <span>市场</span>
         <el-select
+          v-if="!isMobileViewport"
           :model-value="selectedSiteName"
           aria-label="选择市场"
           clearable
@@ -84,6 +105,16 @@
         >
           <el-option v-for="site in availableSites" :key="site" :label="site" :value="site" />
         </el-select>
+        <select
+          v-else
+          class="trend-native-select"
+          :value="selectedSiteName"
+          aria-label="选择市场"
+          @change="handleNativeSiteChange"
+        >
+          <option value="">全部市场</option>
+          <option v-for="site in availableSites" :key="site" :value="site">{{ site }}</option>
+        </select>
       </div>
       <div v-if="!isMobileViewport" class="trend-toolbar-count">
         {{ visibleProductOptions.length }} / {{ productOptions.length }} 个商品
@@ -139,13 +170,13 @@
       </div>
       <div v-if="isMobileViewport && !displayTrendRows.length" class="trend-empty-workbench trend-empty-workbench-mobile">
         <div class="trend-empty-workbench-copy">
-          <p class="panel-kicker">走势数据</p>
+          <p class="panel-kicker">价格明细</p>
           <strong>{{ emptyTrendTitle }}</strong>
           <span v-if="emptyTrendModeHint">{{ emptyTrendModeHint }}</span>
           <span>{{ emptyTrendDescription }}</span>
         </div>
         <div v-if="recommendedTrendOptions.length" class="trend-empty-product-list primary">
-          <span>可选有走势商品</span>
+          <span>可查看的商品</span>
           <button
             v-for="item in recommendedTrendOptions"
             :key="item.price_identity_key"
@@ -167,7 +198,7 @@
             class="trend-empty-action primary"
             @click="emit('update:trend-mode', 'single_market')"
           >
-            查看单市场/行情快照
+            查看当前市场
           </button>
           <button
             v-else-if="recommendedTrendOptions.length"
@@ -175,9 +206,9 @@
             class="trend-empty-action primary"
             @click="selectRecommendedTrendProduct(recommendedTrendOptions[0].price_identity_key)"
           >
-            选择有走势商品
+            选择商品
           </button>
-          <button type="button" class="trend-empty-action" @click="emit('refresh-trend')">重新同步走势</button>
+          <button type="button" class="trend-empty-action" @click="emit('refresh-trend')">刷新价格</button>
         </div>
       </div>
       <div v-if="!isMobileViewport && displayTrendRows.length && decisionCards.length" class="trend-mobile-decision-grid">
@@ -253,7 +284,7 @@
               class="trend-mobile-svg-chart"
               viewBox="0 0 320 156"
               role="img"
-              aria-label="单品价格趋势"
+              aria-label="商品价格变化"
             >
               <line v-for="y in [24, 56, 88, 120]" :key="`trend-grid-${y}`" x1="14" :y1="y" x2="306" :y2="y" />
               <polyline
@@ -436,22 +467,22 @@
       <div v-if="loading" class="trend-loading-mask">
         <div class="trend-loading-card">
           <span class="trend-loading-dot"></span>
-          <strong>正在切换商品走势</strong>
-          <p>优先显示缓存，同时补拉最新记录。</p>
+          <strong>正在切换商品</strong>
+          <p>正在加载最新价格。</p>
         </div>
       </div>
     </div>
     <div v-else-if="loading" class="table-empty-state trend-empty-state trend-main-empty-state trend-pending-state">
-      <strong>正在准备单品趋势</strong>
-      <p>正在加载可查看的商品和价格走势，请稍候。</p>
+      <strong>正在准备价格明细</strong>
+      <p>正在加载可查看的商品，请稍候。</p>
     </div>
     <div v-else class="table-empty-state trend-empty-state trend-main-empty-state">
       <div class="trend-main-empty-copy">
-        <strong>先选择一个商品，再查看价格趋势</strong>
-        <p>上方商品选择器会把同名商品在不同市场的价格放到同一条走势里。</p>
+        <strong>先选择一个商品</strong>
+        <p>选择后查看这个商品的价格变化。</p>
       </div>
       <div v-if="isMobileViewport && productOptions.length" class="trend-empty-product-list trend-empty-product-list-mobile">
-        <span>可直接查看有走势的商品</span>
+        <span>可直接查看的商品</span>
         <button
           v-for="item in productOptions.slice(0, 3)"
           :key="item.price_identity_key"
@@ -468,26 +499,37 @@
       </div>
       <div v-else-if="isMobileViewport" class="trend-empty-action-row trend-empty-refresh-row">
         <button type="button" class="trend-empty-action primary" @click="emit('refresh-products')">刷新商品列表</button>
-        <button type="button" class="trend-empty-action" @click="emit('refresh-trend')">重新同步走势</button>
+        <button type="button" class="trend-empty-action" @click="emit('refresh-trend')">刷新价格</button>
       </div>
       <div v-else class="trend-empty-action-row">
         <button type="button" class="trend-empty-action primary" @click="emit('refresh-products')">刷新商品列表</button>
-        <button type="button" class="trend-empty-action" @click="emit('open-tab', 'summary')">去汇总行情</button>
-        <button type="button" class="trend-empty-action" @click="emit('open-tab', 'menu')">去采购表单</button>
+        <button type="button" class="trend-empty-action" @click="emit('open-tab', 'summary')">去查菜价</button>
+        <button type="button" class="trend-empty-action" @click="emit('open-tab', 'menu')">去采购计划</button>
       </div>
       <div v-if="isMobileViewport" class="trend-empty-next-actions">
         <span>可选操作</span>
         <button type="button" @click="emit('open-tab', 'summary')">
-          <strong>查看汇总行情</strong>
-          <small>从商品列表进入趋势</small>
+          <strong>查看菜价</strong>
+          <small>从商品列表进入明细</small>
         </button>
         <button type="button" @click="emit('open-tab', 'menu')">
-          <strong>去采购表单</strong>
+          <strong>去采购计划</strong>
           <small>按菜单生成采购建议</small>
         </button>
       </div>
     </div>
-    <el-dialog v-model="imagePreviewVisible" :title="imagePreviewTitle || '图片预览'" width="min(92vw, 960px)">
+    <teleport v-if="isMobileViewport && imagePreviewVisible" to="body">
+      <div class="trend-image-preview-backdrop" role="dialog" aria-modal="true" @click="closeImagePreview">
+        <div class="trend-image-preview-panel" @click.stop>
+          <div class="trend-image-preview-head">
+            <strong>{{ imagePreviewTitle || '图片预览' }}</strong>
+            <button type="button" aria-label="关闭图片预览" @click="closeImagePreview">关闭</button>
+          </div>
+          <img v-if="imagePreviewUrl" :src="imagePreviewUrl" :alt="imagePreviewTitle || ''" class="trend-image-preview" />
+        </div>
+      </div>
+    </teleport>
+    <el-dialog v-if="!isMobileViewport" v-model="imagePreviewVisible" :title="imagePreviewTitle || '图片预览'" width="min(92vw, 960px)">
       <div class="trend-image-preview-shell">
         <img v-if="imagePreviewUrl" :src="imagePreviewUrl" :alt="imagePreviewTitle || ''" class="trend-image-preview" />
       </div>
@@ -496,10 +538,15 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import SupplierQuotePanel from './SupplierQuotePanel.vue'
+import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { ProductOptionItem, ProductTrendRow } from '../types'
 import { useViewport } from '../composables/useViewport'
+
+const SupplierQuotePanel = defineAsyncComponent({
+  loader: () => import('./SupplierQuotePanel.vue'),
+  delay: 0,
+  suspensible: false,
+})
 
 const props = defineProps<{
   productOptions: ProductOptionItem[]
@@ -859,43 +906,43 @@ const hasProductMarketSnapshot = computed(() => {
 })
 const emptyTrendTitle = computed(() => (
   props.trendMode === 'cross_market'
-    ? '跨市场走势待补齐'
-    : '走势记录待补齐'
+    ? '价格记录还不完整'
+    : '价格记录待补齐'
 ))
 const emptyTrendModeHint = computed(() => {
   if (hasProductMarketSnapshot.value && availableSites.value.length) {
-    return '当前商品已有单市场/summary 快照，可先切到单市场或查看行情快照。'
+    return '当前商品已有市场价格，可先查看当前市场。'
   }
   if (recommendedTrendOptions.value.length) {
-    return '可选择下方有走势商品，或重新同步走势补齐记录。'
+    return '可选择下方商品，或刷新价格。'
   }
   return props.trendMode === 'cross_market'
-    ? '跨市场会补齐断档；每页只展示一组完全重合的价格线。'
+    ? '多市场价格还在整理中。'
     : ''
 })
 const emptyTrendDescription = computed(() => {
   if (!currentProductLabel.value) {
-    return '先选择一个商品，系统会从真实接口读取走势记录。'
+    return '先选择一个商品，再查看价格。'
   }
   if (hasProductMarketSnapshot.value) {
     if (availableSites.value.length > 0) {
-      return `${currentProductLabel.value} 已有行情快照/单市场数据，但跨市场连续走势还未成线；可查看单市场/行情快照继续决策。`
+      return `${currentProductLabel.value} 已有当前市场价格，可先查看当前市场。`
     }
-    return `${currentProductLabel.value} 已有 summary/latest 行情快照，跨市场覆盖待补齐；可选择有走势商品或重新同步走势。`
+    return `${currentProductLabel.value} 已有价格记录，可选择商品或刷新价格。`
   }
   if (availableSites.value.length > 0) {
-    return `${currentProductLabel.value} 已有关联市场，可查看单市场或重新同步走势。`
+    return `${currentProductLabel.value} 已有关联市场，可查看当前市场或刷新价格。`
   }
-  return `${currentProductLabel.value} 可比市场记录待补齐，可选择下方有走势商品或重新同步走势。`
+  return `${currentProductLabel.value} 的价格记录还在整理中，可选择下方商品或刷新价格。`
 })
 const sideEmptyTrendDescription = computed(() => {
   if (hasProductMarketSnapshot.value) {
-    return '行情快照仍可参考，连续走势记录待补齐；可查看单市场/行情快照或重新同步走势。'
+    return '当前价格仍可参考，也可以刷新价格。'
   }
   if (recommendedTrendOptions.value.length) {
-    return '当前筛选范围的连续走势记录待补齐，可切换下方有走势商品或重新同步走势。'
+    return '可切换下方商品或刷新价格。'
   }
-  return '当前筛选范围的连续走势记录待补齐，可重新同步走势或切换趋势模式。'
+  return '当前价格记录还在整理中，可刷新价格。'
 })
 
 function selectRecommendedTrendProduct(identityKey: string) {
@@ -909,6 +956,10 @@ function openImagePreview(url: string | null | undefined, title: string) {
   imagePreviewUrl.value = normalizedUrl
   imagePreviewTitle.value = String(title || '').trim()
   imagePreviewVisible.value = true
+}
+
+function closeImagePreview() {
+  imagePreviewVisible.value = false
 }
 
 function normalizeProductSearchText(value: string) {
@@ -925,6 +976,21 @@ function handleProductFilter(query: string) {
 function handleProductRemoteSearch(query: string) {
   productSearchQuery.value = query
   emit('search-product-options', query)
+}
+
+function readNativeSelectValue(event: Event) {
+  return event.target instanceof HTMLSelectElement ? event.target.value : ''
+}
+
+function handleNativeProductChange(event: Event) {
+  const identityKey = readNativeSelectValue(event)
+  if (!identityKey) return
+  productSearchQuery.value = ''
+  emit('select-product', identityKey)
+}
+
+function handleNativeSiteChange(event: Event) {
+  emit('update:selected-site-name', readNativeSelectValue(event))
 }
 
 function handleProductSelectVisibleChange(visible: boolean) {
@@ -1483,6 +1549,10 @@ onBeforeUnmount(() => {
   display: none;
 }
 
+.trend-mobile-current-product {
+  display: none;
+}
+
 .trend-mobile-chart-title {
   display: none;
 }
@@ -1530,6 +1600,56 @@ onBeforeUnmount(() => {
 .trend-image-preview-shell {
   display: grid;
   place-items: center;
+}
+
+.trend-image-preview-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2400;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(15, 23, 42, 0.62);
+}
+
+.trend-image-preview-panel {
+  display: grid;
+  gap: 12px;
+  width: min(100%, 720px);
+  max-height: 88vh;
+  padding: 12px;
+  border-radius: 18px;
+  background: #ffffff;
+  box-shadow: 0 24px 80px rgba(15, 23, 42, 0.28);
+}
+
+.trend-image-preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.trend-image-preview-head strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #071226;
+  font-size: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trend-image-preview-head button {
+  flex: 0 0 auto;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid #dbe4ef;
+  border-radius: 9px;
+  background: #f8fafc;
+  color: #475569;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .trend-image-preview {
@@ -2014,8 +2134,50 @@ onBeforeUnmount(() => {
     box-shadow: 0 0 0 1px rgba(148, 163, 184, 0.18) inset;
   }
 
+  .trend-native-select {
+    width: 100%;
+    min-width: 0;
+    min-height: 38px;
+    padding: 0 32px 0 12px;
+    border: 1px solid rgba(203, 213, 225, 0.82);
+    border-radius: 12px;
+    outline: 0;
+    background: #ffffff;
+    color: #0f172a;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 800;
+  }
+
+  .trend-product-native-select {
+    text-overflow: ellipsis;
+  }
+
   .trend-toolbar-count {
     display: none;
+  }
+
+  .trend-mobile-current-product {
+    display: grid;
+    gap: 4px;
+    padding: 10px 12px;
+    border: 1px solid rgba(203, 213, 225, 0.72);
+    border-radius: 14px;
+    background: #fff;
+  }
+
+  .trend-mobile-current-product span,
+  .trend-mobile-current-product small {
+    color: #64748b;
+    font-size: 11px;
+  }
+
+  .trend-mobile-current-product strong {
+    min-width: 0;
+    color: #0f172a;
+    font-size: 15px;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
   }
 
   .trend-mobile-mode-switch {
@@ -2047,6 +2209,15 @@ onBeforeUnmount(() => {
     font: inherit;
     font-size: 12px;
     font-weight: 800;
+    touch-action: manipulation;
+    transition: background .16s ease, color .16s ease, transform .16s ease;
+  }
+
+  .trend-mobile-mode-switch button:active,
+  .trend-empty-action:active,
+  .trend-empty-product-button:active,
+  .trend-chart-mobile-buttons button:active {
+    transform: translateY(1px) scale(.99);
   }
 
   .trend-mobile-mode-switch button.active {
@@ -2205,6 +2376,7 @@ onBeforeUnmount(() => {
 
   .trend-empty-refresh-row .trend-empty-action {
     min-height: 44px;
+    touch-action: manipulation;
   }
 
   .trend-empty-next-actions button {
@@ -2243,6 +2415,7 @@ onBeforeUnmount(() => {
     font: inherit;
     font-size: 12px;
     font-weight: 800;
+    touch-action: manipulation;
   }
 
   .trend-chart-mobile-buttons button:disabled {

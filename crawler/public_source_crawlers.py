@@ -3686,7 +3686,8 @@ process.stdout.write(JSON.stringify({
         common_body = self._load_json_env_object(
             str(site_rule.get("common_body_env") or "MEICAI_COMMON_BODY").strip()
         )
-        address_context = self._load_json_env_object(
+        file_address_context = self._load_meicai_address_context_file(site_rule.get("current_address_context_path"))
+        address_context = file_address_context or self._load_json_env_object(
             str(site_rule.get("address_context_env") or "MEICAI_ADDRESS_CONTEXT").strip()
         )
         h5_salts_path = Path(str(site_rule.get("h5_salts_path") or "tmp/meicai_h5_salts.json").strip())
@@ -3695,15 +3696,6 @@ process.stdout.write(JSON.stringify({
         h5_salts_payload = json.loads(h5_salts_path.read_text(encoding="utf-8-sig"))
         request_source = str(site_rule.get("request_source") or "android").strip() or "android"
         crawl_audit_path = str(site_rule.get("crawl_audit_path") or "").strip()
-        client = MeicaiH5DecryptingGatewayClient(
-            base_url=base_url,
-            timeout=timeout,
-            request_headers={str(key): str(value) for key, value in request_headers.items()},
-            common_body=common_body,
-            h5_salts_payload=h5_salts_payload,
-            request_source=request_source,
-        )
-
         page_size = self._to_positive_int(site_rule.get("page_size"), MEICAI_DEFAULT_PAGE_SIZE)
         max_pages = self._to_positive_int(site_rule.get("max_pages"), MEICAI_DEFAULT_MAX_PAGES)
         request_delay_seconds = max(0.0, self._to_float(site_rule.get("request_delay_seconds"), 0.0))
@@ -3730,16 +3722,44 @@ process.stdout.write(JSON.stringify({
                 address_body = dict(configured_address_body)
                 city_id = str(address_body.get("city_id") or city_id).strip()
                 area_id = str(address_body.get("area_id") or area_id).strip()
+                address_client = MeicaiH5DecryptingGatewayClient(
+                    base_url=base_url,
+                    timeout=timeout,
+                    request_headers={str(key): str(value) for key, value in request_headers.items()},
+                    common_body=common_body,
+                    h5_salts_payload=h5_salts_payload,
+                    request_source=request_source,
+                )
+                address_payload = address_client.change_address(address_body)
+                if int(address_payload.get("ret") or address_payload.get("code") or 0) != 1:
+                    raise RuntimeError("美菜地址切换失败，请刷新 MEICAI_ADDRESS_CONTEXT 或登录态")
             else:
                 location_to = str(address_context.get("locationTo") or address_context.get("location_to") or "").strip()
                 if not location_to:
                     raise RuntimeError("MEICAI_ADDRESS_CONTEXT 必须包含 request_body 或 locationTo")
                 city_id = str(address_context.get("city_id") or city_id).strip()
                 area_id = str(address_context.get("area_id") or area_id).strip()
-                address_body = {**common_body, "locationTo": location_to, "city_id": city_id, "area_id": area_id}
-            address_payload = client.change_address(address_body)
-            if int(address_payload.get("ret") or address_payload.get("code") or 0) != 1:
-                raise RuntimeError("美菜地址切换失败，请刷新 MEICAI_ADDRESS_CONTEXT 或登录态")
+                common_body = self._apply_meicai_location_context(
+                    common_body,
+                    location_to=location_to,
+                    city_id=city_id,
+                    area_id=area_id,
+                )
+                request_headers = self._apply_meicai_city_area_headers(
+                    request_headers,
+                    city_id=city_id,
+                    area_id=area_id,
+                )
+        region_fields = self._infer_meicai_region_fields(address_context)
+
+        client = MeicaiH5DecryptingGatewayClient(
+            base_url=base_url,
+            timeout=timeout,
+            request_headers={str(key): str(value) for key, value in request_headers.items()},
+            common_body=common_body,
+            h5_salts_payload=h5_salts_payload,
+            request_source=request_source,
+        )
 
         rows: list[dict[str, Any]] = []
         category_reports: list[dict[str, Any]] = []
@@ -3804,6 +3824,7 @@ process.stdout.write(JSON.stringify({
                         city_id=city_id,
                         area_id=area_id,
                         source_label="美菜网H5",
+                        **region_fields,
                     )
                 )
                 self._report_progress(
@@ -3879,6 +3900,82 @@ process.stdout.write(JSON.stringify({
         if not isinstance(parsed, dict):
             raise RuntimeError(f"{env_name} 必须是 JSON object")
         return parsed
+
+    @staticmethod
+    def _load_meicai_address_context_file(path_value: Any) -> dict[str, Any]:
+        path_text = str(path_value or "").strip()
+        if not path_text:
+            return {}
+        address_context_path = Path(path_text).expanduser()
+        if not address_context_path.exists():
+            return {}
+        parsed = json.loads(address_context_path.read_text(encoding="utf-8-sig"))
+        if not isinstance(parsed, dict):
+            raise RuntimeError(f"{address_context_path} 必须是 JSON object")
+        return parsed
+
+    @staticmethod
+    def _apply_meicai_location_context(
+        common_body: dict[str, Any],
+        *,
+        location_to: str,
+        city_id: str,
+        area_id: str,
+    ) -> dict[str, Any]:
+        adjusted_common_body = dict(common_body)
+        env_payload = dict(
+            adjusted_common_body.get("_ENV_") if isinstance(adjusted_common_body.get("_ENV_"), dict) else {}
+        )
+        env_payload["location"] = location_to
+        env_payload["city_id"] = city_id
+        env_payload["area_id"] = area_id
+        adjusted_common_body["_ENV_"] = env_payload
+        return adjusted_common_body
+
+    @classmethod
+    def _apply_meicai_city_area_headers(
+        cls,
+        request_headers: dict[str, Any],
+        *,
+        city_id: str,
+        area_id: str,
+    ) -> dict[str, Any]:
+        adjusted_headers = dict(request_headers)
+        adjusted_headers["x-mc-city"] = city_id
+        adjusted_headers["x-mc-area"] = area_id
+        gray_header = str(adjusted_headers.get("mc-gray") or "")
+        if gray_header:
+            gray_header = cls._replace_meicai_gray_value(gray_header, "cityId", city_id)
+            gray_header = cls._replace_meicai_gray_value(gray_header, "saleArea", area_id)
+            adjusted_headers["mc-gray"] = gray_header
+        return adjusted_headers
+
+    @staticmethod
+    def _replace_meicai_gray_value(gray_header: str, key_name: str, value_text: str) -> str:
+        return "_".join(
+            f"{key_name}={value_text}" if part.startswith(f"{key_name}=") else part
+            for part in gray_header.split("_")
+        )
+
+    @staticmethod
+    def _infer_meicai_region_fields(address_context: dict[str, Any]) -> dict[str, str]:
+        address_text = " ".join(
+            str(address_context.get(field_name) or "")
+            for field_name in ("poi_address", "address_detail", "address")
+        )
+        if "上海" in address_text or "浦东" in address_text:
+            return {
+                "market_name": "上海美菜网",
+                "region_label": "上海市",
+                "province": "上海市",
+                "city": "上海市",
+            }
+        return {
+            "market_name": "南京美菜网",
+            "region_label": "南京市",
+            "province": "江苏省",
+            "city": "南京市",
+        }
 
     @staticmethod
     def _load_env_file_if_configured(path_env_name: str) -> None:
@@ -3991,6 +4088,10 @@ process.stdout.write(JSON.stringify({
         city_id: str,
         area_id: str,
         source_label: str = "美菜网App",
+        market_name: str = "南京美菜网",
+        region_label: str = "南京市",
+        province: str = "江苏省",
+        city: str = "南京市",
     ) -> list[dict[str, Any]]:
         rows: list[dict[str, Any]] = []
         for goods_row in goods_rows:
@@ -4069,10 +4170,10 @@ process.stdout.write(JSON.stringify({
                         "category": interface_category or config_category,
                         "spec_text": unit_text or None,
                         "compare_key": product_name,
-                        "market_name": "南京美菜网",
-                        "region_label": "南京市",
-                        "province": "江苏省",
-                        "city": "南京市",
+                        "market_name": market_name,
+                        "region_label": region_label,
+                        "province": province,
+                        "city": city,
                         "product_series": sku_id or spu_id or None,
                         "brand": str(sku_base.get("brandName") or goods_row.get("brandName") or "").strip() or None,
                         "cover": str(sku_image.get("imgUrl") or sku_image.get("url") or goods_row.get("imgUrl") or "").strip() or None,

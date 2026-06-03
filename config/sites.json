@@ -425,6 +425,7 @@
     "gateway_base_url": "https://mall-entrance.yunshanmeicai.com",
     "request_headers_env": "MEICAI_REQUEST_HEADERS",
     "common_body_env": "MEICAI_COMMON_BODY",
+    "current_address_context_path": ".local-secrets/meicai_current_address_context.json",
     "endpoint": "class_products",
     "city_id": "17",
     "area_id": "4402",

@@ -1,8 +1,6 @@
-@import url("https://fonts.googleapis.com/css2?family=Fira+Code:wght@500;600;700&family=Fira+Sans:wght@300;400;500;600;700&display=swap");
-
 :root {
   color-scheme: light;
-  font-family: "Fira Sans", "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
   background: linear-gradient(180deg, #f6f8fb 0%, #eef3f8 58%, #e7edf5 100%);
   color: #112033;
   --brand-primary: #2563eb;
@@ -43,7 +41,7 @@
   --accent-blue-bright: var(--brand-primary);
   --accent-amber: #f59e0b;
   --accent-emerald: #0f9f72;
-  --code-font: "Fira Code", monospace;
+  --code-font: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   --radius-lg: 20px;
   --transition-fast: 0.18s cubic-bezier(0.2, 0.8, 0.2, 1);
   --transition-normal: 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
@@ -847,7 +845,7 @@ body::after {
 
 .platform-choice-rail-header strong {
   color: #fff;
-  font-family: "Fira Sans", "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-family: inherit;
   font-size: 15px;
   letter-spacing: -0.02em;
 }

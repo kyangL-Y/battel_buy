@@ -15,7 +15,7 @@
           </div>
         </div>
         <div class="supplier-portal-auth-actions">
-          <el-button plain @click="backToMainWorkspace">返回采购工作台</el-button>
+          <button type="button" class="supplier-native-button ghost" @click="backToMainWorkspace">返回采购工作台</button>
         </div>
       </div>
       <div class="supplier-portal-login-card supplier-portal-auth-card" data-testid="supplier-login-form">
@@ -27,26 +27,29 @@
         </div>
 
         <strong>账号登录</strong>
-        <el-input v-model="authForm.username" data-testid="auth-username-input" placeholder="账号" />
-        <el-input
+        <input v-model="authForm.username" class="supplier-native-input" data-testid="auth-username-input" autocomplete="username" placeholder="账号" />
+        <span class="supplier-native-password-field">
+          <input
           v-model="authForm.password"
           data-testid="auth-password-input"
-          type="password"
-          show-password
+          :type="authPasswordVisible ? 'text' : 'password'"
+          autocomplete="current-password"
           placeholder="密码"
           @keyup.enter="submitAuthLogin"
-        />
+          />
+          <button type="button" :aria-label="authPasswordVisible ? '隐藏密码' : '显示密码'" @click="authPasswordVisible = !authPasswordVisible">
+            {{ authPasswordVisible ? '隐藏' : '显示' }}
+          </button>
+        </span>
         <p v-if="authError" class="supplier-portal-error">{{ authError }}</p>
-        <el-button type="primary" data-testid="auth-login-button" :loading="authSubmitting" @click="submitAuthLogin">
-          登录
-        </el-button>
+        <button type="button" class="supplier-native-button primary" data-testid="auth-login-button" :disabled="authSubmitting" @click="submitAuthLogin">{{ authSubmitting ? '登录中' : '登录' }}</button>
         <div class="supplier-portal-auth-foot">
           <button type="button" @click="showPasswordHelp">忘记密码</button>
         </div>
       </div>
     </main>
 
-    <el-dialog v-model="passwordResetVisible" title="重置密码" width="min(92vw, 420px)">
+    <el-dialog v-if="passwordResetVisible" v-model="passwordResetVisible" title="重置密码" width="min(92vw, 420px)">
       <div class="supplier-portal-reset-form">
         <small>输入账号、当前密码和新密码，验证通过后直接更新密码并登录。</small>
         <el-input v-model="passwordResetForm.username" placeholder="账号" autocomplete="username" />
@@ -114,19 +117,22 @@
             </div>
 
             <strong>账号登录</strong>
-            <el-input v-model="authForm.username" data-testid="auth-username-input" placeholder="账号" />
-            <el-input
+            <input v-model="authForm.username" class="supplier-native-input" data-testid="auth-username-input" autocomplete="username" placeholder="账号" />
+            <span class="supplier-native-password-field">
+              <input
               v-model="authForm.password"
               data-testid="auth-password-input"
-              type="password"
-              show-password
+              :type="authPasswordVisible ? 'text' : 'password'"
+              autocomplete="current-password"
               placeholder="密码"
               @keyup.enter="submitAuthLogin"
-            />
+              />
+              <button type="button" :aria-label="authPasswordVisible ? '隐藏密码' : '显示密码'" @click="authPasswordVisible = !authPasswordVisible">
+                {{ authPasswordVisible ? '隐藏' : '显示' }}
+              </button>
+            </span>
             <p v-if="authError" class="supplier-portal-error">{{ authError }}</p>
-            <el-button type="primary" data-testid="auth-login-button" :loading="authSubmitting" @click="submitAuthLogin">
-              登录
-            </el-button>
+            <button type="button" class="supplier-native-button primary" data-testid="auth-login-button" :disabled="authSubmitting" @click="submitAuthLogin">{{ authSubmitting ? '登录中' : '登录' }}</button>
             <div class="supplier-portal-auth-foot">
               <button type="button" @click="showPasswordHelp">忘记密码</button>
             </div>
@@ -252,8 +258,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, reactive, ref } from 'vue'
-import { ElMessage } from 'element-plus/es/components/message/index.mjs'
+import { computed, defineAsyncComponent, nextTick, onMounted, reactive, ref } from 'vue'
 
 import {
   clearAuthSession,
@@ -266,10 +271,12 @@ import {
   resetAuthPassword,
   writeAuthSession,
 } from './api'
-import SupplierAdminPanel from './components/SupplierAdminPanel.vue'
 import { useViewport } from './composables/useViewport'
+import { lazyElMessage } from './lazyElementMessage'
 import type { AuthLoginResponse, AuthUserItem, ProductOptionItem } from './types'
 import './supplier-portal.css'
+
+const SupplierAdminPanel = defineAsyncComponent(() => import('./components/SupplierAdminPanel.vue'))
 
 const MAIN_APP_PATH = '/'
 const SUPPLIER_BACKEND_PATH = '/supplier-backend'
@@ -281,6 +288,7 @@ const authRestoring = ref(false)
 const portalContextLoading = ref(false)
 const authError = ref('')
 const authForm = reactive({ username: '', password: '' })
+const authPasswordVisible = ref(false)
 const passwordResetVisible = ref(false)
 const passwordResetSubmitting = ref(false)
 const passwordResetError = ref('')
@@ -585,7 +593,7 @@ function runPortalStickySecondaryAction() {
   openSupplierBackend()
 }
 
-function runPortalQuoteQueueAction(action: 'pending' | 'drafts' | 'history') {
+async function runPortalQuoteQueueAction(action: 'pending' | 'drafts' | 'history') {
   if (action === 'history') {
     portalMobileTask.value = 'history'
     void scrollToQuoteDesk()
@@ -593,7 +601,7 @@ function runPortalQuoteQueueAction(action: 'pending' | 'drafts' | 'history') {
   }
   portalMobileTask.value = 'quote'
   if (action === 'drafts' && !quoteDraftSummary.count) {
-    ElMessage.info('当前还没有本机草稿，填写报价后可先保存草稿')
+    ;(await lazyElMessage()).info('当前还没有本机草稿，填写报价后可先保存草稿')
   }
   void scrollToQuoteDesk()
 }
@@ -658,7 +666,7 @@ async function submitAuthLogin() {
     applyAuthSession(session)
     await loadPortalContext(true)
     if (!isMobileViewport.value) {
-      ElMessage.success('已登录供应商报价页')
+      ;(await lazyElMessage()).success('已登录供应商报价页')
     }
   } catch (error) {
     authError.value = extractApiErrorDetail(error) || '登录失败，请检查账号或密码'
@@ -700,7 +708,7 @@ async function submitPasswordReset() {
     authForm.password = ''
     passwordResetVisible.value = false
     await loadPortalContext(true)
-    ElMessage.success('密码已重置')
+    ;(await lazyElMessage()).success('密码已重置')
   } catch (error) {
     passwordResetError.value = extractApiErrorDetail(error) || '密码重置失败'
   } finally {

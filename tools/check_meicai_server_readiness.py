@@ -79,6 +79,31 @@ def summarize_json_object(value: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def summarize_meicai_current_address(path_text: str) -> dict[str, Any]:
+    if not path_text:
+        return {"present": False, "path": None}
+    current_address_path = Path(path_text)
+    if not current_address_path.exists():
+        return {"present": False, "path": path_text}
+    current_address_payload = load_json_file(current_address_path)
+    if not isinstance(current_address_payload, dict):
+        raise RuntimeError(f"{path_text} must contain a JSON object")
+    address_text = " ".join(
+        str(current_address_payload.get(field_name) or "")
+        for field_name in ("poi_address", "address_detail", "address")
+    )
+    inferred_region = "上海市" if "上海" in address_text or "浦东" in address_text else None
+    return {
+        "present": True,
+        "path": path_text,
+        "has_location": bool(current_address_payload.get("locationTo") or current_address_payload.get("location_to")),
+        "address_id_present": bool(current_address_payload.get("addressId")),
+        "city_id_present": bool(str(current_address_payload.get("city_id") or "").strip()),
+        "area_id_present": bool(str(current_address_payload.get("area_id") or "").strip()),
+        "inferred_region": inferred_region,
+    }
+
+
 def build_readiness_report(
     *,
     products_path: Path,
@@ -103,9 +128,11 @@ def build_readiness_report(
     headers_env_name = str(meicai_site_rule.get("request_headers_env") or "MEICAI_REQUEST_HEADERS")
     common_body_env_name = str(meicai_site_rule.get("common_body_env") or "MEICAI_COMMON_BODY")
     address_context_env_name = str(meicai_site_rule.get("address_context_env") or "MEICAI_ADDRESS_CONTEXT")
+    current_address_context_path = str(meicai_site_rule.get("current_address_context_path") or "").strip()
     request_headers = parse_json_env(headers_env_name, required=True)
     common_body = parse_json_env(common_body_env_name, required=True)
     address_context = parse_json_env(address_context_env_name, required=False)
+    current_address_summary = summarize_meicai_current_address(current_address_context_path)
 
     category_filters = [
         {
@@ -146,6 +173,7 @@ def build_readiness_report(
         "max_pages": meicai_site_rule.get("max_pages"),
         "sale_class_tree_path": sale_class_tree_path or None,
         "h5_salts_path": h5_salts_path or None,
+        "current_address_context": current_address_summary,
         "request_source": meicai_site_rule.get("request_source"),
         "sale_class_filter_count": sale_class_filter_count,
         "category_filter_count": len(category_filters),

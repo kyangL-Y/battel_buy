@@ -1,10 +1,8 @@
 <template>
-  <section
-    v-loading="loading && !isMobileViewport"
-    element-loading-text="正在更新右侧报价..."
-    element-loading-background="rgba(247, 248, 250, 0.72)"
-    class="panel market-panel content-shell-panel"
-  >
+  <section class="panel market-panel content-shell-panel">
+    <div v-if="loading && !isMobileViewport" class="market-panel-loading-mask" role="status" aria-live="polite">
+      正在更新右侧报价...
+    </div>
     <div v-if="!isMobileViewport" class="panel-header content-panel-header">
       <div class="panel-header-copy">
         <p class="panel-kicker">实时汇总</p>
@@ -80,24 +78,23 @@
     <div v-if="isMobileViewport" class="market-mobile-workbench market-mobile-feed-v2" data-testid="market-mobile-list">
       <section class="market-mobile-feed-hero">
         <div>
-          <p>今日行情</p>
+          <p>今日菜价</p>
           <h2>{{ currentCategory === '全部' ? '全部商品' : currentCategory }}</h2>
-          <small>{{ sortedRows.length }} 个商品可比价 · {{ locationLabel || '本地市场' }}</small>
+          <small>{{ sortedRows.length }} 个商品 · {{ locationLabel || '本地市场' }}</small>
         </div>
         <button type="button" @click="resetMobileFilters">重置</button>
       </section>
 
       <div class="market-mobile-feed-toolbar">
         <div class="market-mobile-feed-search">
-          <el-input
-            :model-value="keywordDraft"
+          <input
+            :value="keywordDraft"
             type="search"
             inputmode="search"
             enterkeyhint="search"
             aria-label="移动端搜索商品"
             placeholder="搜索商品名称"
-            clearable
-            @update:model-value="handleKeywordInput"
+            @input="handleKeywordInput"
             @keyup.enter="flushKeywordInput"
           />
         </div>
@@ -111,13 +108,13 @@
         </button>
       </div>
 
-      <div class="market-mobile-feed-tabs" aria-label="行情分类">
+      <div class="market-mobile-feed-tabs" aria-label="菜价分类">
         <button
           v-for="item in categoryTabs"
           :key="item.key"
           type="button"
           :class="{ active: currentCategory === item.key }"
-          @click="emit('update:active-category', item.key)"
+          @click="selectMobileCategory(item.key)"
         >
           {{ item.label }}
         </button>
@@ -171,7 +168,7 @@
         <div v-if="!loading && !pagedRows.length" class="table-empty-state market-summary-empty-state" data-testid="market-summary-empty-state">
           <strong>当前没有可展示的商品报价</strong>
           <p>可先清空筛选条件、刷新报价，或切换到其他地区查看。</p>
-          <el-button v-if="keyword" type="primary" plain @click="clearKeyword">清空搜索</el-button>
+          <button v-if="keyword" type="button" class="market-empty-action-button" @click="clearKeyword">清空搜索</button>
         </div>
       </div>
       <div v-if="sortedRows.length > pageSize" class="table-pagination-bar mobile">
@@ -182,13 +179,10 @@
             <option v-for="size in pageSizeOptions" :key="`mobile-page-size-${size}`" :value="size">{{ size }}</option>
           </select>
         </label>
-        <el-pagination
-          v-model:current-page="currentPage"
-          :page-size="pageSize"
-          :layout="paginationLayout"
-          :total="sortedRows.length"
-          size="small"
-        />
+        <div class="market-mobile-page-buttons" aria-label="翻页">
+          <button type="button" :disabled="currentPage <= 1" @click="goToPreviousPage">上一页</button>
+          <button type="button" :disabled="currentPage >= pageCount" @click="goToNextPage">下一页</button>
+        </div>
       </div>
     </div>
     <template v-else>
@@ -404,7 +398,18 @@
         </el-table>
       </div>
     </details>
-    <el-dialog v-model="imagePreviewVisible" :title="imagePreviewTitle || '图片预览'" width="min(92vw, 960px)">
+    <teleport v-if="isMobileViewport && imagePreviewVisible" to="body">
+      <div class="market-image-preview-backdrop" role="dialog" aria-modal="true" @click="closeImagePreview">
+        <div class="market-image-preview-panel" @click.stop>
+          <div class="market-image-preview-head">
+            <strong>{{ imagePreviewTitle || '图片预览' }}</strong>
+            <button type="button" aria-label="关闭图片预览" @click="closeImagePreview">关闭</button>
+          </div>
+          <img v-if="imagePreviewUrl" :src="imagePreviewUrl" :alt="imagePreviewTitle || ''" class="market-image-preview" />
+        </div>
+      </div>
+    </teleport>
+    <el-dialog v-if="!isMobileViewport" v-model="imagePreviewVisible" :title="imagePreviewTitle || '图片预览'" width="min(92vw, 960px)">
       <div class="market-image-preview-shell">
         <img v-if="imagePreviewUrl" :src="imagePreviewUrl" :alt="imagePreviewTitle || ''" class="market-image-preview" />
       </div>
@@ -414,9 +419,9 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { ElMessage } from 'element-plus/es/components/message/index.mjs'
 import type { MarketSummaryItem, SourceCoverageItem } from '../types'
 import { useViewport } from '../composables/useViewport'
+import { lazyElMessage } from '../lazyElementMessage'
 import { buildMarketCategoryTabs, resolveMarketCategory, resolveMarketCategoryMeta } from '../utils/marketCategories'
 
 const props = defineProps<{
@@ -531,16 +536,32 @@ function handleRowClick(row: MarketSummaryItem) {
   }
 }
 
+function scrollMobileListTop() {
+  if (!isMobileViewport.value || typeof window === 'undefined') return
+  window.requestAnimationFrame(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  })
+}
+
 function resetMobileFilters() {
   keywordDraft.value = ''
   flushKeywordInput()
   if (currentCategory.value !== '全部') {
     emit('update:active-category', '全部')
   }
+  currentPage.value = 1
+  scrollMobileListTop()
 }
 
-function handleKeywordInput(value: string | number) {
-  const nextKeyword = String(value || '')
+function selectMobileCategory(categoryKey: string) {
+  if (currentCategory.value === categoryKey) return
+  currentPage.value = 1
+  emit('update:active-category', categoryKey)
+  scrollMobileListTop()
+}
+
+function handleKeywordInput(event: Event) {
+  const nextKeyword = event.target instanceof HTMLInputElement ? event.target.value : ''
   keywordDraft.value = nextKeyword
   if (!isMobileViewport.value) {
     emit('keyword-change', nextKeyword)
@@ -551,6 +572,8 @@ function handleKeywordInput(value: string | number) {
   }
   keywordCommitTimer = window.setTimeout(() => {
     emit('keyword-change', keywordDraft.value)
+    currentPage.value = 1
+    scrollMobileListTop()
     keywordCommitTimer = undefined
   }, 180)
 }
@@ -561,6 +584,8 @@ function flushKeywordInput() {
     keywordCommitTimer = undefined
   }
   emit('keyword-change', keywordDraft.value)
+  currentPage.value = 1
+  scrollMobileListTop()
 }
 
 function clearKeyword() {
@@ -570,7 +595,7 @@ function clearKeyword() {
 
 async function copyVisibleProducts() {
   if (!pagedRows.value.length) {
-    ElMessage.warning('当前页没有可复制商品')
+    lazyElMessage.warning('当前页没有可复制商品')
     return
   }
   const content = pagedRows.value
@@ -579,9 +604,9 @@ async function copyVisibleProducts() {
   try {
     if (!navigator.clipboard?.writeText) throw new Error('clipboard unavailable')
     await navigator.clipboard.writeText(content)
-    ElMessage.success(`已复制当前页 ${pagedRows.value.length} 个商品`)
+    lazyElMessage.success(`已复制当前页 ${pagedRows.value.length} 个商品`)
   } catch {
-    ElMessage.warning('浏览器未允许复制，请手动复制')
+    lazyElMessage.warning('浏览器未允许复制，请手动复制')
   }
 }
 
@@ -591,6 +616,20 @@ function openImagePreview(url: string | null | undefined, title: string) {
   imagePreviewUrl.value = normalizedUrl
   imagePreviewTitle.value = String(title || '').trim()
   imagePreviewVisible.value = true
+}
+
+function closeImagePreview() {
+  imagePreviewVisible.value = false
+}
+
+function goToPreviousPage() {
+  currentPage.value = Math.max(1, currentPage.value - 1)
+  scrollMobileListTop()
+}
+
+function goToNextPage() {
+  currentPage.value = Math.min(pageCount.value, currentPage.value + 1)
+  scrollMobileListTop()
 }
 
 const categoryTabs = computed(() => buildMarketCategoryTabs(productRows.value))
@@ -1226,8 +1265,21 @@ watch(sourceTierFilterOptions, (options) => {
     box-shadow: none;
   }
 
-  .market-panel.content-shell-panel :deep(.el-loading-mask) {
+  .market-panel {
+    position: relative;
+  }
+
+  .market-panel-loading-mask {
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    display: grid;
+    place-items: center;
     border-radius: 16px;
+    background: rgba(247, 248, 250, 0.72);
+    color: #475569;
+    font-size: 13px;
+    font-weight: 800;
   }
 
   .content-panel-header {
@@ -1727,6 +1779,7 @@ watch(sourceTierFilterOptions, (options) => {
   border-radius: 999px;
   font: inherit;
   font-weight: 800;
+  touch-action: manipulation;
 }
 
 .market-mobile-feed-hero button {
@@ -1751,13 +1804,21 @@ watch(sourceTierFilterOptions, (options) => {
   box-shadow: 0 8px 22px rgba(15, 23, 42, .04);
 }
 
-.market-mobile-feed-search :deep(.el-input__wrapper) {
+.market-mobile-feed-search input {
+  width: 100%;
   min-height: 40px;
   padding: 0;
   border: 0;
   border-radius: 0;
-  box-shadow: none !important;
+  outline: 0;
   background: transparent;
+  color: #071226;
+  font: inherit;
+  font-size: 15px;
+}
+
+.market-mobile-feed-search input::placeholder {
+  color: #94a3b8;
 }
 
 .market-mobile-feed-clear {
@@ -1836,8 +1897,55 @@ watch(sourceTierFilterOptions, (options) => {
 }
 
 .table-pagination-bar.mobile {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px 10px;
+  align-items: center;
   margin-top: 4px;
   padding: 8px 4px 0;
+}
+
+.table-pagination-bar.mobile > span {
+  min-width: 0;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.table-pagination-bar.mobile .page-size-select {
+  justify-self: end;
+}
+
+.market-mobile-page-buttons {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.market-mobile-page-buttons button,
+.market-empty-action-button {
+  min-height: 36px;
+  border: 1px solid #dbe4ef;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #1f3149;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  touch-action: manipulation;
+}
+
+.market-mobile-page-buttons button:disabled {
+  background: #f8fafc;
+  color: #94a3b8;
+}
+
+.market-empty-action-button {
+  margin-top: 10px;
+  padding: 0 14px;
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  color: #1d4ed8;
 }
 
 .page-size-select {
@@ -1868,6 +1976,13 @@ watch(sourceTierFilterOptions, (options) => {
   border: 0;
   text-align: left;
   font: inherit;
+  touch-action: manipulation;
+  transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease;
+}
+
+.market-mobile-feed-card:active {
+  transform: translateY(1px) scale(.995);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, .08);
 }
 
 .market-mobile-feed-card-main {
@@ -1899,6 +2014,56 @@ watch(sourceTierFilterOptions, (options) => {
 .market-image-preview-shell {
   display: grid;
   place-items: center;
+}
+
+.market-image-preview-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2400;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(15, 23, 42, 0.62);
+}
+
+.market-image-preview-panel {
+  display: grid;
+  gap: 12px;
+  width: min(100%, 720px);
+  max-height: 88vh;
+  padding: 12px;
+  border-radius: 18px;
+  background: #ffffff;
+  box-shadow: 0 24px 80px rgba(15, 23, 42, 0.28);
+}
+
+.market-image-preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.market-image-preview-head strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #071226;
+  font-size: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.market-image-preview-head button {
+  flex: 0 0 auto;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid #dbe4ef;
+  border-radius: 9px;
+  background: #f8fafc;
+  color: #475569;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .market-image-preview {
