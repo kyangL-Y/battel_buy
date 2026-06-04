@@ -1568,6 +1568,22 @@ def test_fetch_meicai_h5_decrypt_prefers_current_address_file_without_changeaddr
     assert rows[0]["extra_fields"]["city"] == "上海市"
 
 
+def test_meicai_region_inference_recognizes_zhengzhou_address():
+    region_fields = PublicSourceCrawler._infer_meicai_region_fields(
+        {
+            "poi_address": "河南省郑州市金水区农科路2号郑州金水万达广场",
+            "address_detail": "门店",
+        }
+    )
+
+    assert region_fields == {
+        "market_name": "郑州美菜网",
+        "region_label": "郑州市",
+        "province": "河南省",
+        "city": "郑州市",
+    }
+
+
 def test_fetch_meicai_h5_decrypt_applies_request_delay_between_requests(tmp_path, monkeypatch):
     observed_sleep_seconds: list[float] = []
     tree_path = tmp_path / "meicai_sale_class_tree.json"

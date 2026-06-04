@@ -86,6 +86,51 @@ def test_build_readiness_report_summarizes_env_without_secret_values(tmp_path, m
     assert "secret-current-location" not in serialized_report
 
 
+def test_build_readiness_report_summarizes_zhengzhou_current_address(tmp_path, monkeypatch):
+    products_path = tmp_path / "products.json"
+    sites_path = tmp_path / "sites.json"
+    current_address_path = tmp_path / "meicai_current_address_context.json"
+    products_path.write_text(
+        '[{"product_key":"meicai-h5-class-products","url":"https://mall-entrance.yunshanmeicai.com","strategy":"meicai_h5_decrypt_batch","enabled":true}]',
+        encoding="utf-8",
+    )
+    current_address_path.write_text(
+        json.dumps(
+            {
+                "addressId": "address-id",
+                "locationTo": "secret-current-location",
+                "poi_address": "河南省郑州市金水区农科路2号郑州金水万达广场",
+                "address_detail": "门店",
+            }
+        ),
+        encoding="utf-8",
+    )
+    sites_path.write_text(
+        json.dumps(
+            [
+                {
+                    "domains": ["mall-entrance.yunshanmeicai.com"],
+                    "strategy": "meicai_h5_decrypt_batch",
+                    "current_address_context_path": str(current_address_path),
+                    "category_filters": [],
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("MEICAI_REQUEST_HEADERS", '{"Device-Token":"secret-token"}')
+    monkeypatch.setenv("MEICAI_COMMON_BODY", '{"tickets":"secret-ticket"}')
+    monkeypatch.delenv("MEICAI_ADDRESS_CONTEXT", raising=False)
+
+    report = build_readiness_report(
+        products_path=products_path,
+        sites_path=sites_path,
+        secret_env_file=None,
+    )
+
+    assert report["current_address_context"]["inferred_region"] == "郑州市"
+
+
 def test_build_readiness_report_loads_secret_env_file_without_overriding_existing(tmp_path, monkeypatch):
     products_path = tmp_path / "products.json"
     sites_path = tmp_path / "sites.json"

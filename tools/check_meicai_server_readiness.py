@@ -79,6 +79,14 @@ def summarize_json_object(value: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def infer_meicai_current_address_region(address_text: str) -> str | None:
+    if "上海" in address_text or "浦东" in address_text:
+        return "上海市"
+    if "郑州" in address_text or "金水" in address_text or "中牟" in address_text or "万邦" in address_text:
+        return "郑州市"
+    return None
+
+
 def summarize_meicai_current_address(path_text: str) -> dict[str, Any]:
     if not path_text:
         return {"present": False, "path": None}
@@ -92,7 +100,7 @@ def summarize_meicai_current_address(path_text: str) -> dict[str, Any]:
         str(current_address_payload.get(field_name) or "")
         for field_name in ("poi_address", "address_detail", "address")
     )
-    inferred_region = "上海市" if "上海" in address_text or "浦东" in address_text else None
+    inferred_region = infer_meicai_current_address_region(address_text)
     return {
         "present": True,
         "path": path_text,

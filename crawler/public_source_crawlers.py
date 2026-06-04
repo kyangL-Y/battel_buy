@@ -3970,6 +3970,13 @@ process.stdout.write(JSON.stringify({
                 "province": "上海市",
                 "city": "上海市",
             }
+        if "郑州" in address_text or "金水" in address_text or "中牟" in address_text or "万邦" in address_text:
+            return {
+                "market_name": "郑州美菜网",
+                "region_label": "郑州市",
+                "province": "河南省",
+                "city": "郑州市",
+            }
         return {
             "market_name": "南京美菜网",
             "region_label": "南京市",
