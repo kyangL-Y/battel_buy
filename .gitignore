@@ -43,3 +43,4 @@ web/test-results/
 
 # Release packages
 release/*.zip
+release/dist/
