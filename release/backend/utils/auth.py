@@ -13,15 +13,40 @@ import jwt
 
 AUTH_ALGORITHM = "HS256"
 AUTH_ACCESS_TOKEN_EXPIRE_SECONDS = int(os.getenv("BATTEL_AUTH_ACCESS_TOKEN_EXPIRE_SECONDS", "28800"))
-AUTH_SECRET = os.getenv(
-    "BATTEL_AUTH_SECRET",
-    "battel-dev-secret-change-me-please-override-32",
-)
+DEFAULT_DEV_AUTH_SECRET = "battel-dev-secret-change-me-please-override-32"
+MIN_AUTH_SECRET_LENGTH = 32
+PRODUCTION_ENVIRONMENT_NAMES = {"prod", "production", "staging"}
 DEFAULT_ADMIN_USERNAME = os.getenv("BATTEL_DEFAULT_ADMIN_USERNAME", "admin")
-DEFAULT_ADMIN_PASSWORD = os.getenv("BATTEL_DEFAULT_ADMIN_PASSWORD", "admin123")
+DEFAULT_DEV_ADMIN_PASSWORD = "admin123"
 DEFAULT_ADMIN_DISPLAY_NAME = os.getenv("BATTEL_DEFAULT_ADMIN_DISPLAY_NAME", "系统管理员")
 PBKDF2_ITERATIONS = int(os.getenv("BATTEL_AUTH_PBKDF2_ITERATIONS", "390000"))
 MIN_PASSWORD_LENGTH = 8
+
+
+def _is_production_environment() -> bool:
+    return os.getenv("BATTEL_ENV", "").strip().lower() in PRODUCTION_ENVIRONMENT_NAMES
+
+
+def _load_auth_secret() -> str:
+    auth_secret = os.getenv("BATTEL_AUTH_SECRET", DEFAULT_DEV_AUTH_SECRET)
+    if not _is_production_environment():
+        return auth_secret
+    if auth_secret == DEFAULT_DEV_AUTH_SECRET:
+        raise RuntimeError("BATTEL_AUTH_SECRET must be set when BATTEL_ENV is production or staging")
+    if len(auth_secret) < MIN_AUTH_SECRET_LENGTH:
+        raise RuntimeError(f"BATTEL_AUTH_SECRET must be at least {MIN_AUTH_SECRET_LENGTH} characters")
+    return auth_secret
+
+
+def _load_default_admin_password() -> str:
+    default_admin_password = os.getenv("BATTEL_DEFAULT_ADMIN_PASSWORD", DEFAULT_DEV_ADMIN_PASSWORD)
+    if _is_production_environment() and default_admin_password == DEFAULT_DEV_ADMIN_PASSWORD:
+        raise RuntimeError("BATTEL_DEFAULT_ADMIN_PASSWORD must override the development default in production or staging")
+    return default_admin_password
+
+
+AUTH_SECRET = _load_auth_secret()
+DEFAULT_ADMIN_PASSWORD = _load_default_admin_password()
 
 
 def hash_password(password: str) -> str:

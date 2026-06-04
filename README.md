@@ -156,8 +156,9 @@ python -X utf8 tools/backfill_supplier_identity_keys.py --apply
 - `GET /api/auth/me`：读取当前登录用户，用于前端恢复登录态和权限边界。
 - 默认管理员账号会在数据库初始化时自动创建：
   - 用户名：`admin`
-  - 密码：`admin123`
+  - 开发默认密码：`admin123`
   - 展示名：`系统管理员`
+- 生产或预发环境必须设置 `BATTEL_ENV=production` 或 `BATTEL_ENV=staging`，并通过环境变量覆盖 `BATTEL_AUTH_SECRET` 与 `BATTEL_DEFAULT_ADMIN_PASSWORD`；否则认证模块会拒绝启动。
 - 管理员账号可查看全部供应商、全部报价、全部日志与结算台账。
 - 供应商账号只能查看并操作自己绑定的供应商资料、报价记录、操作日志和结算数据。
 - 账号被停用后，登录接口会直接返回“当前账号已停用”；已有 token 再访问受保护接口时也会被后端拒绝。

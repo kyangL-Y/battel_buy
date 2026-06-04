@@ -40,6 +40,24 @@ npm run build
 
 构建完成后，静态文件位于 `web/dist/`。
 
+### 2.3 本地发布包同步
+
+`release/dist/` 是本地发布产物目录，不再作为 Git 跟踪资产。需要打包或上传静态资源时，先构建 `web/dist/`，再把当前构建结果同步到 `release/dist/`。
+
+Windows PowerShell：
+
+```powershell
+Remove-Item -Recurse -Force release\dist
+Copy-Item -Recurse web\dist release\dist
+```
+
+Linux / Bash：
+
+```bash
+rm -rf release/dist
+cp -a web/dist release/dist
+```
+
 ## 3. 后端部署
 
 当前运行时只支持 MySQL 云库启动；SQLite 仅保留给测试、数据迁移和显式 `Database(db_path=...)` 的离线工具，不再作为后端服务的回退方案。若你习惯在 Linux / Bash 中加载环境文件，先从 `.env.mysql.example` 复制出真实 `.env.mysql`，再执行 `. ./.env.mysql`，不要直接 `source` 一个不存在的 `.env.mysql`。
