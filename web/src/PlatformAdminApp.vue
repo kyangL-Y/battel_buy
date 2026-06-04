@@ -696,11 +696,12 @@ async function submitAdminLogin() {
   authSubmitting.value = true
   try {
     const session = await login({ username, password })
-    applyAuthSession(session)
     if (session.user.role !== 'admin') {
       authError.value = '当前账号不是管理员，无法进入平台后台'
+      authForm.password = ''
       return
     }
+    applyAuthSession(session)
     await reloadAdminData()
     ElMessage.success('已进入平台后台')
   } catch (error) {

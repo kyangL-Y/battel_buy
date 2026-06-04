@@ -94,6 +94,61 @@ test('桌面端平台后台独立承载抓取和来源治理', async ({ page }) 
   await expect(page.getByRole('button', { name: '切到数据抓取' })).toBeVisible()
 })
 
+test('桌面端平台后台拒绝非管理员且不写入后台会话', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1024 })
+  await page.addInitScript(() => {
+    window.localStorage.setItem('battel.auth.session.admin', JSON.stringify({
+      access_token: 'expired-admin-token',
+      token_type: 'Bearer',
+      expires_in: 3600,
+      user: {
+        id: 1,
+        username: 'expired-admin',
+        display_name: '过期管理员',
+        role: 'admin',
+        supplier_id: null,
+        is_active: true,
+      },
+    }))
+  })
+  await page.route('**/api/auth/me', async (route) => {
+    await route.fulfill({
+      status: 401,
+      contentType: 'application/json',
+      body: JSON.stringify({ detail: '登录状态已失效，请重新登录' }),
+    })
+  })
+  await page.route('**/api/auth/login', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        access_token: 'procurement-token',
+        token_type: 'Bearer',
+        expires_in: 3600,
+        user: {
+          id: 9,
+          username: 'buyer-nj',
+          display_name: '南京采购',
+          role: 'procurement',
+          supplier_id: null,
+          procurement_supplier_ids: [1],
+          is_active: true,
+        },
+      }),
+    })
+  })
+
+  await page.goto('/admin', { waitUntil: 'domcontentloaded' })
+  await page.getByTestId('platform-admin-username-input').fill('buyer-nj')
+  await page.getByTestId('platform-admin-password-input').fill('buyer123456')
+  await page.getByTestId('platform-admin-login-button').click()
+
+  await expect(page.getByText('当前账号不是管理员，无法进入平台后台')).toBeVisible()
+  await expect(page.getByTestId('platform-admin-login-form')).toBeVisible()
+  const adminSession = await page.evaluate(() => window.localStorage.getItem('battel.auth.session.admin'))
+  expect(adminSession).toBeNull()
+})
+
 test('桌面端供应商门户独立承载供应商录价前端', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1024 })
   await page.goto('/supplier-portal', { waitUntil: 'domcontentloaded' })
@@ -127,48 +182,26 @@ test('桌面端无登录态从首页供应商入口进入供应商门户', async
   expect(currentUrl.pathname).not.toBe('/supplier-backend')
 })
 
-test('桌面端供应商门户注册申请会真实提交并展示异常态', async ({ page }) => {
+test('桌面端供应商门户只保留账号登录和找回密码', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1024 })
   const submittedPayloads: unknown[] = []
   await page.route('**/api/supplier-registration-requests', async (route) => {
     submittedPayloads.push(route.request().postDataJSON())
     await route.fulfill({
-      status: submittedPayloads.length === 1 ? 409 : 200,
+      status: 400,
       contentType: 'application/json',
-      body: submittedPayloads.length === 1
-        ? JSON.stringify({ detail: '该登录账号已存在' })
-        : JSON.stringify({ id: 88, status: 'pending', company_name: '自动化测试供应商' }),
+      body: JSON.stringify({ detail: '注册申请接口已下线' }),
     })
   })
 
   await page.goto('/supplier-portal', { waitUntil: 'domcontentloaded' })
-  await page.getByRole('button', { name: '注册' }).click()
-  await page.getByPlaceholder('供应商名称').fill('自动化测试供应商')
-  await page.getByPlaceholder('联系人').fill('李四')
-  await page.getByPlaceholder('手机号').fill('13800000000')
-  await page.getByPlaceholder('登录账号').fill('auto-supplier')
-  await page.getByTestId('supplier-register-submit').click()
-
-  await expect(page.getByText('该登录账号已存在')).toBeVisible()
+  await expect(page.getByTestId('supplier-portal-screen')).toBeVisible()
+  await expect(page.getByTestId('supplier-login-form')).toBeVisible()
+  await expect(page.getByText('账号由采购分配').first()).toBeVisible()
+  await expect(page.getByRole('button', { name: '忘记密码' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '注册' })).toHaveCount(0)
   await expectNoHorizontalOverflow(page)
-
-  await page.getByPlaceholder('登录账号').fill('auto-supplier-2')
-  await page.getByTestId('supplier-register-submit').click()
-  await expect(page.getByTestId('auth-login-button')).toBeVisible()
-  expect(submittedPayloads).toEqual([
-    {
-      company_name: '自动化测试供应商',
-      contact_name: '李四',
-      contact_phone: '13800000000',
-      username: 'auto-supplier',
-    },
-    {
-      company_name: '自动化测试供应商',
-      contact_name: '李四',
-      contact_phone: '13800000000',
-      username: 'auto-supplier-2',
-    },
-  ])
+  expect(submittedPayloads).toEqual([])
 })
 
 test('桌面端采购供应商管理遇到失效登录态时提示重新登录', async ({ page }) => {

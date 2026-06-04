@@ -318,12 +318,14 @@ const isAuthenticated = computed(() => Boolean(authSession.value?.access_token &
 const currentAuthRole = computed(() => currentUser.value?.role ?? null)
 const currentAuthSupplierId = computed(() => currentUser.value?.supplier_id ?? null)
 const currentAuthDisplayName = computed(() => currentUser.value?.display_name || currentUser.value?.username || '')
-const authRoleHint = computed(() => '管理员管理供应商；供应商填写报价。')
+const authRoleHint = computed(() => '管理员管理供应商；采购账号维护绑定供应商；供应商填写报价。')
 const currentAuthRoleLabel = computed(() => {
   if (!isAuthenticated.value) {
     return '待登录'
   }
-  return currentAuthRole.value === 'admin' ? '管理员' : '供应商'
+  if (currentAuthRole.value === 'admin') return '管理员'
+  if (currentAuthRole.value === 'procurement') return '采购账号'
+  return '供应商'
 })
 const currentAuthScopeLabel = computed(() => {
   if (!isAuthenticated.value) {
@@ -331,6 +333,10 @@ const currentAuthScopeLabel = computed(() => {
   }
   if (currentAuthRole.value === 'admin') {
     return '可管理所有供应商'
+  }
+  if (currentAuthRole.value === 'procurement') {
+    const supplierCount = currentUser.value?.procurement_supplier_ids?.length || 0
+    return supplierCount ? `可维护 ${supplierCount} 家绑定供应商` : '还没有分配供应商'
   }
   const supplierName = currentUser.value?.supplier_profile?.supplier_name || ''
   return supplierName ? `当前供应商：${supplierName}` : '还没有分配供应商'
@@ -393,9 +399,16 @@ const backendTabEntries = computed(() =>
       label: currentAuthRole.value === 'supplier' && item.key === 'settlement' ? '我的结算' : (currentAuthRole.value === 'supplier' && item.key === 'quote' ? '我的报价' : item.label),
       detail: currentAuthRole.value === 'supplier'
         ? (item.key === 'quote' ? '录价、导入、草稿和历史' : '账期、付款和对账')
+        : currentAuthRole.value === 'procurement'
+          ? (
+            item.key === 'suppliers' ? '查看绑定供应商和账号状态'
+              : item.key === 'quote' ? '维护绑定供应商报价'
+                : item.key === 'settlement' ? '查看绑定供应商结算'
+                  : '查看当前团队供应商留痕'
+          )
         : (
           item.key === 'suppliers' ? '创建供应商、启停和账号绑定'
-            : item.key === 'accounts' ? '维护管理员、供应商账号和启停状态'
+            : item.key === 'accounts' ? '维护管理员、采购账号、供应商账号和启停状态'
               : item.key === 'quote' ? '录价、代录和报价历史'
                 : item.key === 'settlement' ? '账期、付款和结算明细'
                   : '导入导出和操作留痕'
@@ -482,7 +495,7 @@ const secondaryBackendActionLabel = computed(() =>
 const backendShellCards = computed(() => [
   {
     label: '账号类型',
-    value: isAuthenticated.value ? (currentAuthRole.value === 'admin' ? '管理员' : '供应商') : '待登录',
+    value: isAuthenticated.value ? currentAuthRoleLabel.value : '待登录',
     detail: isAuthenticated.value ? currentAuthRoleLabel.value : '登录后显示可用功能',
   },
   {

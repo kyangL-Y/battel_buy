@@ -138,7 +138,7 @@
 
         <div class="account-detail-note">
           <strong>权限边界</strong>
-          <p>管理员账号可进入采购端和账号中心；供应商账号只能进入绑定供应商的数据范围。</p>
+          <p>管理员账号可进入采购端和账号中心；采购账号只能维护绑定供应商；供应商账号只能进入绑定供应商的数据范围。</p>
         </div>
 
         <div class="account-detail-actions">
