@@ -4,6 +4,7 @@ import {
   dataSourceState,
   extractApiErrorDetail,
   getAccessToken,
+  getApiErrorStatus,
   readAuthSession,
   writeAuthSession,
 } from './apiSession'
@@ -30,11 +31,23 @@ import type {
   SourceConfigUpdatePayload,
   SourceStrategyUpdatePayload,
   GlobalAlertRuleItem,
+  SupplierItem,
   SupplierOverviewResponse,
+  SupplierQuoteActionCreatePayload,
+  SupplierQuoteActionQueryOptions,
   SupplierQuoteCreatePayload,
   SupplierQuoteCreateResponse,
   SupplierQuoteCompareResponse,
+  SupplierQuoteImportPayload,
+  SupplierQuoteImportPreviewPayload,
+  SupplierQuoteInvalidatePayload,
   SupplierListResponse,
+  SupplierSettlementBuildFromQuotesPayload,
+  SupplierSettlementCancelPayload,
+  SupplierSettlementCreatePayload,
+  SupplierSettlementQueryOptions,
+  SupplierSettlementUpdatePayload,
+  SupplierUpdatePayload,
 } from './types'
 import type { AuthSessionState } from './apiSession'
 
@@ -55,6 +68,7 @@ export {
   dataSourceState,
   extractApiErrorDetail,
   getAccessToken,
+  getApiErrorStatus,
   readAuthSession,
   writeAuthSession,
 }
@@ -72,7 +86,9 @@ export async function fetchCurrentUser(): Promise<AuthMeResponse> {
   return (await loadApiModule()).fetchCurrentUser()
 }
 
-export async function fetchAuthUsers(params: { role?: string; status?: string; keyword?: string } = {}): Promise<AuthUserListResponse> {
+export async function fetchAuthUsers(
+  params: { role?: string; status?: string; keyword?: string } = {},
+): Promise<AuthUserListResponse> {
   return (await loadApiModule()).fetchAuthUsers(params)
 }
 
@@ -92,7 +108,10 @@ export async function fetchLocationOptions(): Promise<LocationOptionsResponse> {
   return (await loadApiModule()).fetchLocationOptions()
 }
 
-export async function fetchLocationSuggestion(latitude?: number, longitude?: number): Promise<LocationSuggestionResponse> {
+export async function fetchLocationSuggestion(
+  latitude?: number,
+  longitude?: number,
+): Promise<LocationSuggestionResponse> {
   return (await loadApiModule()).fetchLocationSuggestion(latitude, longitude)
 }
 
@@ -197,11 +216,15 @@ export async function fetchProductTrend(identityKey: string, params: {
   return (await loadApiModule()).fetchProductTrend(identityKey, params)
 }
 
-export async function fetchLiancaiCategorySummary(params?: { source_name?: string }): Promise<{ items: LiancaiCategorySummaryItem[] }> {
+export async function fetchLiancaiCategorySummary(
+  params?: { source_name?: string },
+): Promise<{ items: LiancaiCategorySummaryItem[] }> {
   return (await loadApiModule()).fetchLiancaiCategorySummary(params)
 }
 
-export async function fetchLiancaiFacets(params: { liancai_top_category?: string; liancai_subcategory?: string }): Promise<LiancaiFacetResponse> {
+export async function fetchLiancaiFacets(
+  params: { liancai_top_category?: string; liancai_subcategory?: string },
+): Promise<LiancaiFacetResponse> {
   return (await loadApiModule()).fetchLiancaiFacets(params)
 }
 
@@ -217,11 +240,16 @@ export async function generateMenuPlan(payload: {
   return (await loadApiModule()).generateMenuPlan(payload)
 }
 
-export async function fetchSignalsOverview(params: { province?: string; city?: string; focus?: string }): Promise<SignalOverviewResponse> {
+export async function fetchSignalsOverview(
+  params: { province?: string; city?: string; focus?: string },
+): Promise<SignalOverviewResponse> {
   return (await loadApiModule()).fetchSignalsOverview(params)
 }
 
-export async function fetchSignalDetail(identityKey: string, params?: { province?: string; city?: string }): Promise<SignalInsightItem> {
+export async function fetchSignalDetail(
+  identityKey: string,
+  params?: { province?: string; city?: string },
+): Promise<SignalInsightItem> {
   return (await loadApiModule()).fetchSignalDetail(identityKey, params)
 }
 
@@ -251,10 +279,104 @@ export async function fetchSuppliers(activeOnly = true): Promise<SupplierListRes
   return (await loadApiModule()).fetchSuppliers(activeOnly)
 }
 
+export async function createSupplier(payload: SupplierUpdatePayload): Promise<SupplierItem> {
+  return (await loadApiModule()).createSupplier(payload)
+}
+
+export async function updateSupplier(
+  supplierId: number,
+  payload: SupplierUpdatePayload,
+): Promise<SupplierItem> {
+  return (await loadApiModule()).updateSupplier(supplierId, payload)
+}
+
 export async function fetchProductSupplierQuotes(identityKey: string): Promise<SupplierQuoteCompareResponse> {
   return (await loadApiModule()).fetchProductSupplierQuotes(identityKey)
 }
 
 export async function submitSupplierQuote(payload: SupplierQuoteCreatePayload): Promise<SupplierQuoteCreateResponse> {
   return (await loadApiModule()).submitSupplierQuote(payload)
+}
+
+export async function importSupplierQuotes(payload: SupplierQuoteImportPayload) {
+  return (await loadApiModule()).importSupplierQuotes(payload)
+}
+
+export async function previewImportSupplierQuotes(payload: SupplierQuoteImportPreviewPayload) {
+  return (await loadApiModule()).previewImportSupplierQuotes(payload)
+}
+
+export async function invalidateSupplierQuote(
+  recordId: number,
+  payload: SupplierQuoteInvalidatePayload = {},
+) {
+  return (await loadApiModule()).invalidateSupplierQuote(recordId, payload)
+}
+
+export async function fetchSupplierQuotesBySupplier(
+  supplierId: number,
+  options: {
+    limit?: number
+    offset?: number
+    status?: string
+    keyword?: string
+    start_quoted_at?: string
+    end_quoted_at?: string
+    price_identity_key?: string
+  } = {},
+) {
+  return (await loadApiModule()).fetchSupplierQuotesBySupplier(supplierId, options)
+}
+
+export async function fetchSupplierQuoteActions(
+  supplierId: number,
+  options: SupplierQuoteActionQueryOptions = {},
+) {
+  return (await loadApiModule()).fetchSupplierQuoteActions(supplierId, options)
+}
+
+export async function createSupplierQuoteAction(
+  supplierId: number,
+  payload: SupplierQuoteActionCreatePayload,
+) {
+  return (await loadApiModule()).createSupplierQuoteAction(supplierId, payload)
+}
+
+export async function fetchSupplierSettlementsBySupplier(
+  supplierId: number,
+  options: SupplierSettlementQueryOptions = {},
+) {
+  return (await loadApiModule()).fetchSupplierSettlementsBySupplier(supplierId, options)
+}
+
+export async function fetchSupplierSettlementDetail(recordId: number) {
+  return (await loadApiModule()).fetchSupplierSettlementDetail(recordId)
+}
+
+export async function createSupplierSettlement(
+  supplierId: number,
+  payload: SupplierSettlementCreatePayload,
+) {
+  return (await loadApiModule()).createSupplierSettlement(supplierId, payload)
+}
+
+export async function updateSupplierSettlement(
+  recordId: number,
+  payload: SupplierSettlementUpdatePayload,
+) {
+  return (await loadApiModule()).updateSupplierSettlement(recordId, payload)
+}
+
+export async function cancelSupplierSettlement(
+  recordId: number,
+  payload: SupplierSettlementCancelPayload = {},
+) {
+  return (await loadApiModule()).cancelSupplierSettlement(recordId, payload)
+}
+
+export async function buildSupplierSettlementsFromQuotes(
+  supplierId: number,
+  payload: SupplierSettlementBuildFromQuotesPayload,
+) {
+  return (await loadApiModule()).buildSupplierSettlementsFromQuotes(supplierId, payload)
 }

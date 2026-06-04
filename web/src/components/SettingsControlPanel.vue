@@ -134,7 +134,7 @@
         <select v-model="settingsStrategyDraftFetchMode" :disabled="settingsManagementLocked" @change="markSettingsStrategyDraftChanged">
           <option value="requests">快速采价</option>
           <option value="playwright">浏览器采价</option>
-          <option value="api">接口采价</option>
+          <option value="api">系统采价</option>
         </select>
       </label>
       <label>
@@ -154,7 +154,7 @@
         <input v-model.number="settingsStrategyDraftDelay" :disabled="settingsManagementLocked" type="number" min="0" max="60" step="0.1" @input="markSettingsStrategyDraftChanged" />
       </label>
       <label>
-        <span>接口方案</span>
+        <span>系统采价方案</span>
         <input v-model="settingsStrategyDraftApiStrategy" :disabled="settingsManagementLocked" type="text" @input="markSettingsStrategyDraftChanged" />
       </label>
       <label>
@@ -178,7 +178,7 @@
       <div class="pcw-settings-alert-rule-list">
         <div v-for="(item, index) in settingsGlobalAlertDraftRows" :key="`alert-rule-${index}`" class="pcw-settings-alert-rule-row">
           <label>
-            <span>预警目标</span>
+            <span>提醒商品</span>
             <input v-model="item.target_name" :disabled="settingsManagementLocked" type="text" />
           </label>
           <label>
@@ -200,7 +200,7 @@
       </div>
       <div class="pcw-settings-inline-actions">
         <button type="button" class="secondary" :disabled="settingsManagementLocked" @click="addGlobalAlertRuleRow">新增规则</button>
-        <button type="submit" :disabled="settingsManagementLocked || !settingsGlobalAlertDraftRows.some((item) => String(item.target_name || '').trim())">保存全局预警规则</button>
+        <button type="submit" :disabled="settingsManagementLocked || !settingsGlobalAlertDraftRows.some((item) => String(item.target_name || '').trim())">保存价格提醒</button>
       </div>
     </form>
 
@@ -310,7 +310,7 @@ const settingsScheduleEnabled = computed(() => Boolean(props.crawlStatus?.schedu
 const fetchModeLabels: Record<'requests' | 'playwright' | 'api', string> = {
   requests: '快速采价',
   playwright: '浏览器采价',
-  api: '接口采价',
+  api: '系统采价',
 }
 const settingsScheduleDirty = computed(() =>
   settingsScheduleDraftEnabled.value !== Boolean(props.crawlStatus?.schedule_enabled)
@@ -353,7 +353,7 @@ const settingsPanelTabs = computed<Array<{ key: SettingsPanelKey; label: string;
   { key: 'schedule', label: '同步调度', detail: settingsScheduleEnabled.value ? '自动任务已开启' : '手动同步优先' },
   { key: 'source', label: '来源配置', detail: `${props.sourceCoverageRows?.length || 0} 个来源` },
   { key: 'strategy', label: '采价方案', detail: settingsSelectedSource.value?.source_name || '选择来源后配置' },
-  { key: 'alerts', label: '预警规则', detail: `${settingsGlobalAlertDraftRows.value.length} 条规则` },
+  { key: 'alerts', label: '价格提醒', detail: `${settingsGlobalAlertDraftRows.value.length} 条规则` },
 ])
 const settingsSourceOptions = computed(() => (props.sourceCoverageRows || []).map((item) => ({
   value: String(item.source_url || ''),
@@ -613,7 +613,7 @@ function saveSettingsSourceStrategy() {
     `超时秒数：${settingsStrategyDraftTimeout.value}`,
     `重试次数：${settingsStrategyDraftRetry.value}`,
     `采价间隔：${settingsStrategyDraftDelay.value} 秒`,
-    `接口方案：${settingsStrategyDraftApiStrategy.value || '未填写'}`,
+    `系统采价方案：${settingsStrategyDraftApiStrategy.value || '未填写'}`,
     `失败返回码：${settingsStrategyDraftBlockedCodes.value || '未填写'}`,
     `网站安全校验：${settingsStrategyDraftVerifySsl.value ? '开启' : '关闭'}`,
   ]
@@ -666,7 +666,7 @@ function saveGlobalAlertRules() {
     }))
     .filter((item) => item.target_name)
   const nextLines = normalizedItems.map((item) => `${item.target_name}：提醒价格 ${item.threshold}${item.group_name ? ` · 分组 ${item.group_name}` : ''}${item.note ? ` · ${item.note}` : ''}`)
-  openSettingsConfirm('保存全局预警规则', '以下规则会作为系统级价格提醒写入后端配置。', nextLines, () => {
+  openSettingsConfirm('保存价格提醒', '以下提醒会写入系统配置。', nextLines, () => {
     emit('update-global-alert-rules', normalizedItems)
   })
 }

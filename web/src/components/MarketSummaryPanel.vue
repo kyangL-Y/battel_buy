@@ -184,6 +184,11 @@
           <button type="button" :disabled="currentPage >= pageCount" @click="goToNextPage">下一页</button>
         </div>
       </div>
+      <div v-if="summaryHasMoreRows" class="market-mobile-load-more">
+        <button type="button" :disabled="summaryNextPageLoading" @click="emit('request-summary-next-page')">
+          {{ summaryNextPageLoading ? '正在加载' : '加载更多商品' }}
+        </button>
+      </div>
     </div>
     <template v-else>
       <div class="market-snapshot" v-if="topSummary && sortedRows.length">
@@ -272,8 +277,8 @@
     <details class="source-coverage-block" v-if="sourceCoverageRows.length && !isMobileViewport">
       <summary class="source-coverage-summary">
         <div class="source-coverage-summary-copy">
-          <p class="panel-kicker">来源覆盖</p>
-          <strong>来源覆盖</strong>
+          <p class="panel-kicker">价格来源</p>
+          <strong>价格来源</strong>
           <div class="source-coverage-summary-stack">
             <span class="source-coverage-count">
               {{ displaySourceCoverageRows.length }} / {{ sourceCoverageViewRows.length }} 个来源
@@ -312,7 +317,7 @@
 
         <div v-if="!displaySourceCoverageRows.length" class="table-empty-state source-coverage-empty-state">
           <strong>当前层级下暂无来源</strong>
-          <p>可切回全部层级，或等待下一次抓取同步这批来源。</p>
+          <p>可切回全部，或稍后等价格更新。</p>
           <el-button type="primary" plain @click="activeSourceTierFilter = 'all'">查看全部来源</el-button>
         </div>
         <div v-else-if="isMobileViewport" class="source-coverage-card-list">
@@ -328,7 +333,7 @@
                   <small class="source-tier-description">{{ row.tierMeta.description }}</small>
                 </div>
                 <strong>{{ row.configured_name || row.source_name || '未命名来源' }}</strong>
-                <p>{{ row.latest_capture || '暂无抓取记录' }}</p>
+                <p>{{ row.latest_capture || '暂无更新记录' }}</p>
                 <div class="source-meta-list" v-if="row.market_scope || row.market_category || row.channel">
                   <span v-if="row.market_scope" class="source-meta-chip">{{ row.market_scope }}</span>
                   <span v-if="row.market_category" class="source-meta-chip">{{ row.market_category }}</span>
@@ -340,7 +345,7 @@
             <p v-if="row.notes" class="source-coverage-note">{{ row.notes }}</p>
             <div class="source-coverage-card-grid">
               <div class="source-coverage-stat">
-                <span>入库键数</span>
+                <span>商品数</span>
                 <strong>{{ row.product_key_count || 0 }}</strong>
               </div>
               <div class="source-coverage-stat">
@@ -348,11 +353,11 @@
                 <strong>{{ row.comparable_item_count || 0 }}</strong>
               </div>
               <div class="source-coverage-stat">
-                <span>站内去重</span>
+                <span>原始条数</span>
                 <strong>{{ row.source_item_count || 0 }}</strong>
               </div>
               <div class="source-coverage-stat">
-                <span>失败数</span>
+                <span>失败次数</span>
                 <strong>{{ row.failed_count || 0 }}</strong>
               </div>
             </div>
@@ -363,7 +368,7 @@
             <template #default="{ row }">
               <div class="source-name-cell">
                 <strong>{{ row.configured_name || row.source_name || '未命名来源' }}</strong>
-                <small>{{ row.latest_capture || '暂无抓取记录' }}</small>
+                <small>{{ row.latest_capture || '暂无更新记录' }}</small>
               </div>
             </template>
           </el-table-column>
@@ -389,11 +394,11 @@
               <span :class="coverageStatusClass(row.status)">{{ row.status || '-' }}</span>
             </template>
           </el-table-column>
-          <el-table-column prop="product_key_count" label="入库键数" width="96" />
-          <el-table-column prop="source_item_count" label="站内去重" width="96" />
+          <el-table-column prop="product_key_count" label="商品数" width="96" />
+          <el-table-column prop="source_item_count" label="原始条数" width="96" />
           <el-table-column prop="comparable_item_count" label="可比商品" width="96" />
           <el-table-column prop="market_count" label="市场数" width="84" />
-          <el-table-column prop="failed_count" label="失败数" width="84" />
+          <el-table-column prop="failed_count" label="失败次数" width="84" />
           <el-table-column prop="notes" label="备注" min-width="220" show-overflow-tooltip />
         </el-table>
       </div>
@@ -431,12 +436,15 @@ const props = defineProps<{
   activeCategory?: string
   locationLabel?: string
   loading?: boolean
+  summaryHasMoreRows?: boolean
+  summaryNextPageLoading?: boolean
 }>()
 
 const emit = defineEmits<{
   (event: 'keyword-change', value: string): void
   (event: 'select-product', identityKey: string): void
   (event: 'update:active-category', value: string): void
+  (event: 'request-summary-next-page'): void
 }>()
 
 const imagePreviewVisible = ref(false)
@@ -1726,19 +1734,18 @@ watch(sourceTierFilterOptions, (options) => {
   padding: 22px 18px;
 }
 
-/* Mobile行情重做：不用表格，不放无关图表，只给商品、价格、市场、动作。 */
 .market-mobile-feed-v2 {
   display: grid;
-  gap: 14px;
-  padding: 0 0 12px;
+  gap: 10px;
+  padding: 0 0 8px;
 }
 
 .market-mobile-feed-hero,
 .market-mobile-feed-card {
   border: 1px solid #dbe4ef;
-  border-radius: 24px;
+  border-radius: 16px;
   background: #ffffff;
-  box-shadow: 0 14px 34px rgba(15, 23, 42, .06);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, .05);
 }
 
 .market-mobile-feed-hero {
@@ -1746,7 +1753,7 @@ watch(sourceTierFilterOptions, (options) => {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 18px;
+  padding: 12px;
 }
 
 .market-mobile-feed-hero p {
@@ -1759,9 +1766,9 @@ watch(sourceTierFilterOptions, (options) => {
 .market-mobile-feed-hero h2 {
   margin: 2px 0;
   color: #071226;
-  font-size: 26px;
+  font-size: 22px;
   line-height: 1.08;
-  letter-spacing: -.04em;
+  letter-spacing: 0;
 }
 
 .market-mobile-feed-hero small,
@@ -1774,7 +1781,7 @@ watch(sourceTierFilterOptions, (options) => {
 .market-mobile-feed-hero button,
 .market-mobile-feed-tabs button,
 .market-mobile-feed-clear {
-  min-height: 44px;
+  min-height: 36px;
   border: 0;
   border-radius: 999px;
   font: inherit;
@@ -1791,22 +1798,22 @@ watch(sourceTierFilterOptions, (options) => {
 .market-mobile-feed-toolbar {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 
 .market-mobile-feed-search {
   flex: 1 1 auto;
   min-width: 0;
-  padding: 6px 8px;
+  padding: 4px 8px;
   border: 1px solid #dbe4ef;
-  border-radius: 16px;
+  border-radius: 12px;
   background: #ffffff;
   box-shadow: 0 8px 22px rgba(15, 23, 42, .04);
 }
 
 .market-mobile-feed-search input {
   width: 100%;
-  min-height: 40px;
+  min-height: 34px;
   padding: 0;
   border: 0;
   border-radius: 0;
@@ -1832,7 +1839,7 @@ watch(sourceTierFilterOptions, (options) => {
 
 .market-mobile-feed-tabs {
   display: flex;
-  gap: 8px;
+  gap: 7px;
   overflow-x: auto;
   padding: 0 2px 2px;
 }
@@ -1843,7 +1850,7 @@ watch(sourceTierFilterOptions, (options) => {
 
 .market-mobile-feed-tabs button {
   flex: 0 0 auto;
-  padding: 0 14px;
+  padding: 0 12px;
   background: #ffffff;
   color: #475569;
   box-shadow: inset 0 0 0 1px #dbe4ef;
@@ -1857,22 +1864,22 @@ watch(sourceTierFilterOptions, (options) => {
 
 .market-mobile-feed-list {
   display: grid;
-  gap: 12px;
+  gap: 9px;
   align-content: start;
 }
 
 .market-mobile-feed-skeleton-list {
   display: grid;
-  gap: 12px;
+  gap: 9px;
 }
 
 .market-mobile-feed-skeleton-card {
   display: grid;
-  gap: 10px;
-  min-height: 154px;
-  padding: 16px;
+  gap: 8px;
+  min-height: 126px;
+  padding: 12px;
   border: 1px solid #dbe4ef;
-  border-radius: 24px;
+  border-radius: 16px;
   background: #ffffff;
   box-shadow: 0 14px 34px rgba(15, 23, 42, .04);
 }
@@ -1940,6 +1947,29 @@ watch(sourceTierFilterOptions, (options) => {
   color: #94a3b8;
 }
 
+.market-mobile-load-more {
+  padding: 2px 4px 0;
+}
+
+.market-mobile-load-more button {
+  width: 100%;
+  min-height: 40px;
+  border: 1px solid #bfdbfe;
+  border-radius: 10px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  touch-action: manipulation;
+}
+
+.market-mobile-load-more button:disabled {
+  border-color: #dbe4ef;
+  background: #f8fafc;
+  color: #94a3b8;
+}
+
 .market-empty-action-button {
   margin-top: 10px;
   padding: 0 14px;
@@ -1969,10 +1999,10 @@ watch(sourceTierFilterOptions, (options) => {
 
 .market-mobile-feed-card {
   display: grid;
-  gap: 12px;
+  gap: 9px;
   width: 100%;
-  min-height: 154px;
-  padding: 16px;
+  min-height: 128px;
+  padding: 12px;
   border: 0;
   text-align: left;
   font: inherit;
@@ -1987,18 +2017,18 @@ watch(sourceTierFilterOptions, (options) => {
 
 .market-mobile-feed-card-main {
   display: grid;
-  grid-template-columns: 48px minmax(0, 1fr);
-  gap: 12px;
+  grid-template-columns: 44px minmax(0, 1fr);
+  gap: 10px;
   align-items: center;
 }
 
 .market-mobile-feed-thumb-shell {
   display: grid;
   place-items: center;
-  width: 48px;
-  height: 48px;
+  width: 44px;
+  height: 44px;
   overflow: hidden;
-  border-radius: 14px;
+  border-radius: 12px;
   background: linear-gradient(145deg, #f8fafc, #eef4ff);
   box-shadow: inset 0 0 0 1px rgba(219, 234, 254, 0.95);
 }
@@ -2076,7 +2106,7 @@ watch(sourceTierFilterOptions, (options) => {
   display: -webkit-box;
   overflow: hidden;
   color: #071226;
-  font-size: 20px;
+  font-size: 18px;
   line-height: 1.18;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
@@ -2095,7 +2125,7 @@ watch(sourceTierFilterOptions, (options) => {
 
 .market-mobile-feed-price b {
   color: #1d4ed8;
-  font-size: 28px;
+  font-size: 24px;
   line-height: 1;
 }
 

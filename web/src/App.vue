@@ -125,8 +125,8 @@
         </div>
         <button type="button" class="mobile-redesign-priority-card is-main" @click="mobileAlertBadge ? openProcurementEntry('alerts') : openProcurementEntry('menu')">
           <p>{{ selectedLocationLabel }}</p>
-          <strong>{{ mobileAlertBadge ? `${mobileAlertBadge} 条价格提醒待处理` : '菜单、菜价、供应商一起看' }}</strong>
-          <small>{{ mobileAlertBadge ? '点开商品，看价格变化和供应商报价。' : '录入菜单后查看采购建议。' }}</small>
+          <strong>{{ mobileAlertBadge ? `${mobileAlertBadge} 条价格提醒待处理` : '菜单、菜价、报价一起看' }}</strong>
+          <small>{{ mobileAlertBadge ? '点开商品看价格和报价。' : '录入菜单后看采购建议。' }}</small>
         </button>
       </section>
 
@@ -228,7 +228,7 @@
           <button type="button" data-testid="mobile-buyer-entry-button" @click="openProcurementEntry('menu')">
             <span>采购端</span>
             <strong>我是采购</strong>
-            <small>菜单、建议、价格核对</small>
+            <small>菜单、菜价、报价</small>
           </button>
           <button type="button" data-testid="mobile-supplier-nav-button" @click="openSupplierPortal(false)">
             <span>供应商</span>
@@ -355,6 +355,8 @@
         :location-label="selectedLocationLabel"
 
         :loading="summaryLoading"
+        :summary-has-more-rows="summaryCanLoadMore"
+        :summary-next-page-loading="summaryBackfillLoading"
 
         :active-category="activeMarketCategory"
 
@@ -363,6 +365,7 @@
         @select-product="handleSelectProduct"
 
         @update:active-category="activeMarketCategory = $event"
+        @request-summary-next-page="loadNextSummaryPage"
 
       />
 
@@ -778,6 +781,7 @@
     @menu-fill-supplier-price="handleMenuPlanFillSupplierPrice"
     @menu-confirm-row="handleMenuPlanConfirmRow"
     @menu-fill-missing-quotes="handleMenuPlanFillMissingQuotes"
+    @request-location-options="reloadLocations(true)"
     @request-location-suggestion="requestAuxiliaryLocationSuggestion"
     @request-summary-next-page="loadNextSummaryPage"
     @refresh="refreshVisibleWorkspaceAssets"
@@ -1143,7 +1147,6 @@ const summaryCanLoadMore = ref(false)
 const locationLoading = ref(false)
 const locationSuggestionLoading = ref(false)
 const locationSuggestionHint = ref('')
-const initialLocationSuggestionHandled = ref(false)
 const coverageLoading = ref(false)
 
 const liancaiCategorySummaryLoading = ref(false)
@@ -1743,7 +1746,7 @@ const homeHeroStats = computed(() => [
 
 const mobileDecisionMetrics = computed(() => [
   { label: '待处理', value: String(mobileAlertBadge.value || 0) },
-  { label: '信号', value: String(signalOverview.value?.top_opportunities?.length || 0) },
+  { label: '可关注', value: String(signalOverview.value?.top_opportunities?.length || 0) },
   { label: '来源', value: String(sourceCoverageRows.value.length || 0) },
 ])
 
@@ -1756,7 +1759,7 @@ const mobileTrustCards = computed(() => [
   {
     label: '来源覆盖',
     value: `${sourceCoverageRows.value.length || 0} 个`,
-    detail: '系统持续监控这些市场和平台',
+    detail: '正在关注这些市场和平台',
   },
   {
     label: '异常来源',
@@ -1777,7 +1780,7 @@ const homePriorityItems = computed(() => {
 
     summary: item.reason_summary,
 
-    meta: item.recommended_market || item.recommended_site || '价格信号',
+    meta: item.recommended_market || item.recommended_site || '价格变化',
 
     tone: 'good',
 
@@ -1833,8 +1836,8 @@ const landingTodayCards = computed(() => [
   {
     label: '价格参考',
     value: signalOverview.value?.top_opportunities?.length
-      ? `${signalOverview.value.top_opportunities.length} 条价格信号`
-      : '等待系统识别价格信号',
+      ? `${signalOverview.value.top_opportunities.length} 条价格变化`
+      : '等待发现价格变化',
   },
   {
     label: '待办动作',
@@ -1868,8 +1871,8 @@ const landingTrustCards = computed(() => [
   },
   {
     label: '建议依据',
-    value: signalOverview.value?.headline || '真实行情 + 供应报价',
-    detail: '异常、信号和建议均来自系统同步数据',
+    value: signalOverview.value?.headline || '菜价 + 供应商报价',
+    detail: '根据菜价、报价和提醒生成',
   },
 ])
 
@@ -1884,7 +1887,7 @@ const homeEntryCards = computed(() => [
 
     title: '行情总览',
 
-    detail: `${signalOverview.value?.top_opportunities?.length || 0} 条价格信号，可查看结论与动作`,
+    detail: `${signalOverview.value?.top_opportunities?.length || 0} 条价格变化，可查看建议`,
 
   },
 
@@ -1892,7 +1895,7 @@ const homeEntryCards = computed(() => [
 
     key: 'summary',
 
-    kicker: '真实报价',
+    kicker: '菜价报价',
 
     title: '汇总行情',
 
@@ -3534,23 +3537,6 @@ function goToLanding() {
 }
 
 
-function warmMobileWorkspacePanel(tabKey: (typeof tabs)[number]['key'] = activeTab.value) {
-  if (!isMobileViewport.value) return
-  if (tabKey === 'summary') {
-    void loadMarketSummaryPanel()
-    return
-  }
-  if (tabKey === 'trend') {
-    void loadProductTrendPanel()
-    return
-  }
-  if (tabKey === 'menu') {
-    void loadMenuPlanPanel()
-  }
-}
-
-
-
 function openSupplierPortal(useCurrentProduct = viewMode.value === 'workspace') {
   if (typeof window !== 'undefined') {
     const params = new URLSearchParams(window.location.search)
@@ -4037,7 +4023,6 @@ function enterWorkspace(targetTab: (typeof tabs)[number]['key'] = 'summary', opt
   } else if (!sameWorkspaceTab) {
     mobilePreviousWorkspaceTab.value = ''
   }
-  warmMobileWorkspacePanel(targetTab)
   viewMode.value = 'workspace'
   showMobileLocationPanel.value = false
   const urlTab = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('tab') : ''
@@ -4308,35 +4293,6 @@ async function requestAuxiliaryLocationSuggestion() {
   }
 }
 
-async function applyInitialLocationSuggestion() {
-  if (initialLocationSuggestionHandled.value) {
-    return
-  }
-  if (hasLockedAuthScopedLocation() || filters.province || filters.city || mobileLocationPreset.value === 'all') {
-    initialLocationSuggestionHandled.value = true
-    return
-  }
-  initialLocationSuggestionHandled.value = true
-  try {
-    const suggestion = await fetchAuxiliaryLocationSuggestion()
-    if (!applyAuxiliaryLocationSuggestion(suggestion)) {
-      return
-    }
-    const suggestionLabel = suggestion.label || selectedLocationLabel.value
-    locationSuggestionHint.value = `${suggestion.source_label} · ${suggestionLabel}`
-    if (viewMode.value !== 'workspace') {
-      return
-    }
-    if (activeTab.value === 'trend' && selectedIdentityKey.value) {
-      await reloadTrend(selectedIdentityKey.value)
-    } else if (shouldReloadSummaryForCurrentView()) {
-      await reloadSummary()
-    }
-  } catch {
-    // 初次默认定位失败时不打断页面加载，保留手动选择入口。
-  }
-}
-
 async function ensureWorkbenchTrend() {
   const initialTarget = resolveInitialTrendTarget()
   if (!initialTarget.identityKey && !productOptionsLoading.value) {
@@ -4432,7 +4388,7 @@ async function reloadSummary() {
     writeSummaryCache(params, marketRows.value)
   } catch (error) {
     if (requestId === summaryRequestSequence) {
-      pageError.value = dataSourceState.lastError || '报价接口读取失败，请检查 API 服务'
+      pageError.value = dataSourceState.lastError || '报价暂时加载失败，请稍后重试'
       summaryBackfillLoading.value = false
       summaryCanLoadMore.value = false
     }
@@ -4504,7 +4460,7 @@ async function reloadLocations(force = false) {
 
   } catch (error) {
 
-    pageError.value = dataSourceState.lastError || '地区选项读取失败，请检查 API 服务'
+    pageError.value = dataSourceState.lastError || '地区列表暂时加载失败'
 
   } finally {
 
@@ -4564,7 +4520,7 @@ async function reloadSourceCoverage() {
 
     if (!sourceCoverageRows.value.length) {
 
-      pageError.value = dataSourceState.lastError || '来源覆盖接口读取失败，请检查 API 服务'
+      pageError.value = dataSourceState.lastError || '来源状态暂时加载失败'
 
     }
 
@@ -4718,7 +4674,7 @@ async function handleWorkbenchRunCrawl() {
       ElMessage.warning('当前已有同步任务在执行')
     }
   } catch {
-    ElMessage.error('启动数据源同步失败，请检查 API 服务')
+    ElMessage.error('数据同步启动失败，请稍后重试')
   }
 }
 
@@ -4767,7 +4723,7 @@ async function handleWorkbenchRunSourceCrawl(payload: { source_url?: string; sou
       ElMessage.warning('当前已有同步任务在执行')
     }
   } catch {
-    ElMessage.error('试跑当前来源失败，请检查 API 服务')
+    ElMessage.error('当前来源试跑失败，请稍后重试')
   }
 }
 
@@ -5100,7 +5056,7 @@ async function ensureProductOptionsLoaded(force = false) {
 
       }
 
-      pageError.value = dataSourceState.lastError || '商品列表接口读取失败，请检查 API 服务'
+      pageError.value = dataSourceState.lastError || '商品列表暂时加载失败'
 
     } finally {
 
@@ -5181,7 +5137,7 @@ async function loadWorkspaceTabAssets(tabKey: (typeof tabs)[number]['key']) {
     if (isMobileViewport.value) {
       return
     }
-    await reloadSalesAssets()
+    await reloadSignalOverview()
     return
   }
 
@@ -5207,7 +5163,6 @@ async function loadWorkspaceTabAssets(tabKey: (typeof tabs)[number]['key']) {
 }
 
 async function loadWorkbenchSectionAssets(sectionId: SectionId) {
-  activeWorkbenchSection.value = sectionId
   if (loadedWorkbenchSections.has(sectionId)) return
   loadedWorkbenchSections.add(sectionId)
 
@@ -5235,14 +5190,14 @@ async function loadWorkbenchSectionAssets(sectionId: SectionId) {
 
   if (sectionId === 'purchase') {
     await Promise.allSettled([
-      reloadSalesAssets(),
+      reloadSignalOverview(),
       loadCurrentProductSupplierQuotes(),
     ])
     return
   }
 
   if (sectionId === 'reports') {
-    await reloadSalesAssets()
+    await reloadSignalOverview()
     return
   }
 
@@ -5410,40 +5365,37 @@ async function reloadGlobalAlertRules() {
 
 
 
-async function reloadSalesAssets() {
-
+async function reloadSignalOverview() {
   try {
-
-    const params = {
-
+    const overviewParams = {
       ...buildFilterParams(),
-
       focus: filters.keyword || undefined,
-
     }
-
-    const [overview, salesDemo] = await Promise.all([
-
-      fetchSignalsOverview(params),
-
-      fetchSalesDecisionContent('sales'),
-
-    ])
-
-    signalOverview.value = overview
-
-    demoContent.value = salesDemo
-
-  } catch (error) {
-
+    const overviewPayload = await fetchSignalsOverview(overviewParams)
+    signalOverview.value = overviewPayload
+  } catch {
     if (!signalOverview.value) {
-
       signalOverview.value = null
-
     }
-
   }
+}
 
+async function reloadSalesDecisionContent() {
+  try {
+    const salesContentPayload = await fetchSalesDecisionContent('sales')
+    demoContent.value = salesContentPayload
+  } catch {
+    if (!demoContent.value) {
+      demoContent.value = null
+    }
+  }
+}
+
+async function reloadSalesAssets() {
+  await Promise.allSettled([
+    reloadSignalOverview(),
+    reloadSalesDecisionContent(),
+  ])
 }
 
 
@@ -5635,7 +5587,7 @@ async function reloadTrend(identityKeyOverride?: string) {
 
     }
 
-    pageError.value = dataSourceState.lastError || '趋势接口读取失败，请检查 API 服务'
+    pageError.value = dataSourceState.lastError || '价格明细暂时加载失败'
 
     if (!usedCachedTrend) {
 
@@ -5810,8 +5762,10 @@ watch([() => filters.province, () => filters.city], async () => {
     return
   }
 
-  await reloadSummary()
-  if (reloadId !== locationFilterReloadSequence) return
+  if (shouldReloadSummaryForCurrentView()) {
+    await reloadSummary()
+    if (reloadId !== locationFilterReloadSequence) return
+  }
   loadedWorkspaceTabs.delete(activeTab.value)
   loadedWorkbenchSections.delete(activeWorkbenchSection.value)
   if (activeTab.value === 'trend') {
@@ -5904,21 +5858,7 @@ onMounted(async () => {
   await restoreAuthSession()
   if (viewMode.value === 'landing') {
     syncMobileAlertDraftFromSelection()
-    schedulePostRenderRequest(() => {
-      void applyInitialLocationSuggestion()
-    }, 180)
     return
-  }
-  warmMobileWorkspacePanel()
-  if (isMobileViewport.value) {
-    schedulePostRenderRequest(() => {
-      void applyInitialLocationSuggestion()
-    }, 180)
-  } else {
-    const eagerLocationLoad = reloadLocations()
-    void Promise.allSettled([eagerLocationLoad]).then(() => {
-      void applyInitialLocationSuggestion()
-    })
   }
   if (activeTab.value === 'trend') {
     if (trendDeepLinkLabel || trendDeepLinkTarget) {
@@ -10812,7 +10752,7 @@ onBeforeUnmount(() => {
 }
 
 .mobile-redesign-home {
-  padding: 10px 10px calc(88px + env(safe-area-inset-bottom, 0px));
+  padding: 8px 8px calc(78px + env(safe-area-inset-bottom, 0px));
 }
 
 .mobile-redesign-hero-card,
@@ -10832,7 +10772,7 @@ onBeforeUnmount(() => {
 }
 
 .mobile-redesign-hero-card {
-  padding: 12px;
+  padding: 10px;
 }
 
 .mobile-redesign-hero-card::before {
@@ -10977,14 +10917,14 @@ onBeforeUnmount(() => {
 }
 
 .mobile-redesign-command-grid {
-  gap: 8px;
+  gap: 7px;
 }
 
 .mobile-redesign-command-grid button,
 .mobile-redesign-command-grid .alert,
 .mobile-redesign-command-grid .market,
 .mobile-redesign-command-grid .buy {
-  min-height: 62px;
+  min-height: 56px;
   background: #ffffff;
 }
 
@@ -10998,7 +10938,7 @@ onBeforeUnmount(() => {
 }
 
 .mobile-redesign-section {
-  padding: 12px;
+  padding: 10px;
 }
 
 .mobile-redesign-section-head h2 {
@@ -11013,7 +10953,7 @@ onBeforeUnmount(() => {
 
 .mobile-redesign-priority-card,
 .mobile-redesign-priority-card.is-main {
-  min-height: 104px;
+  min-height: 86px;
   border: 1px solid rgba(31, 139, 104, .22);
   border-radius: 16px;
   background: linear-gradient(180deg, #ffffff 0%, #eef8f2 100%);
@@ -11059,7 +10999,7 @@ onBeforeUnmount(() => {
 .mobile-redesign-source-grid button,
 .mobile-redesign-directory-card,
 .mobile-redesign-entry-grid button {
-  min-height: 88px;
+  min-height: 76px;
 }
 
 .mobile-redesign-nav,
@@ -11160,7 +11100,7 @@ onBeforeUnmount(() => {
 }
 
 .mobile-redesign-workspace .market-mobile-shell-content {
-  padding: 10px 10px calc(76px + env(safe-area-inset-bottom, 0px));
+  padding: 8px 8px calc(70px + env(safe-area-inset-bottom, 0px));
 }
 
 .mobile-redesign-workspace :deep(.market-mobile-feed-hero),

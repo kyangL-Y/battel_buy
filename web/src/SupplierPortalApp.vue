@@ -270,7 +270,7 @@ import {
   readAuthSession,
   resetAuthPassword,
   writeAuthSession,
-} from './api'
+} from './lazyApi'
 import { useViewport } from './composables/useViewport'
 import { lazyElMessage } from './lazyElementMessage'
 import type { AuthLoginResponse, AuthUserItem, ProductOptionItem } from './types'
@@ -601,7 +601,7 @@ async function runPortalQuoteQueueAction(action: 'pending' | 'drafts' | 'history
   }
   portalMobileTask.value = 'quote'
   if (action === 'drafts' && !quoteDraftSummary.count) {
-    ;(await lazyElMessage()).info('当前还没有本机草稿，填写报价后可先保存草稿')
+    lazyElMessage.info('当前还没有本机草稿，填写报价后可先保存草稿')
   }
   void scrollToQuoteDesk()
 }
@@ -666,7 +666,7 @@ async function submitAuthLogin() {
     applyAuthSession(session)
     await loadPortalContext(true)
     if (!isMobileViewport.value) {
-      ;(await lazyElMessage()).success('已登录供应商报价页')
+      lazyElMessage.success('已登录供应商报价页')
     }
   } catch (error) {
     authError.value = extractApiErrorDetail(error) || '登录失败，请检查账号或密码'
@@ -708,7 +708,7 @@ async function submitPasswordReset() {
     authForm.password = ''
     passwordResetVisible.value = false
     await loadPortalContext(true)
-    ;(await lazyElMessage()).success('密码已重置')
+    lazyElMessage.success('密码已重置')
   } catch (error) {
     passwordResetError.value = extractApiErrorDetail(error) || '密码重置失败'
   } finally {
@@ -753,7 +753,10 @@ async function loadPortalContext(force = false) {
 }
 
 onMounted(async () => {
-  await Promise.all([restoreAuthSession(), loadPortalContext()])
+  await restoreAuthSession()
+  if (isAuthenticated.value) {
+    await loadPortalContext()
+  }
 })
 </script>
 

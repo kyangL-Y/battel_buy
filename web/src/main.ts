@@ -1,4 +1,5 @@
 import { createApp, defineAsyncComponent, h } from 'vue'
+import type { Component } from 'vue'
 import './root.css'
 
 const pathname = typeof window !== 'undefined'
@@ -122,7 +123,7 @@ const elementComponentLoaders = {
 }
 
 Object.entries(elementComponentLoaders).forEach(([componentName, loadElementComponent]) => {
-  app.component(componentName, defineAsyncComponent(loadElementComponent))
+  app.component(componentName, defineAsyncComponent(loadElementComponent as () => Promise<Component>))
 })
 
 app.mount('#app')

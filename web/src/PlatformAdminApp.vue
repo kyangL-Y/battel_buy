@@ -343,7 +343,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
-import { ElMessage } from 'element-plus/es/components/message/index.mjs'
+import { lazyElMessage as ElMessage } from './lazyElementMessage'
 
 import {
   clearAuthSession,
@@ -356,7 +356,7 @@ import {
   triggerCrawlRun,
   updateCrawlSchedule,
   writeAuthSession,
-} from './api'
+} from './lazyApi'
 import { useViewport } from './composables/useViewport'
 import type { AuthLoginResponse, AuthUserItem, CrawlStatusItem, SourceCoverageItem } from './types'
 import './platform-admin.css'

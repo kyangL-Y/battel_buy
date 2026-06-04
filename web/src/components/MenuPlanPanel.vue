@@ -96,7 +96,7 @@
             <el-button aria-label="生成采购方案" type="primary" :loading="loading" :disabled="!hasMenuInput" @click="emit('submit')">生成采购方案</el-button>
             <p v-if="!hasMenuInput" class="menu-input-required" role="status" aria-live="polite">请先输入至少 1 个菜名</p>
             <p v-if="loading" :class="['menu-ai-status', { warning: isPlanTakingLong }]" role="status" aria-live="polite" data-testid="menu-ai-status">
-              {{ isPlanTakingLong ? '处理时间有点久，可继续等待或稍后重试。' : '正在拆分食材，并匹配今日菜价' }}
+              {{ isPlanTakingLong ? '生成有点慢，可以稍后重试。' : '正在整理食材和今日菜价' }}
             </p>
           </div>
         </div>
@@ -109,7 +109,7 @@
           <template v-if="ingredientParseRows.length">
             <div class="menu-ai-parse-head">
               <div>
-                <p class="panel-kicker">AI 解析</p>
+                <p class="panel-kicker">食材清单</p>
                 <h2>食材拆分结果</h2>
               </div>
               <span>{{ ingredientRows.length }} 项食材</span>
@@ -130,9 +130,9 @@
               <strong>三步完成采购判断</strong>
             </div>
             <ul class="menu-guidance-list">
-              <li>先录菜单，再由 AI 或规则补足主要食材。</li>
-              <li>优先地区只影响推荐顺序，不改原始报价。</li>
-              <li>缺报价只保留轻提示，完整字段放表格里查看。</li>
+              <li>先录菜单，再整理主要食材。</li>
+              <li>优先地区会影响推荐顺序。</li>
+              <li>没有报价的食材会标出来，方便补价。</li>
             </ul>
           </template>
         </aside>
@@ -198,7 +198,7 @@
           <div>
             <p class="panel-kicker">{{ isMobileViewport ? '第 2 步' : '采购建议' }}</p>
             <h2>{{ isMobileViewport ? '再决定去哪买' : '采购建议' }}</h2>
-            <p class="panel-hint">{{ isMobileViewport ? '只看食材、成本、推荐市场和下一步动作。' : '默认只看食材、推荐、报价和状态；长说明收进单元格次级信息。' }}</p>
+            <p class="panel-hint">{{ isMobileViewport ? '只看食材、成本、推荐市场和下一步。' : '先看食材、推荐市场、报价和状态。' }}</p>
           </div>
           <span>{{ filteredPlanRows.length }} / {{ planRows.length }} 条</span>
         </div>
@@ -313,12 +313,12 @@
                 </div>
               </template>
             </el-table-column>
-            <el-table-column label="状态 / 说明" min-width="180" show-overflow-tooltip>
+            <el-table-column label="状态" min-width="180" show-overflow-tooltip>
               <template #default="{ row }">
                 <div class="plan-status-cell">
                   <span :class="['status-chip', isRowConfirmed(row) || row.price_status === '已匹配报价' ? 'ok' : 'pending']">{{ row.price_status || '-' }}</span>
                   <small>{{ row.distance_label || row.source_priority_label || '按价格和地区综合排序' }}</small>
-                  <small>{{ row.remarks || '无额外说明' }}</small>
+                  <small>{{ row.remarks || '暂无备注' }}</small>
                 </div>
               </template>
             </el-table-column>
@@ -365,11 +365,11 @@
                 </div>
                 <span class="price-chip avg">{{ formatQuantity(row.estimated_quantity, row.quantity_unit) }}</span>
               </div>
-              <p class="menu-mobile-card-note">{{ row.remarks || '无额外备注' }}</p>
+              <p class="menu-mobile-card-note">{{ row.remarks || '暂无备注' }}</p>
             </article>
             <div v-if="!ingredientRows.length" class="table-empty-state menu-mobile-empty-state">
               <strong>还没有食材拆分</strong>
-              <p>生成采购方案后，这里会按手机端卡片展示菜品与食材数量。</p>
+              <p>生成采购方案后，这里会显示菜品和食材数量。</p>
             </div>
           </div>
           <el-table v-else :data="ingredientRows" :height="ingredientTableHeight" size="small">
@@ -457,8 +457,8 @@ const guestSizingHint = computed(() => {
   return `按${totalTables}桌共${totalDiners}人测算（约 ${dinersPerTable} 人/桌）`
 })
 const mobileHeroSummary = computed(() => {
-  if (!hasMenuInput.value) return '输入菜单后，系统会先拆食材，再匹配今日报价。'
-  if (props.loading && !isPlanTakingLong.value) return '正在拆分食材并匹配报价，稍后会直接给出采购建议。'
+  if (!hasMenuInput.value) return '输入菜单后，会整理食材并匹配今日报价。'
+  if (props.loading && !isPlanTakingLong.value) return '正在整理食材和报价，稍后给出采购建议。'
   if (props.planRows.length) return `${props.matchedPlanCount} 项已可直接采购，${props.pendingPlanCount} 项还要人工确认。`
   if (props.ingredientRows.length) return '食材已经拆出，优先处理还没有报价的项目。'
   return '先录菜单，再生成采购建议。'
@@ -497,9 +497,9 @@ const planEmptyTitle = computed(() => {
 })
 const planEmptyDetail = computed(() => {
   if (props.planRows.length > 0 && !hasPlanFilterResult.value) return '切换上方队列筛选，查看待确认、可直采或已确认记录。'
-  if (isPlanTakingLong.value) return '接口仍在处理或网络较慢，可稍后重试；如果已拆出食材，会先展示拆分结果供你复核。'
+  if (isPlanTakingLong.value) return '生成时间较长，可以稍后重试。已整理出的食材会先显示出来。'
   if (!hasMenuInput.value) return '请先输入至少 1 个菜名，再生成采购方案。'
-  if (props.ingredientRows.length > 0) return '已完成食材拆分，但当前报价库未匹配到可用报价；可补录供应商报价后重新匹配。'
+  if (props.ingredientRows.length > 0) return '食材已整理好，但还没匹配到报价。可以先补供应商价。'
   return '当前没有返回采购建议，请检查菜名是否清晰，或重新生成采购方案。'
 })
 const hasMissingQuoteEmptyState = computed(() => hasMenuInput.value && props.ingredientRows.length > 0 && !props.planRows.length)

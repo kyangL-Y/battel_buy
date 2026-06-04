@@ -12,10 +12,39 @@ const pcViewports = [
 ] as const
 
 async function enterPcWorkbench(page: import('@playwright/test').Page) {
-  await page.goto('/', { waitUntil: 'domcontentloaded' })
-  await page.getByTestId('enter-workspace-button').click()
+  await page.addInitScript(() => {
+    window.localStorage.setItem('battel.auth.session.procurement', JSON.stringify({
+      access_token: 'layout-audit-token',
+      token_type: 'Bearer',
+      expires_in: 3600,
+      user: {
+        id: 1,
+        username: 'admin',
+        display_name: '管理员',
+        role: 'admin',
+        supplier_id: null,
+      },
+    }))
+  })
+  await page.goto('/?mode=workspace&tab=summary&section=summary', { waitUntil: 'domcontentloaded' })
   await page.getByTestId('pc-price-workbench').waitFor({ state: 'visible', timeout: 30_000 })
   await expect(page.getByTestId('pcw-summary-data-row').first().or(page.getByTestId('pcw-summary-empty-row'))).toBeVisible({ timeout: 60_000 })
+}
+
+async function waitForPcSectionReady(page: import('@playwright/test').Page, section: typeof pcSections[number]) {
+  if (section === 'summary') {
+    await expect(page.getByTestId('pcw-summary-data-row').first().or(page.getByTestId('pcw-summary-empty-row'))).toBeVisible({ timeout: 60_000 })
+    return
+  }
+  if (section === 'suppliers') {
+    await page.locator('.pcw-supplier-admin-embedded,[data-testid="procurement-supplier-admin-panel"],[data-testid="procurement-supplier-login-gate"]').first().waitFor({ state: 'visible', timeout: 30_000 })
+    return
+  }
+  if (section === 'plan') {
+    await page.getByTestId('pcw-menu-workspace').waitFor({ state: 'visible', timeout: 30_000 })
+    return
+  }
+  await page.locator('.pcw-card').first().waitFor({ state: 'visible', timeout: 30_000 })
 }
 
 test('PC 工作台多宽度无页面级横向溢出且核心区可见', async ({ page }) => {
@@ -28,7 +57,7 @@ test('PC 工作台多宽度无页面级横向溢出且核心区可见', async ({
         await page.locator(`[data-section-id="${section}"]`).click()
         await expect(page.locator(`[data-section-id="${section}"]`)).toHaveClass(/active/)
       }
-      await page.waitForTimeout(80)
+      await waitForPcSectionReady(page, section)
       const audit = await page.evaluate(() => {
         const doc = document.documentElement
         const main = document.querySelector<HTMLElement>('.pcw-main')

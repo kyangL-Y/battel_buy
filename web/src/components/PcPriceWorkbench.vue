@@ -270,7 +270,7 @@
 
 
 
-          <span>真实数据源</span>
+          <span>数据来源</span>
 
 
 
@@ -1822,7 +1822,7 @@
 
           <section class="pcw-card pcw-summary-brief">
               <div class="pcw-card-head">
-                <h2>今日处理与来源动态</h2>
+                <h2>今日待处理</h2>
                 <button type="button" @click="handleNavSelect('purchase')">去执行 ›</button>
               </div>
               <div class="pcw-summary-brief-grid">
@@ -1841,12 +1841,12 @@
                 </div>
                 <div class="pcw-summary-brief-timeline">
                   <div class="pcw-summary-brief-subhead">
-                    <strong>来源动态</strong>
-                    <button type="button" @click="openActionPanel('来源动态', timelineRows.map((item) => `${item.time} ${item.text}`), 'market')">查看明细 ›</button>
+                    <strong>价格变化</strong>
+                    <button type="button" @click="openActionPanel('价格变化', timelineRows.map((item) => `${item.time} ${item.text}`), 'market')">查看明细 ›</button>
                   </div>
                   <div v-if="!timelineRows.length" class="pcw-panel-empty compact">
-                    <strong>暂无来源动态</strong>
-                    <span>真实来源同步后会生成价格变化记录。</span>
+                    <strong>暂无价格变化</strong>
+                    <span>有新价格后会显示在这里。</span>
                   </div>
                   <p v-for="item in timelineRows.slice(0, 4)" :key="item.time"><span>{{ item.time }}</span>{{ item.text }}</p>
                 </div>
@@ -1865,7 +1865,7 @@
 
             <section class="pcw-card pcw-summary-side-fill">
               <div class="pcw-card-head">
-                <h2>经营侧边栏</h2>
+                <h2>采购概况</h2>
                 <button type="button" @click="handleNavSelect('purchase')">去执行 ›</button>
               </div>
               <div class="pcw-summary-side-hero">
@@ -1885,7 +1885,7 @@
                   <strong>{{ visibleQuoteCount }}</strong>
                 </article>
                 <article>
-                  <span>可复核机会</span>
+                  <span>可比价格</span>
                   <strong>{{ summaryOpportunityRows.length }}</strong>
                 </article>
                 <article>
@@ -2062,7 +2062,7 @@
 
 
 
-            <svg class="pcw-big-chart" viewBox="0 0 720 260" role="img" :aria-label="`${selectedProductName || '真实商品'}价格趋势`" @mouseleave="clearHoveredTrendPoint">
+            <svg class="pcw-big-chart" viewBox="0 0 720 260" role="img" :aria-label="`${selectedProductName || '商品'}价格趋势`" @mouseleave="clearHoveredTrendPoint">
 
 
 
@@ -2242,12 +2242,12 @@
               <article>
                 <span>报价</span>
                 <strong>{{ activeTrendTooltip?.price || '-' }}</strong>
-                <small>{{ isUsingTrendSnapshot ? '行情快照点' : '真实趋势点' }}</small>
+                <small>{{ isUsingTrendSnapshot ? '菜价快照' : '价格记录' }}</small>
               </article>
               <article>
                 <span>来源</span>
-                <strong>{{ activeTrendTooltip?.market || '真实来源' }}</strong>
-                <small>{{ activeTrendRow.source_name || activeTrendRow.site_name || activeTrendRow.trend_series_name || '真实来源' }}</small>
+                <strong>{{ activeTrendTooltip?.market || '价格来源' }}</strong>
+                <small>{{ activeTrendRow.source_name || activeTrendRow.site_name || activeTrendRow.trend_series_name || '价格来源' }}</small>
               </article>
             </div>
             <div v-if="trendPointRailRows.length" class="pcw-trend-point-rail">
@@ -2650,7 +2650,7 @@
 
 
 
-                <thead><tr><th>预警规则</th><th>当前值</th><th>状态</th></tr></thead>
+                <thead><tr><th>提醒规则</th><th>当前值</th><th>状态</th></tr></thead>
 
 
 
@@ -2802,7 +2802,7 @@
 
 
 
-                      <span>真实趋势记录会按来源和来源层级汇总在这里。</span>
+                      <span>价格记录会按来源汇总在这里。</span>
 
 
 
@@ -3018,7 +3018,7 @@
 
 
 
-                      <span>行情主表同步后会展示同类商品均价对比。</span>
+                      <span>菜价更新后会展示同类商品均价对比。</span>
 
 
 
@@ -3473,7 +3473,7 @@
 
 
 
-                      <span>今天还没有触发需要你处理的价格异常。你可以先刷新一次真实行情，或给常采商品补一条关注规则。</span>
+                      <span>今天还没有需要处理的价格提醒。你可以刷新一次菜价，或给常采商品加一条提醒。</span>
 
 
 
@@ -4903,14 +4903,14 @@
                   <span>{{ item.source }} · {{ item.time }}</span>
                   <b>{{ item.price }}</b>
                 </button>
-                <p v-if="!purchaseTrendCarryRows.length">先从汇总行情选择商品，再查看历史行情确认真实来源。</p>
+                <p v-if="!purchaseTrendCarryRows.length">先从汇总行情选择商品，再查看历史行情确认价格来源。</p>
               </section>
             </div>
           </section>
 
           <section v-else-if="isQuotesModuleEmpty" class="pcw-card pcw-quotes-empty-compact">
             <div class="pcw-card-head">
-              <h2>报价入库待办</h2>
+              <h2>报价待补</h2>
               <button type="button" @click="handleModulePrimaryAction">去报价后台 ›</button>
             </div>
             <div class="pcw-quotes-empty-grid">
@@ -5006,7 +5006,7 @@
 
 
 
-              <p class="pcw-module-table-note">下方展示真实数据明细，表格与右侧面板会一起更新。</p>
+              <p class="pcw-module-table-note">下方展示当前明细，表格与右侧面板会一起更新。</p>
 
 
 
@@ -5511,7 +5511,7 @@
 
 
 
-                  <span>真实业务数据同步后会按优先级显示在这里。</span>
+                  <span>有新数据后会按优先级显示在这里。</span>
 
 
 
@@ -5743,7 +5743,7 @@
 
 
 
-                <span class="blue">{{ currentSection === 'market' ? '真实均价' : '处理量' }}</span>
+                <span class="blue">{{ currentSection === 'market' ? '当前均价' : '处理量' }}</span>
 
 
 
@@ -5751,7 +5751,7 @@
 
 
 
-                <span class="green">{{ currentSection === 'market' ? '真实低价' : '有效量' }}</span>
+                <span class="green">{{ currentSection === 'market' ? '当前低价' : '有效量' }}</span>
 
 
 
@@ -5759,7 +5759,7 @@
 
 
 
-                <span class="warn">{{ currentSection === 'market' ? '真实高价' : '异常量' }}</span>
+                <span class="warn">{{ currentSection === 'market' ? '当前高价' : '异常量' }}</span>
 
 
 
@@ -5951,7 +5951,7 @@
 
 
 
-                <span>表格、侧栏或流程返回真实数据后会绘制处理量与有效量趋势。</span>
+                <span>有数据后会绘制处理量与有效量趋势。</span>
 
 
 
@@ -6039,7 +6039,7 @@
 
 
 
-                <span>真实流程记录同步后会显示时间、内容和处理状态。</span>
+                <span>有处理记录后会显示时间、内容和状态。</span>
 
 
 
@@ -6500,7 +6500,7 @@
 
 
 
-            <h2>真实业务提醒</h2>
+            <h2>业务提醒</h2>
 
 
 
@@ -6732,7 +6732,7 @@
 
 
 
-            <p>例如“高于我能接受的采购价时提醒我”或“低于可考虑补货价时提醒我”。规则保存在当前浏览器，真实提醒仍以系统同步结果为准。</p>
+            <p>例如“高于我能接受的采购价时提醒我”或“低于可考虑补货价时提醒我”。规则保存在当前浏览器，最终提醒以系统同步结果为准。</p>
 
 
 
@@ -7100,7 +7100,7 @@ const SettingsControlPanel = defineAsyncComponent(() => import('./SettingsContro
 let deferredWorkbenchStylesPromise: Promise<unknown> | null = null
 
 function loadDeferredWorkbenchStyles(sectionId: SectionId) {
-  if (sectionId !== 'trend' && sectionId !== 'alerts') {
+  if (sectionId === 'summary') {
     return
   }
   deferredWorkbenchStylesPromise ||= import('./PcPriceWorkbench.defer.css')
@@ -7626,6 +7626,7 @@ const emit = defineEmits<{
   (event: 'menu-fill-supplier-price', row: MenuPlanRow): void
   (event: 'menu-confirm-row', row: MenuPlanRow): void
   (event: 'menu-fill-missing-quotes'): void
+  (event: 'request-location-options'): void
   (event: 'request-location-suggestion'): void
   (event: 'request-summary-next-page'): void
 
@@ -8724,7 +8725,7 @@ const actionPanelRows = computed(() => {
 
 
 
-  const rows = actionPanel.value.rows.length ? actionPanel.value.rows : ['当前暂无可展开的真实明细']
+  const rows = actionPanel.value.rows.length ? actionPanel.value.rows : ['当前暂无可展开的明细']
 
 
 
@@ -9524,6 +9525,9 @@ function toggleLocationMenu() {
 
 
   locationMenuVisible.value = !locationMenuVisible.value
+  if (locationMenuVisible.value) {
+    emit('request-location-options')
+  }
   if (!locationMenuVisible.value) {
     locationMenuExpanded.value = false
   }
@@ -10092,7 +10096,7 @@ function saveAlertSettings() {
 
 
 
-  actionFeedback.value = '价格预警规则已保存'
+  actionFeedback.value = '价格提醒已保存'
 
 
 
@@ -10108,7 +10112,7 @@ function saveAlertSettings() {
 
 
 
-    if (actionFeedback.value === '价格预警规则已保存') actionFeedback.value = ''
+    if (actionFeedback.value === '价格提醒已保存') actionFeedback.value = ''
 
 
 
@@ -10426,7 +10430,7 @@ function handleModulePrimaryAction() {
 
 
 
-    const message = `${moduleView.value.kicker}暂无可处理真实数据，请先刷新同步`
+    const message = `${moduleView.value.kicker}暂无可处理数据，请先刷新`
 
 
 
@@ -10674,7 +10678,7 @@ const supplierModuleView = computed<ModuleView>(() => {
 
 
 
-      ? `已接入 ${summary.supplier_count} 个供应商，累计 ${summary.total_quote_count} 条真实报价。`
+      ? `已接入 ${summary.supplier_count} 个供应商，累计 ${summary.total_quote_count} 条报价。`
 
 
 
@@ -10994,7 +10998,7 @@ const alertModuleView = computed<ModuleView>(() => {
 
 
 
-    title: '真实异常信号',
+    title: '价格提醒',
 
 
 
@@ -11002,7 +11006,7 @@ const alertModuleView = computed<ModuleView>(() => {
 
 
 
-    description: props.signalOverview?.headline || '等待经营信号同步异常波动与采购风险。',
+    description: props.signalOverview?.headline || '价格变化和采购风险会显示在这里。',
 
 
 
@@ -11163,7 +11167,7 @@ const alertModuleView = computed<ModuleView>(() => {
 
 
 
-      title: item.title || '真实处理建议',
+      title: item.title || '处理建议',
 
 
 
@@ -11219,7 +11223,7 @@ const alertModuleView = computed<ModuleView>(() => {
 
 
 
-      text: `${item.product_name}：${item.reason_summary || formatRecommendedAction(item.recommended_action, '真实信号已同步')}`,
+      text: `${item.product_name}：${item.reason_summary || formatRecommendedAction(item.recommended_action, '价格变化已同步')}`,
 
 
 
@@ -11372,7 +11376,7 @@ const marketModuleView = computed<ModuleView>(() => {
 
 
 
-    title: '真实市场行情监控',
+    title: '市场行情',
 
 
 
@@ -11380,7 +11384,7 @@ const marketModuleView = computed<ModuleView>(() => {
 
 
 
-    description: sources.length ? `已接入 ${sources.length} 个来源，按真实行情监控商品价格。` : '等待来源配置同步。',
+    description: sources.length ? `${sources.length} 个来源正在更新价格。` : '等待来源同步。',
 
 
 
@@ -11404,7 +11408,7 @@ const marketModuleView = computed<ModuleView>(() => {
 
 
 
-      { label: '已配置来源', value: String(Math.max(sources.length, new Set(fallbackMarkets.map((item) => item.name)).size)), detail: sources.length ? '当前纳入系统的来源数量' : '行情主表推导的来源数', tone: 'blue' },
+      { label: '价格来源', value: String(Math.max(sources.length, new Set(fallbackMarkets.map((item) => item.name)).size)), detail: sources.length ? '当前可用来源' : '从菜价汇总推算', tone: 'blue' },
 
 
 
@@ -11412,7 +11416,7 @@ const marketModuleView = computed<ModuleView>(() => {
 
 
 
-      { label: '当前有返回', value: String(priceRows.length || sources.filter((item) => item.enabled !== false).length), detail: '这轮能拿到真实返回的来源', tone: 'green' },
+      { label: '有新价格', value: String(priceRows.length || sources.filter((item) => item.enabled !== false).length), detail: '本轮拿到价格', tone: 'green' },
 
 
 
@@ -11420,7 +11424,7 @@ const marketModuleView = computed<ModuleView>(() => {
 
 
 
-      { label: '本轮报价记录', value: String(rows.reduce((sum, row) => sum + Number(row.price_observation_count || row.market_count || row.site_count || 0), 0) || priceRows.length), detail: '当前同步到的报价量', tone: 'blue' },
+      { label: '报价记录', value: String(rows.reduce((sum, row) => sum + Number(row.price_observation_count || row.market_count || row.site_count || 0), 0) || priceRows.length), detail: '本轮报价量', tone: 'blue' },
 
 
 
@@ -11575,7 +11579,7 @@ const marketModuleView = computed<ModuleView>(() => {
 
 
 
-        '真实行情主表',
+        '菜价汇总',
 
 
 
@@ -11758,18 +11762,18 @@ const quotesModuleView = computed<ModuleView>(() => {
   ])
   const visibleRows = quoteRows.length ? quoteRows : fallbackTrendRows
   const description = hasFocusedQuotes
-    ? `当前商品已承接 ${quotes.length} 条真实供应商报价，可直接进入采购确认。`
+    ? `当前商品已承接 ${quotes.length} 条供应商报价，可直接进入采购确认。`
     : (hasTrendQuotes
       ? '当前商品有趋势/今日报价，但尚未进入供应商报价台账，已先作为待承接参考展示。'
       : (summary ? `供应商报价库累计 ${summary.total_quote_count} 条，最近报价 ${summary.latest_quoted_at ? formatShortDateTime(summary.latest_quoted_at) : '暂无时间'}。` : '等待供应商报价记录同步。'))
 
   return {
     kicker: '报价记录',
-    title: '真实报价记录入库台',
+    title: '供应商报价',
     description,
     action: '去报价后台',
     metrics: [
-      { label: '当前商品报价', value: String(quotes.length), detail: hasFocusedQuotes ? '已入供应商报价库' : (hasTrendQuotes ? '趋势报价待入库' : '当前商品暂无报价'), tone: hasFocusedQuotes ? 'green' : 'warn' },
+      { label: '当前商品报价', value: String(quotes.length), detail: hasFocusedQuotes ? '已有供应商报价' : (hasTrendQuotes ? '可转采购参考' : '当前商品暂无报价'), tone: hasFocusedQuotes ? 'green' : 'warn' },
       { label: '报价记录', value: String(summary?.total_quote_count || quotes.length), detail: '供应商报价库', tone: 'blue' },
       { label: '有效记录', value: String(quotes.filter((item) => item.status !== 'invalid' && !item.invalidated_at).length), detail: '当前商品有效报价', tone: 'green' },
       { label: '覆盖供应商', value: String(new Set(quotes.map((item) => item.supplier_id || item.supplier_name)).size), detail: '当前商品供应商', tone: 'blue' },
@@ -11780,7 +11784,7 @@ const quotesModuleView = computed<ModuleView>(() => {
     sideTitle: '记录质量',
     sideItems: withEmptySideItems([
       { label: '当前', title: hasFocusedQuotes ? `当前商品 ${quotes.length} 条报价` : '当前商品暂无台账报价', detail: hasTrendQuotes ? '趋势报价可先承接到采购动作' : '等待供应商提交报价', tone: hasFocusedQuotes ? 'green' : 'warn' },
-      { label: '有效', title: `有效记录 ${quotes.filter((item) => item.status !== 'invalid' && !item.invalidated_at).length} 条`, detail: '来自当前商品真实报价', tone: 'green' },
+      { label: '有效', title: `有效记录 ${quotes.filter((item) => item.status !== 'invalid' && !item.invalidated_at).length} 条`, detail: '当前商品报价', tone: 'green' },
       { label: '同步', title: summary?.latest_quoted_at ? formatShortDateTime(summary.latest_quoted_at) : '暂无同步时间', detail: '最新报价时间', tone: 'blue' },
     ]),
     flowTitle: '报价流',
@@ -11844,11 +11848,11 @@ const purchaseModuleView = computed<ModuleView>(() => {
     ? `已从当前商品报价记录生成 ${quotePurchaseRows.length} 条待确认采购动作，最低价供应商：${lowestQuote?.supplier_name || '待确认'}。`
     : (trendPurchaseRows.length
       ? '当前商品尚无供应商台账报价，已先承接趋势报价生成待确认采购动作。'
-      : (recommendations.length ? `已生成 ${recommendations.length} 条真实采购建议，按风险和时机分推进。` : '等待采购建议或当前商品报价同步。'))
+      : (recommendations.length ? `已生成 ${recommendations.length} 条采购建议。` : '等待采购建议或当前商品报价同步。'))
 
   return {
     kicker: '我的采购',
-    title: '真实采购建议执行台',
+    title: '采购建议',
     description,
     action: '查看采购计划',
     metrics: [
@@ -11878,7 +11882,7 @@ const purchaseModuleView = computed<ModuleView>(() => {
       text: `${item.supplier_name || '供应商'}：${formatCurrency(item.quote_price)} ${item.quote_unit || ''}，等待确认采购`,
     })) : recommendations.slice(0, 4).map((item) => ({
       step: String(Math.round(item.timing_score || 0)),
-      text: `${item.ingredient_name || item.identity_key || '商品'}：${formatRecommendedAction(item.recommended_action, item.reason_summary || '真实建议已同步')}`,
+      text: `${item.ingredient_name || item.identity_key || '商品'}：${formatRecommendedAction(item.recommended_action, item.reason_summary || '建议已生成')}`,
     })))),
   }
 })
@@ -11923,7 +11927,7 @@ const planModuleView = computed<ModuleView>(() => {
 
 
 
-    title: '真实菜单采购计划',
+    title: '菜单采购计划',
 
 
 
@@ -11955,7 +11959,7 @@ const planModuleView = computed<ModuleView>(() => {
 
 
 
-      { label: '计划明细', value: String(rows.length), detail: '菜单计划接口', tone: 'blue' },
+      { label: '计划明细', value: String(rows.length), detail: '菜单计划', tone: 'blue' },
 
 
 
@@ -12324,7 +12328,7 @@ const reportsModuleView = computed<ModuleView>(() => {
 
 
 
-    title: '真实行情经营报表',
+    title: '菜价报表',
 
 
 
@@ -12332,7 +12336,7 @@ const reportsModuleView = computed<ModuleView>(() => {
 
 
 
-    description: `基于 ${rows.length} 条真实行情主表与 ${props.sourceCoverageRows?.length || 0} 个来源生成。`,
+    description: `基于 ${rows.length} 条菜价和 ${props.sourceCoverageRows?.length || 0} 个来源生成。`,
 
 
 
@@ -12356,7 +12360,7 @@ const reportsModuleView = computed<ModuleView>(() => {
 
 
 
-      { label: '汇总商品', value: String(rows.length), detail: '行情主表', tone: 'blue' },
+      { label: '汇总商品', value: String(rows.length), detail: '菜价汇总', tone: 'blue' },
 
 
 
@@ -12364,7 +12368,7 @@ const reportsModuleView = computed<ModuleView>(() => {
 
 
 
-      { label: '平均采购价', value: formatCurrency(averageNumbers(rows.map((item) => item.average_price))), detail: '真实均价', tone: 'green' },
+      { label: '平均采购价', value: formatCurrency(averageNumbers(rows.map((item) => item.average_price))), detail: '平均价', tone: 'green' },
 
 
 
@@ -12656,7 +12660,7 @@ const settingsModuleView = computed<ModuleView>(() => {
 
 
 
-    title: '真实来源配置与同步状态',
+    title: '数据同步设置',
 
 
 
@@ -12664,7 +12668,7 @@ const settingsModuleView = computed<ModuleView>(() => {
 
 
 
-    description: sources.length ? `这里直接管理 ${sources.length} 个真实数据来源的同步、调度和异常状态。` : '这里直接进行系统采集设置，等待来源配置同步。',
+    description: sources.length ? `管理 ${sources.length} 个价格来源和同步状态。` : '这里设置价格来源，等待同步。',
 
 
 
@@ -12672,7 +12676,7 @@ const settingsModuleView = computed<ModuleView>(() => {
 
 
 
-    action: props.crawlStatus?.is_running ? '同步中' : '立即同步数据源',
+    action: props.crawlStatus?.is_running ? '同步中' : '立即同步',
 
 
 
@@ -13411,7 +13415,7 @@ const trendKpis = computed(() => {
 
 
 
-    { label: '当前均价', value: formatNumber(avg), detail: isUsingTrendSnapshot.value ? '行情快照' : latest ? formatShortDateTime(latest) : fallback ? '来自行情主表' : '等待趋势数据', tone: 'blue' },
+    { label: '当前均价', value: formatNumber(avg), detail: isUsingTrendSnapshot.value ? '菜价快照' : latest ? formatShortDateTime(latest) : fallback ? '来自菜价汇总' : '等待走势数据', tone: 'blue' },
 
 
 
@@ -13419,7 +13423,7 @@ const trendKpis = computed(() => {
 
 
 
-    { label: '最低价', value: formatNumber(min), detail: isUsingTrendSnapshot.value ? '行情主表最低价' : rows.length ? '真实趋势最低点' : fallback ? '行情主表最低价' : '等待最低价', tone: 'green' },
+    { label: '最低价', value: formatNumber(min), detail: isUsingTrendSnapshot.value ? '菜价汇总最低价' : rows.length ? '走势最低点' : fallback ? '菜价汇总最低价' : '等待最低价', tone: 'green' },
 
 
 
@@ -13427,7 +13431,7 @@ const trendKpis = computed(() => {
 
 
 
-    { label: '最高价', value: formatNumber(max), detail: isUsingTrendSnapshot.value ? '行情主表最高价' : rows.length ? '真实趋势最高点' : fallback ? '行情主表最高价' : '等待最高价', tone: 'up' },
+    { label: '最高价', value: formatNumber(max), detail: isUsingTrendSnapshot.value ? '菜价汇总最高价' : rows.length ? '走势最高点' : fallback ? '菜价汇总最高价' : '等待最高价', tone: 'up' },
 
 
 
@@ -13435,7 +13439,7 @@ const trendKpis = computed(() => {
 
 
 
-    { label: '覆盖市场', value: String(seriesCount || fallbackCoverage || 0), detail: isUsingTrendSnapshot.value ? '行情快照已显示' : rows.length ? `${rows.length} 条趋势记录` : fallback ? '行情主表覆盖' : '0 条趋势记录', tone: 'blue' },
+    { label: '覆盖市场', value: String(seriesCount || fallbackCoverage || 0), detail: isUsingTrendSnapshot.value ? '菜价快照已显示' : rows.length ? `${rows.length} 条走势记录` : fallback ? '菜价汇总覆盖' : '0 条走势记录', tone: 'blue' },
 
 
 
@@ -13742,7 +13746,7 @@ const moduleHealthKpis = computed<Record<Exclude<SectionId, 'summary' | 'trend' 
 
 
 
-  market: { label: '真实覆盖区域', value: String(new Set(props.rows.map((item) => item.region_label || item.lowest_price_site).filter(Boolean)).size || props.sourceCoverageRows?.length || 0), detail: '当前真实返回覆盖到的地区/来源', tone: 'blue' },
+  market: { label: '覆盖区域', value: String(new Set(props.rows.map((item) => item.region_label || item.lowest_price_site).filter(Boolean)).size || props.sourceCoverageRows?.length || 0), detail: '当前覆盖到的地区/来源', tone: 'blue' },
 
 
 
@@ -13750,7 +13754,7 @@ const moduleHealthKpis = computed<Record<Exclude<SectionId, 'summary' | 'trend' 
 
 
 
-  suppliers: { label: '近24小时活跃', value: String(props.supplierOverview?.summary?.active_supplier_count || 0), detail: '最近有真实报价动作的供应商', tone: 'green' },
+  suppliers: { label: '近24小时活跃', value: String(props.supplierOverview?.summary?.active_supplier_count || 0), detail: '最近有报价动作的供应商', tone: 'green' },
 
 
 
@@ -14054,7 +14058,7 @@ const summaryStillBootstrapping = computed(() => Boolean(
 
 const summaryEmptyTitle = computed(() => (
   summaryStillBootstrapping.value
-    ? '正在加载真实行情'
+    ? '正在加载菜价'
     : '当前筛选无行情数据'
 ))
 
@@ -14080,7 +14084,7 @@ const summaryEmptyDetail = computed(() => (
 
 
 
-    ? '正在读取行情主表、商品选项和有效报价，请稍候。'
+    ? '正在读取菜价和商品，请稍候。'
 
 
 
@@ -14088,7 +14092,7 @@ const summaryEmptyDetail = computed(() => (
 
 
 
-    : '请调整来源、分类、商品或日期筛选，也可以点击刷新重新同步真实数据。'
+    : '请调整来源、分类、商品或日期，也可以点击刷新。'
 
 
 
@@ -14104,7 +14108,7 @@ const summaryEmptyDetail = computed(() => (
 
 
 
-const trendEmptyTitle = computed(() => (props.trendLoading ? '正在加载真实趋势' : '当前商品暂无趋势数据'))
+const trendEmptyTitle = computed(() => (props.trendLoading ? '正在加载价格走势' : '当前商品暂无走势数据'))
 
 
 
@@ -14254,7 +14258,7 @@ const quoteEmptyActionCards = computed(() => {
 
 const quoteEmptyWorkflowRows = computed(() => [
   selectedProductName.value ? `${selectedProductName.value} 当前未命中供应商报价记录。` : '当前筛选条件未命中供应商报价记录。',
-  trendQuoteRows.value.length ? `已有 ${trendQuoteRows.value.length} 条历史报价，可先复核价格走势。` : '历史行情和供应商报价都为空时，只保留入库待办。',
+  trendQuoteRows.value.length ? `已有 ${trendQuoteRows.value.length} 条历史报价，可先复核价格走势。` : '历史行情和供应商报价都为空时，只保留待补报价。',
   '补齐供应商、报价、单位和状态后，报价记录表格会自动展开。',
 ])
 
@@ -14264,7 +14268,7 @@ const purchaseEmptyActions = computed(() => {
     {
       step: '01',
       label: '先选采购商品',
-      detail: selectedProductName.value ? `当前商品：${selectedProductName.value}` : '从汇总行情里选一个真实商品作为采购对象。',
+      detail: selectedProductName.value ? `当前商品：${selectedProductName.value}` : '从汇总行情里选一个采购商品。',
       action: '去汇总选品',
       section: 'summary' as SectionId,
       identityKey: '',
@@ -14290,13 +14294,13 @@ const purchaseEmptyActions = computed(() => {
 
 const purchaseEmptyBlockers = computed(() => [
   focusedSupplierQuotes.value.length ? `当前商品已有 ${focusedSupplierQuotes.value.length} 条报价，但还没有有效可采购报价。` : '当前商品没有供应商可下单报价。',
-  trendChartRows.value.length ? `已有 ${trendChartRows.value.length} 个真实/快照点，可先复核价格方向。` : '历史行情还未形成可承接价格点。',
+  trendChartRows.value.length ? `已有 ${trendChartRows.value.length} 个价格点，可先复核价格方向。` : '历史行情还未形成可承接价格点。',
   props.planRows?.length ? `采购计划已有 ${props.planRows.length} 条明细，等待报价补齐后执行。` : '采购计划暂未生成可执行明细。',
 ])
 
 const moduleEmptyTitle = computed(() => {
   if (currentSection.value === 'settings') {
-    if (!(props.sourceCoverageRows || []).length) return '当前没有真实来源配置'
+    if (!(props.sourceCoverageRows || []).length) return '当前没有价格来源'
     if (!moduleTableCount.value && allModuleTableRows.value.length > 0) return '当前筛选未命中来源'
   }
   return '暂无可展示数据'
@@ -14305,13 +14309,13 @@ const moduleEmptyTitle = computed(() => {
 const moduleEmptyDetail = computed(() => {
   if (currentSection.value === 'settings') {
     if (!(props.sourceCoverageRows || []).length) {
-      return '当前没有同步到真实来源记录，请先检查同步状态、账号权限或服务状态。'
+      return '当前没有同步到价格来源，请先检查同步状态、账号权限或服务状态。'
     }
     if (!moduleTableCount.value && allModuleTableRows.value.length > 0) {
-      return `当前真实来源 ${allModuleTableRows.value.length} 条，但被顶部筛选条件过滤为 0 条。请重置筛选后再看。`
+      return `当前价格来源 ${allModuleTableRows.value.length} 条，但被顶部筛选条件过滤为 0 条。请重置筛选后再看。`
     }
   }
-  return `刷新或系统同步后会展示${moduleView.value.tableTitle}的真实记录。`
+  return `刷新或系统同步后会展示${moduleView.value.tableTitle}记录。`
 })
 
 
@@ -14541,7 +14545,7 @@ const moduleBriefItems = computed(() => {
 
 
 
-      { label: '入库动态', text: firstFlow ? firstFlow.text : '等待供应商报价同步。' },
+      { label: '报价动态', text: firstFlow ? firstFlow.text : '等待供应商报价同步。' },
 
 
 
@@ -14848,7 +14852,7 @@ const timelineRows = computed(() => {
   if (quoteEvents.length) return quoteEvents
 
   return filteredDisplayRows.value.slice(0, 4).map((item) => ({
-    time: item.source || item.capturedDate || '真实行情',
+    time: item.source || item.capturedDate || '菜价',
     text: `${item.name} 均价 ${item.avg}，最低价 ${item.low}`,
   }))
 
@@ -16415,7 +16419,7 @@ const alertCommandCards = computed(() => [
 
 
 
-    detail: props.signalOverview?.recommended_actions?.length ? '经营信号返回' : '等待动作建议',
+    detail: props.signalOverview?.recommended_actions?.length ? '已有处理建议' : '等待动作建议',
 
 
 
@@ -16527,7 +16531,7 @@ const alertWorkflowCards = computed(() => [
 
 
 
-    detail: hasAlertSignals.value ? '真实信号已接入' : '等待信号接口',
+    detail: hasAlertSignals.value ? '已有价格提醒' : '等待价格提醒',
 
 
 
@@ -16938,7 +16942,7 @@ const trendReadinessCards = computed(() => {
 
 
 
-      detail: fallback ? `${fallback.region_label || fallback.lowest_price_site || '本地市场'} · ${fallback.market_count || fallback.site_count || 0} 个报价源` : '等待行情主表',
+      detail: fallback ? `${fallback.region_label || fallback.lowest_price_site || '本地市场'} · ${fallback.market_count || fallback.site_count || 0} 个报价源` : '等待菜价汇总',
 
 
 
@@ -17018,7 +17022,7 @@ const trendReadinessCards = computed(() => {
 
 
 
-      label: '经营信号',
+      label: '价格变化',
 
 
 
@@ -17306,7 +17310,7 @@ const trendMarketRows = computed(() => {
 
 
 
-    item.market_count || item.site_count ? '行情主表' : '待补来源',
+    item.market_count || item.site_count ? '菜价汇总' : '待补来源',
 
 
 
@@ -17378,7 +17382,7 @@ const trendDynamics = computed(() => {
 
 
 
-    market: item.source_name || item.site_name || item.market_name || item.region_label || '真实来源',
+    market: item.source_name || item.site_name || item.market_name || item.region_label || '价格来源',
 
 
 
@@ -17386,7 +17390,7 @@ const trendDynamics = computed(() => {
 
 
 
-    text: `${item.product_name || selectedProductName.value || '商品'} 报价 ${formatNumber(item.current_price)}，来源 ${item.source_name || item.source_tier || '真实数据'}`,
+    text: `${item.product_name || selectedProductName.value || '商品'} 报价 ${formatNumber(item.current_price)}，来源 ${item.source_name || item.source_tier || '价格来源'}`,
 
 
 
@@ -17474,7 +17478,7 @@ const trendDynamics = computed(() => {
 
 
 
-      market: item.recommended_market || item.recommended_site || '经营信号',
+      market: item.recommended_market || item.recommended_site || '价格变化',
 
 
 
@@ -17546,7 +17550,7 @@ const peerRows = computed(() => props.rows.slice(0, 4).map((item) => [
 
 
 
-  item.lowest_price_site || '真实最低价',
+  item.lowest_price_site || '最低价',
 
 
 
@@ -17930,11 +17934,11 @@ const fallbackTrendChartRows = computed<ProductTrendRow[]>(() => {
 
   return prices.map((price, index) => ({
     product_name: summary.product_name,
-    trend_series_name: summary.lowest_price_site || summary.region_label || '行情主表',
+    trend_series_name: summary.lowest_price_site || summary.region_label || '菜价汇总',
     trend_series_key: summary.price_identity_key || summary.product_name,
-    source_name: summary.lowest_price_site || summary.region_label || '行情主表',
-    site_name: summary.lowest_price_site || summary.region_label || '行情主表',
-    market_name: summary.lowest_price_site || summary.region_label || '行情主表',
+    source_name: summary.lowest_price_site || summary.region_label || '菜价汇总',
+    site_name: summary.lowest_price_site || summary.region_label || '菜价汇总',
+    market_name: summary.lowest_price_site || summary.region_label || '菜价汇总',
     current_price: price,
     captured_at: labels[index] || latestDate || String(index + 1),
   }))
@@ -18016,7 +18020,7 @@ const trendPointRailRows = computed(() => {
       index,
       label: row?.captured_at ? formatMonthDay(row.captured_at) : `点 ${index + 1}`,
       price: formatNumber(row?.current_price),
-      source: row?.source_name || row?.site_name || row?.trend_series_name || row?.market_name || '真实来源',
+      source: row?.source_name || row?.site_name || row?.trend_series_name || row?.market_name || '价格来源',
     }
   })
 })
@@ -18101,7 +18105,7 @@ const activeTrendTooltip = computed(() => {
   return {
     date: row.captured_at ? formatMonthDay(row.captured_at) : '最新',
     price: formatNumber(row.current_price),
-    market: truncateSvgText(row.market_name || row.site_name || row.trend_series_name || '真实来源', 8),
+    market: truncateSvgText(row.market_name || row.site_name || row.trend_series_name || '价格来源', 8),
     x: Number(x.toFixed(1)),
     y: Number(y.toFixed(1)),
   }
@@ -18348,7 +18352,7 @@ const trendSuggestions = computed(() => {
 
 
 
-  if (!rows.length) return ['等待真实趋势同步后生成采购建议。']
+  if (!rows.length) return ['等待价格走势更新后生成采购建议。']
 
 
 
@@ -18372,7 +18376,7 @@ const trendSuggestions = computed(() => {
 
 
 
-    `${selectedProductName.value || latest?.product_name || '当前商品'} 最新报价 ${formatNumber(latest?.current_price)}，来源 ${latest?.source_name || latest?.site_name || '真实数据'}。`,
+    `${selectedProductName.value || latest?.product_name || '当前商品'} 最新报价 ${formatNumber(latest?.current_price)}，来源 ${latest?.source_name || latest?.site_name || '价格来源'}。`,
 
 
 
@@ -18380,7 +18384,7 @@ const trendSuggestions = computed(() => {
 
 
 
-    `已加载 ${rows.length} 条真实行情记录，可结合最低报价和供应商报价复核采购动作。`,
+    `已加载 ${rows.length} 条行情记录，可结合最低报价和供应商报价复核采购动作。`,
 
 
 
@@ -18545,7 +18549,7 @@ const summaryOpportunityRows = computed(() => (
 ))
 
 const purchaseTrendCarryRows = computed(() => trendChartRows.value.slice(-4).reverse().map((item) => ({
-  source: item.source_name || item.trend_series_name || item.site_name || '真实来源',
+  source: item.source_name || item.trend_series_name || item.site_name || '价格来源',
   market: item.market_name || item.region_label || item.city || '本地市场',
   price: formatNumber(item.current_price),
   time: item.captured_at ? formatShortDateTime(item.captured_at) : '最新',
@@ -18570,7 +18574,7 @@ const purchaseRunbookSteps = computed(() => {
       step: '再看趋势',
       title: '确认今天该不该下单',
       detail: trendChartRows.value.length
-        ? `已有 ${trendChartRows.value.length} 个趋势点，先看最低价和真实来源。`
+        ? `已有 ${trendChartRows.value.length} 个趋势点，先看最低价和价格来源。`
         : '先查看最近走势和来源变化。',
       actionLabel: '看价格走势',
       section: 'trend' as SectionId,
@@ -18601,7 +18605,7 @@ const purchaseExecutionNotes = computed(() => {
   }
   return [
     `${currentProductName} 先补供应商报价，再决定是否今天直接下单。`,
-    '如果最低价来源持续走低，优先确认来源是否真实稳定。',
+    '如果最低价来源持续走低，优先确认来源是否稳定。',
     '回采购计划前，先把供应商、报价和库存核在一条链上。',
   ]
 })
@@ -18652,7 +18656,7 @@ const marketHealthRows = computed(() => {
     })
     : marketModuleView.value.tableRows.map((item) => ({
       name: String(item[0] || '行情来源'),
-      detail: String(item[1] || '真实行情主表'),
+      detail: String(item[1] || '菜价汇总'),
       latest: String(item[2] || '-'),
       records: String(item[4] || '-'),
       tone: String(item[5] || '').includes('离线') ? 'off' : 'ok',
@@ -18887,7 +18891,7 @@ const trendAlertRows = computed(() => {
 
 
 
-  return [['真实预警', `${props.signalOverview?.alert_count || 0} 条`, props.signalOverview?.alert_count ? 'warn' : 'down', props.signalOverview?.alert_count ? '需查看' : '正常']]
+  return [['价格提醒', `${props.signalOverview?.alert_count || 0} 条`, props.signalOverview?.alert_count ? 'warn' : 'down', props.signalOverview?.alert_count ? '需查看' : '正常']]
 
 
 
@@ -18935,7 +18939,7 @@ const alertAdviceRows = computed(() => {
 
 
 
-  return rows.length ? rows : ['等待真实经营信号同步后生成处理建议。']
+  return rows.length ? rows : ['等待价格变化同步后生成处理建议。']
 
 
 
@@ -18965,7 +18969,7 @@ const productOptionDisplayRows = computed(() => (props.productOptions || []).map
   subcategory: String(item.liancai_subcategory || '').trim() || undefined,
   keyword: String(item.liancai_keyword || '').trim() || undefined,
   brandName: String(item.liancai_brand_name || '').trim() || undefined,
-  source: normalizeLiancaiSourceLabel(item.source_name) || '真实商品',
+  source: normalizeLiancaiSourceLabel(item.source_name) || '商品',
   capturedDate: formatDateFilterValue(item.latest_captured_at),
   capturedDates: formatDateFilterValue(item.latest_captured_at),
   avg: '-',
@@ -21178,7 +21182,7 @@ function openActionPanel(
 
 
 
-    description: `来自 ${sectionLabel} 的真实数据明细。可用于核对当前记录；需要调整供应商、报价或来源时请进入对应管理台处理。`,
+    description: `来自 ${sectionLabel} 的当前明细。可用于核对当前记录；需要调整供应商、报价或来源时请进入对应管理台处理。`,
 
 
 
@@ -21938,7 +21942,7 @@ function withEmptyRows(rows: string[][], columns: string[]) {
 
 
 
-  return [columns.map((_, index) => (index === 0 ? '等待真实数据' : '-'))]
+  return [columns.map((_, index) => (index === 0 ? '等待数据' : '-'))]
 
 
 
@@ -21970,7 +21974,7 @@ function isEmptyModuleRow(row: string[]) {
 
 
 
-  return row[0] === '等待真实数据'
+  return row[0] === '等待数据'
 
 
 
@@ -22003,8 +22007,8 @@ function isEmptyModuleSideItem(item: { title: string; detail: string }) {
 
 
   return (
-    (item.title === '等待真实数据' && item.detail === '系统同步后自动更新此处内容')
-    || (item.title === '暂无可展示数据' && item.detail === '当前没有可确认的真实记录')
+    (item.title === '等待数据' && item.detail === '系统同步后自动更新此处内容')
+    || (item.title === '暂无可展示数据' && item.detail === '当前没有可确认的记录')
   )
 
 
@@ -22038,8 +22042,8 @@ function isEmptyModuleFlowItem(item: { step: string; text: string }) {
 
 
   return (
-    (item.step === '同步' && item.text === '等待真实数据同步后生成处理记录')
-    || (item.step === '空' && item.text === '当前没有可展示的真实流程记录')
+    (item.step === '同步' && item.text === '等待数据同步后生成处理记录')
+    || (item.step === '空' && item.text === '当前没有可展示的流程记录')
   )
 
 
@@ -22080,7 +22084,7 @@ function withEmptySideItems(items: Array<{ label: string; title: string; detail:
 
 
 
-  return [{ label: '空', title: '暂无可展示数据', detail: '当前没有可确认的真实记录', tone: 'blue' }]
+  return [{ label: '空', title: '暂无可展示数据', detail: '当前没有可确认的记录', tone: 'blue' }]
 
 
 
@@ -22120,7 +22124,7 @@ function withEmptyFlow(items: Array<{ step: string; text: string }>) {
 
 
 
-  return [{ step: '空', text: '当前没有可展示的真实流程记录' }]
+  return [{ step: '空', text: '当前没有可展示的流程记录' }]
 
 
 
@@ -23483,7 +23487,7 @@ function moduleStatusTone(value: string) {
 
 
 
-.pcw-right{display:grid;gap:12px}.pcw-quotes{display:grid;overflow:hidden}.pcw-right-table{table-layout:fixed}.pcw-right-table th,.pcw-right-table td{height:36px;padding:0 10px;overflow:hidden;text-overflow:ellipsis}.pcw-right-table th:nth-child(1){width:52%}.pcw-right-table th:nth-child(2){width:30%}.pcw-right-table th:nth-child(3){width:18%;text-align:right}.pcw-right-table td:nth-child(3){text-align:right}.pcw-right-table td:first-child{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:8px}.pcw-right-table td:first-child strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#142542;font-size:13px}.pcw-right-tag{display:inline-flex;align-items:center;height:20px;padding:0 6px;border-radius:4px;background:#ecfdf5;color:#16a34a;font-size:10px;font-weight:800}.pcw-chart{position:relative;display:grid;overflow:hidden;min-height:232px;padding-bottom:0}.pcw-legend{gap:18px;padding:10px 16px}.pcw-legend span{font-size:11px}.pcw-legend span:before{content:"";display:inline-block;width:16px;height:4px;margin-right:6px;border-radius:999px;background:currentColor;vertical-align:middle}.pcw-chart svg{width:100%;height:150px;padding:0 10px}.grid path{fill:none;stroke:#e8edf4;stroke-width:1}.line-blue,.line-green{fill:none;stroke-width:3;stroke-linecap:round;stroke-linejoin:round}.line-blue{stroke:#2563eb}.line-green{stroke:#16a34a}.dots circle{fill:#2563eb}.pcw-axis.mini text{fill:#7a899e;font-size:9px}.pcw-chart-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 14px 10px;border-top:1px solid #edf1f6;background:#fbfdff}.pcw-chart-foot span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#64748b;font-size:12px}.pcw-chart-foot button{border:0;background:transparent;color:#2563eb;font-size:12px;font-weight:800}.pcw-chart-empty.mini{top:53%;width:min(276px,76%);padding:11px 14px}
+.pcw-right{display:grid;gap:12px}.pcw-right-table{table-layout:fixed}.pcw-right-table th,.pcw-right-table td{height:36px;padding:0 10px;overflow:hidden;text-overflow:ellipsis}.pcw-right-table th:nth-child(1){width:52%}.pcw-right-table th:nth-child(2){width:30%}.pcw-right-table th:nth-child(3){width:18%;text-align:right}.pcw-right-table td:nth-child(3){text-align:right}.pcw-right-table td:first-child{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:8px}.pcw-right-table td:first-child strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#142542;font-size:13px}.pcw-right-tag{display:inline-flex;align-items:center;height:20px;padding:0 6px;border-radius:4px;background:#ecfdf5;color:#16a34a;font-size:10px;font-weight:800}.pcw-chart{position:relative;display:grid;overflow:hidden;min-height:232px;padding-bottom:0}.pcw-legend{gap:18px;padding:10px 16px}.pcw-legend span{font-size:11px}.pcw-legend span:before{content:"";display:inline-block;width:16px;height:4px;margin-right:6px;border-radius:999px;background:currentColor;vertical-align:middle}.pcw-chart svg{width:100%;height:150px;padding:0 10px}.grid path{fill:none;stroke:#e8edf4;stroke-width:1}.line-blue,.line-green{fill:none;stroke-width:3;stroke-linecap:round;stroke-linejoin:round}.line-blue{stroke:#2563eb}.line-green{stroke:#16a34a}.dots circle{fill:#2563eb}.pcw-axis.mini text{fill:#7a899e;font-size:9px}.pcw-chart-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 14px 10px;border-top:1px solid #edf1f6;background:#fbfdff}.pcw-chart-foot span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#64748b;font-size:12px}.pcw-chart-foot button{border:0;background:transparent;color:#2563eb;font-size:12px;font-weight:800}.pcw-chart-empty.mini{top:53%;width:min(276px,76%);padding:11px 14px}
 
 
 
@@ -23491,15 +23495,7 @@ function moduleStatusTone(value: string) {
 
 
 
-.pcw-bottom{display:grid;grid-template-columns:minmax(0,1fr) 420px;gap:12px}.pcw-timeline,.pcw-alerts{padding-bottom:12px}.pcw-timeline p,.pcw-alerts p{margin:0 16px;padding:10px 0;border-bottom:1px solid #edf1f6;color:#24344d;font-size:13px}.pcw-timeline span{display:inline-block;width:52px;color:#7a899e}.pcw-alerts p{display:grid;grid-template-columns:1fr auto auto;gap:12px;border-left:3px solid #ef4444;padding-left:10px}.pcw-alerts p.fall{border-left-color:#16a34a}.pcw-alerts p.warn{border-left-color:#f97316}.pcw-alerts small{color:#7a899e}
-
-
-
-
-
-
-
-.pcw-module{display:grid;gap:12px}.pcw-module-hero{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:18px 20px;background:linear-gradient(135deg,#fff,#f8fbff)}.pcw-module-hero span{color:#2563eb;font-size:12px;font-weight:700}.pcw-module-hero h2{margin:5px 0 6px;font-size:22px;letter-spacing:0;color:#142542}.pcw-module-hero p{max-width:760px;margin:0;color:#607089;font-size:13px;line-height:1.55}.pcw-module-hero button{height:36px;min-width:96px;border:1px solid #bfdbfe;border-radius:6px;background:#2563eb;color:#fff;font-weight:700}.pcw-module-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.pcw-module-kpis article{display:grid;gap:8px;padding:16px 18px}.pcw-module-kpis span,.pcw-module-kpis small{color:#607089;font-size:12px}.pcw-module-kpis strong{font-size:24px;color:#142542;line-height:1}.pcw-module-grid{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:12px;align-items:start}.pcw-module-table{overflow:hidden}.pcw-module-table table{table-layout:fixed}.pcw-module-table th,.pcw-module-table td{padding:0 10px}.pcw-module-table td span:not(.pcw-module-progress):not(.pcw-module-status){display:inline-block;max-width:100%;overflow:hidden;text-overflow:ellipsis;vertical-align:middle}.pcw-module-table tr.is-empty td{height:58px;background:#fbfdff;color:#94a3b8}.pcw-module-table tr.is-empty .pcw-module-name{font-weight:700;color:#64748b}.pcw-module-name{font-weight:700;color:#142542}.pcw-module-status{display:inline-flex;align-items:center;min-height:24px;padding:0 9px;border-radius:999px;background:#eff6ff;color:#2563eb;font-weight:700;font-size:11px}.pcw-module-side{display:grid;gap:12px}.pcw-module-panel article{display:grid;gap:6px;margin:0 14px;padding:12px 0;border-bottom:1px solid #edf1f6}.pcw-module-panel article span{width:max-content;padding:2px 7px;border-radius:4px;background:#eff6ff;color:#2563eb;font-size:10px;font-weight:700}.pcw-module-panel article span.green,.pcw-module-panel article span.down,.pcw-module-panel article span.fall{background:#ecfdf5;color:#16a34a}.pcw-module-panel article span.warn,.pcw-module-panel article span.up,.pcw-module-panel article span.rise{background:#fff7ed;color:#f97316}.pcw-module-panel article strong{color:#142542;font-size:14px}.pcw-module-panel article small{color:#607089;font-size:12px;line-height:1.45}.pcw-module-flow{padding-bottom:10px}.pcw-module-flow p{display:grid;grid-template-columns:54px 1fr;gap:10px;align-items:start;margin:0 16px;padding:11px 0;border-bottom:1px solid #edf1f6}.pcw-module-flow b{color:#2563eb;font-size:12px}.pcw-module-flow span{color:#34445d;font-size:13px;line-height:1.45}
+.pcw-bottom{display:grid;grid-template-columns:minmax(0,1fr) 420px;gap:12px}.pcw-timeline,.pcw-alerts{padding-bottom:12px}.pcw-timeline p,.pcw-alerts p{margin:0 16px;padding:10px 0;border-bottom:1px solid #edf1f6;color:#24344d;font-size:13px}.pcw-timeline span{display:inline-block;width:52px;color:#7a899e}.pcw-alerts p{display:grid;grid-template-columns:1fr auto auto;gap:12px;border-left:3px solid #ef4444;padding-left:10px}.pcw-alerts p.fall{border-left-color:#16a34a}.pcw-alerts p.warn{border-left-color:#f97316}.pcw-alerts small{color:#7a899e}.pcw-module-hero{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:18px 20px;background:linear-gradient(135deg,#fff,#f8fbff)}.pcw-module-hero span{color:#2563eb;font-size:12px;font-weight:700}.pcw-module-hero h2{margin:5px 0 6px;font-size:22px;letter-spacing:0;color:#142542}.pcw-module-hero p{max-width:760px;margin:0;color:#607089;font-size:13px;line-height:1.55}.pcw-module-hero button{height:36px;min-width:96px;border:1px solid #bfdbfe;border-radius:6px;background:#2563eb;color:#fff;font-weight:700}.pcw-module-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.pcw-module-kpis article{display:grid;gap:8px;padding:16px 18px}.pcw-module-kpis span,.pcw-module-kpis small{color:#607089;font-size:12px}.pcw-module-kpis strong{font-size:24px;color:#142542;line-height:1}.pcw-module-grid{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:12px;align-items:start}.pcw-module-table{overflow:hidden}.pcw-module-table table{table-layout:fixed}.pcw-module-table th,.pcw-module-table td{padding:0 10px}.pcw-module-table td span:not(.pcw-module-progress):not(.pcw-module-status){display:inline-block;max-width:100%;overflow:hidden;text-overflow:ellipsis;vertical-align:middle}.pcw-module-table tr.is-empty td{height:58px;background:#fbfdff;color:#94a3b8}.pcw-module-table tr.is-empty .pcw-module-name{font-weight:700;color:#64748b}.pcw-module-name{font-weight:700;color:#142542}.pcw-module-status{display:inline-flex;align-items:center;min-height:24px;padding:0 9px;border-radius:999px;background:#eff6ff;color:#2563eb;font-weight:700;font-size:11px}.pcw-module-side{display:grid;gap:12px}.pcw-module-panel article{display:grid;gap:6px;margin:0 14px;padding:12px 0;border-bottom:1px solid #edf1f6}.pcw-module-panel article span{width:max-content;padding:2px 7px;border-radius:4px;background:#eff6ff;color:#2563eb;font-size:10px;font-weight:700}.pcw-module-panel article span.green,.pcw-module-panel article span.down,.pcw-module-panel article span.fall{background:#ecfdf5;color:#16a34a}.pcw-module-panel article span.warn,.pcw-module-panel article span.up,.pcw-module-panel article span.rise{background:#fff7ed;color:#f97316}.pcw-module-panel article strong{color:#142542;font-size:14px}.pcw-module-panel article small{color:#607089;font-size:12px;line-height:1.45}.pcw-module-flow{padding-bottom:10px}.pcw-module-flow p{display:grid;grid-template-columns:54px 1fr;gap:10px;align-items:start;margin:0 16px;padding:11px 0;border-bottom:1px solid #edf1f6}.pcw-module-flow b{color:#2563eb;font-size:12px}.pcw-module-flow span{color:#34445d;font-size:13px;line-height:1.45}
 
 
 
@@ -23713,7 +23709,7 @@ function moduleStatusTone(value: string) {
 
 
 
-.pcw-side{box-shadow:8px 0 24px rgba(15,23,42,.03)}.pcw-side-head strong{font-size:18px;letter-spacing:.2px;color:#0f1f3d}.pcw-logo{box-shadow:0 10px 18px rgba(37,99,235,.22)}.pcw-nav{gap:6px}.pcw-nav-item{position:relative;min-height:44px;color:#31415c;transition:background-color .18s ease,color .18s ease,box-shadow .18s ease}.pcw-nav-item:hover{background:#f3f7ff;color:#2563eb}.pcw-nav-item.active,.pcw-nav-item.active:hover{background:#2563eb;color:#fff;box-shadow:0 12px 22px rgba(37,99,235,.22)}.pcw-nav-item.active:after{content:"";position:absolute;right:10px;width:4px;height:4px;border-radius:999px;background:rgba(255,255,255,.8)}.pcw-nav-icon{display:inline-block;justify-self:center}.pcw-top{box-shadow:0 1px 0 rgba(15,23,42,.02)}.pcw-location{position:relative;padding-right:22px}.pcw-location:after{content:"";position:absolute;right:0;width:1px;height:22px;background:#d8e0ea}.pcw-top-actions button{position:relative;padding:0 6px;border-radius:6px}.pcw-top-actions button:hover{background:#f3f6fb;color:#2563eb}.pcw-user{min-width:76px}.pcw-filter{align-items:center;min-height:66px;box-shadow:0 8px 20px rgba(15,23,42,.025)}.pcw-filter button{position:relative;text-align:left;padding:0 14px;font-weight:500;white-space:nowrap;transition:border-color .18s ease,box-shadow .18s ease,color .18s ease}.pcw-filter button:not(.pcw-export):hover{border-color:#bfd2ff;color:#2563eb;box-shadow:0 0 0 3px #eff6ff}.pcw-filter .pcw-export{display:inline-flex;align-items:center;justify-content:center;gap:7px;width:126px;min-width:126px;text-align:center;font-weight:700;line-height:1}.pcw-filter .pcw-export:before{content:"";flex:0 0 auto;width:12px;height:12px;border:1.7px solid currentColor;border-top:0;border-radius:0 0 2px 2px;background:linear-gradient(currentColor,currentColor) center 1px/1.7px 8px no-repeat}.pcw-kpis{min-height:114px;box-shadow:0 8px 20px rgba(15,23,42,.025)}.pcw-kpis article{justify-content:center}.pcw-kpis strong{font-weight:800;letter-spacing:.2px}.pcw-card{box-shadow:0 8px 20px rgba(15,23,42,.025)}.pcw-card-head h2{font-weight:800;color:#12213c}.pcw-card-head button:hover{color:#2563eb}tbody tr{transition:background-color .16s ease}tbody tr:hover{background:#fbfdff}th{color:#5b6b82}td{color:#10203d}.pcw-product strong,.pcw-module-name{font-weight:800}.pcw-link:hover{text-decoration:underline}.pcw-module-status,.pcw-alert-type,.pcw-alert-state{box-shadow:inset 0 0 0 1px rgba(255,255,255,.5)}.pcw-thumb{position:relative;overflow:hidden;box-shadow:inset 0 0 0 1px rgba(255,255,255,.65),0 2px 5px rgba(15,23,42,.12)}.pcw-thumb:before,.pcw-thumb:after{content:"";position:absolute;border-radius:999px;background:rgba(255,255,255,.62)}.pcw-thumb:before{width:14px;height:8px;left:5px;top:6px;transform:rotate(-18deg)}.pcw-thumb:after{width:10px;height:5px;right:4px;bottom:6px;transform:rotate(20deg)}.pcw-thumb.fish:before{width:15px;height:7px;left:5px;top:9px}.pcw-thumb.fish:after{right:3px;bottom:8px;width:6px;height:6px;clip-path:polygon(0 50%,100% 0,100% 100%)}.pcw-thumb.egg:before,.pcw-thumb.potato:before{width:9px;height:11px;left:5px;top:7px}.pcw-thumb.egg:after,.pcw-thumb.potato:after{width:9px;height:10px;right:5px;bottom:5px}.pcw-module-chart-panel svg,.pcw-alert-chart svg,.pcw-big-chart{filter:drop-shadow(0 6px 10px rgba(37,99,235,.035))}.pcw-module-panel article:last-child,.pcw-module-flow p:last-child,.pcw-module-activity article:last-child,.pcw-quotes article:last-child,.pcw-timeline p:last-child,.pcw-alerts p:last-child{border-bottom:0}
+.pcw-side{box-shadow:8px 0 24px rgba(15,23,42,.03)}.pcw-side-head strong{font-size:18px;letter-spacing:.2px;color:#0f1f3d}.pcw-logo{box-shadow:0 10px 18px rgba(37,99,235,.22)}.pcw-nav{gap:6px}.pcw-nav-item{position:relative;min-height:44px;color:#31415c;transition:background-color .18s ease,color .18s ease,box-shadow .18s ease}.pcw-nav-item:hover{background:#f3f7ff;color:#2563eb}.pcw-nav-item.active,.pcw-nav-item.active:hover{background:#2563eb;color:#fff;box-shadow:0 12px 22px rgba(37,99,235,.22)}.pcw-nav-item.active:after{content:"";position:absolute;right:10px;width:4px;height:4px;border-radius:999px;background:rgba(255,255,255,.8)}.pcw-nav-icon{display:inline-block;justify-self:center}.pcw-top{box-shadow:0 1px 0 rgba(15,23,42,.02)}.pcw-location{position:relative;padding-right:22px}.pcw-location:after{content:"";position:absolute;right:0;width:1px;height:22px;background:#d8e0ea}.pcw-top-actions button{position:relative;padding:0 6px;border-radius:6px}.pcw-top-actions button:hover{background:#f3f6fb;color:#2563eb}.pcw-user{min-width:76px}.pcw-filter{align-items:center;min-height:66px;box-shadow:0 8px 20px rgba(15,23,42,.025)}.pcw-filter button{position:relative;text-align:left;padding:0 14px;font-weight:500;white-space:nowrap;transition:border-color .18s ease,box-shadow .18s ease,color .18s ease}.pcw-filter button:not(.pcw-export):hover{border-color:#bfd2ff;color:#2563eb;box-shadow:0 0 0 3px #eff6ff}.pcw-filter .pcw-export{display:inline-flex;align-items:center;justify-content:center;gap:7px;width:126px;min-width:126px;text-align:center;font-weight:700;line-height:1}.pcw-filter .pcw-export:before{content:"";flex:0 0 auto;width:12px;height:12px;border:1.7px solid currentColor;border-top:0;border-radius:0 0 2px 2px;background:linear-gradient(currentColor,currentColor) center 1px/1.7px 8px no-repeat}.pcw-kpis{min-height:114px;box-shadow:0 8px 20px rgba(15,23,42,.025)}.pcw-kpis article{justify-content:center}.pcw-kpis strong{font-weight:800;letter-spacing:.2px}.pcw-card{box-shadow:0 8px 20px rgba(15,23,42,.025)}.pcw-card-head h2{font-weight:800;color:#12213c}.pcw-card-head button:hover{color:#2563eb}tbody tr{transition:background-color .16s ease}tbody tr:hover{background:#fbfdff}th{color:#5b6b82}td{color:#10203d}.pcw-product strong,.pcw-module-name{font-weight:800}.pcw-link:hover{text-decoration:underline}.pcw-thumb{position:relative;overflow:hidden;box-shadow:inset 0 0 0 1px rgba(255,255,255,.65),0 2px 5px rgba(15,23,42,.12)}.pcw-thumb:before,.pcw-thumb:after{content:"";position:absolute;border-radius:999px;background:rgba(255,255,255,.62)}.pcw-thumb:before{width:14px;height:8px;left:5px;top:6px;transform:rotate(-18deg)}.pcw-thumb:after{width:10px;height:5px;right:4px;bottom:6px;transform:rotate(20deg)}.pcw-thumb.fish:before{width:15px;height:7px;left:5px;top:9px}.pcw-thumb.fish:after{right:3px;bottom:8px;width:6px;height:6px;clip-path:polygon(0 50%,100% 0,100% 100%)}.pcw-thumb.egg:before,.pcw-thumb.potato:before{width:9px;height:11px;left:5px;top:7px}.pcw-thumb.egg:after,.pcw-thumb.potato:after{width:9px;height:10px;right:5px;bottom:5px}.pcw-module-panel article:last-child,.pcw-module-flow p:last-child,.pcw-module-activity article:last-child,.pcw-quotes article:last-child,.pcw-timeline p:last-child,.pcw-alerts p:last-child{border-bottom:0}
 
 
 
@@ -24273,38 +24269,6 @@ function moduleStatusTone(value: string) {
 
 
 
-.pcw-peer-products .pcw-empty-row td:first-child{display:table-cell;font-weight:400;color:#64748b}
-
-
-
-
-
-
-
-.pcw-alert-chart{position:relative;overflow:hidden}
-
-
-
-
-
-
-
-.pcw-priority-alerts .pcw-panel-empty,.pcw-rule-card .pcw-panel-empty,.pcw-alert-records .pcw-panel-empty{margin:0 14px}
-
-
-
-
-
-
-
-.pcw-priority-alerts .pcw-panel-empty span,.pcw-rule-card .pcw-panel-empty span,.pcw-alert-records .pcw-panel-empty span{display:block;width:auto;color:#94a3b8}
-
-
-
-
-
-
-
 .pcw-alert-table-card .pcw-empty-row td:first-child{display:table-cell;font-weight:400;color:#64748b}
 
 
@@ -24402,24 +24366,6 @@ function moduleStatusTone(value: string) {
 
 
 .pcw-alert-table-card .pcw-link{display:inline-flex;width:100%;justify-content:flex-start;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.pcw-alert-table-card .pcw-alert-actions{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;min-width:180px}
-.pcw-alert-table-card .pcw-alert-actions .pcw-link{width:auto;max-width:100%;padding:0;position:relative;z-index:1}
-
-
-
-
-
-
-
-.pcw-alert-advice li{margin-bottom:4px}
-
-
-
-
-
-
-
-.pcw-alert-records .pcw-panel-empty + p,.pcw-rule-card .pcw-panel-empty + p{border-top:1px solid #edf1f6}
 
 
 
@@ -24739,78 +24685,6 @@ function moduleStatusTone(value: string) {
 
 
 
-.pcw-module.is-dense .pcw-module-hero{padding-block:14px}
-
-
-
-
-
-
-
-.pcw-module.is-dense .pcw-module-hero h2{font-size:20px}
-
-
-
-
-
-
-
-.pcw-module.is-dense .pcw-module-table td{height:36px}
-
-
-
-
-
-
-
-.pcw-module.is-dense .pcw-module-panel article{padding:9px 0}
-
-
-
-
-
-
-
-.pcw-module.is-dense .pcw-module-flow p,.pcw-module.is-dense .pcw-module-activity article{padding:9px 0}
-
-
-
-
-
-
-
-.pcw-module.is-workflow .pcw-module-grid{grid-template-columns:minmax(0,1.05fr) 380px}
-
-
-
-
-
-
-
-.pcw-module.is-workflow .pcw-module-activity article{grid-template-columns:92px 1fr 86px;padding:13px 0}
-
-
-
-
-
-
-
-.pcw-module.is-workflow .pcw-module-flow p{grid-template-columns:68px 1fr;padding:13px 0}
-
-
-
-
-
-
-
-.pcw-module.is-balanced .pcw-module-table td{height:42px}
-
-
-
-
-
-
-
 .pcw-system.primary strong:after{content:"";display:inline-block;width:6px;height:6px;margin-left:6px;border-radius:999px;background:#16a34a;box-shadow:0 0 0 3px #dcfce7;vertical-align:1px}
 
 
@@ -24940,46 +24814,6 @@ function moduleStatusTone(value: string) {
 
 
 .pcw-pages{min-height:52px;box-sizing:border-box}
-
-
-
-
-
-
-
-.pcw-quotes article{min-height:62px;box-sizing:border-box;padding:8px 0}
-
-
-
-
-
-
-
-.pcw-quotes small{height:18px;margin-bottom:3px;padding:0 6px;align-items:center;line-height:18px}
-
-
-
-
-
-
-
-.pcw-quotes strong{line-height:18px}
-
-
-
-
-
-
-
-.pcw-quotes b{min-width:82px;text-align:right;font-size:13px;line-height:20px}
-
-
-
-
-
-
-
-.pcw-quotes article button{width:72px;height:32px;padding:0}
 
 
 
@@ -25332,62 +25166,6 @@ function moduleStatusTone(value: string) {
 
 
 .pcw-thumb.egg{background:linear-gradient(135deg,#f3a536 0%,#ffd077 100%)}
-
-
-
-
-
-
-
-.pcw-quotes{overflow:hidden}
-
-
-
-
-
-
-
-.pcw-quotes article{grid-template-columns:minmax(0,1fr) 86px 72px;margin-inline:14px}
-
-
-
-
-
-
-
-.pcw-quotes article div{min-width:0}
-
-
-
-
-
-
-
-.pcw-quotes small{font-weight:700}
-
-
-
-
-
-
-
-.pcw-quotes strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;color:#061b3a}
-
-
-
-
-
-
-
-.pcw-quotes b{color:#061b3a;font-size:13px;font-weight:800}
-
-
-
-
-
-
-
-.pcw-quotes article button{border-color:#bcd3ff;background:#eef5ff;color:#2563eb;font-size:12px;font-weight:800}
 
 
 
@@ -26003,46 +25781,6 @@ function moduleStatusTone(value: string) {
 
 
 
-.pcw-quotes article{grid-template-columns:minmax(0,1fr) 82px 72px;min-height:58px;margin-inline:14px;padding:8px 0}
-
-
-
-
-
-
-
-.pcw-quotes small{position:relative;padding-left:18px;background:#fff7ed;color:#f97316}
-
-
-
-
-
-
-
-.pcw-quotes small:before{content:"★";position:absolute;left:6px;top:0;color:#f59e0b;font-size:10px;line-height:18px}
-
-
-
-
-
-
-
-.pcw-quotes article:nth-of-type(1) small{background:#fff1f2;color:#ef4444}
-
-
-
-
-
-
-
-.pcw-quotes article:nth-of-type(1) small:before{content:"";width:6px;height:6px;top:6px;border-radius:50%;background:#ef4444}
-
-
-
-
-
-
-
 .pcw-more-quotes{height:38px;margin:2px 14px 14px;border:1px solid #dbe7f6;border-radius:7px;background:#f8fbff;color:#2563eb;font-size:13px;font-weight:800}
 
 
@@ -26219,14 +25957,6 @@ function moduleStatusTone(value: string) {
 
 
 
-.pcw-alert-page{grid-template-columns:minmax(0,1fr) 430px;grid-template-areas:"command command" "tasks side" "chart advice" "chart rules" "chart records";gap:12px}
-
-
-
-
-
-
-
 .pcw-alert-table-card td{height:40px}
 
 
@@ -26236,38 +25966,6 @@ function moduleStatusTone(value: string) {
 
 
 .pcw-alert-table-card .pcw-pages{min-height:52px}
-
-
-
-
-
-
-
-.pcw-priority-alerts article{min-height:64px;padding:12px 0 12px 14px}
-
-
-
-
-
-
-
-.pcw-alert-chart svg{height:250px}
-
-
-
-
-
-
-
-.pcw-alert-records{grid-area:records}
-
-
-
-
-
-
-
-.pcw-alert-records p{grid-template-columns:10px 66px minmax(0,1fr) 62px}
 
 
 
@@ -26963,14 +26661,6 @@ function moduleStatusTone(value: string) {
 
 
 
-.pcw-quotes article{grid-template-columns:minmax(0,1fr) 86px 72px;min-height:58px}
-
-
-
-
-
-
-
 .pcw-chart{min-height:220px}
 
 
@@ -27003,31 +26693,7 @@ function moduleStatusTone(value: string) {
 
 
 
-.pcw-alert-page{grid-template-columns:minmax(0,1fr) 430px;grid-template-areas:"command command" "tasks side" "chart advice" "chart rules" "chart records"}
-
-
-
-
-
-
-
 .pcw-alert-table-card td{height:40px}
-
-
-
-
-
-
-
-.pcw-alert-chart svg{height:250px}
-
-
-
-
-
-
-
-.pcw-alert-records{grid-area:records}
 
 
 
@@ -27171,7 +26837,7 @@ function moduleStatusTone(value: string) {
 
 
 
-.pcw-card::before{content:"";display:block;height:3px;background:linear-gradient(90deg,#2563eb,#60a5fa 56%,#f59e0b);opacity:.86}.pcw-table-card::before,.pcw-trend-chart-card::before{background:linear-gradient(90deg,#1d4ed8,#60a5fa,#22c55e)}.pcw-alert-table-card::before,.pcw-priority-alerts::before,.pcw-alert-chart::before{background:linear-gradient(90deg,#ef4444,#f97316,#facc15)}.pcw-module-market .pcw-module-main::before,.pcw-module-market .pcw-module-side::before{background:linear-gradient(90deg,#0ea5e9,#2563eb,#22c55e)}.pcw-module-plan .pcw-module-main::before,.pcw-module-plan .pcw-module-side::before{background:linear-gradient(90deg,#7c3aed,#2563eb,#f59e0b)}.pcw-module-reports .pcw-module-main::before,.pcw-module-reports .pcw-module-side::before{background:linear-gradient(90deg,#0891b2,#2563eb,#14b8a6)}.pcw-module-settings .pcw-module-main::before,.pcw-module-settings .pcw-module-side::before{background:linear-gradient(90deg,#64748b,#2563eb,#94a3b8)}.pcw-card-head h2{letter-spacing:-.01em}.pcw-card-head h2::after{content:"";display:block;width:28px;height:3px;margin-top:7px;border-radius:999px;background:#2563eb}.pcw-alert-table-card .pcw-card-head h2::after,.pcw-priority-alerts .pcw-card-head h2::after,.pcw-alert-chart .pcw-card-head h2::after{background:#ef4444}.pcw-module-market .pcw-card-head h2::after{background:#0ea5e9}.pcw-module-plan .pcw-card-head h2::after{background:#7c3aed}.pcw-module-reports .pcw-card-head h2::after{background:#0891b2}.pcw-module-settings .pcw-card-head h2::after{background:#64748b}.pcw-empty-row td,.pcw-panel-empty,.pcw-chart-empty{background:linear-gradient(135deg,#f8fbff,#eef6ff);border-radius:14px;color:#64748b}.pcw-chart-empty{min-height:210px;display:grid;place-content:center;text-align:center;border:1px dashed #bfdbfe}.pcw-panel-empty strong,.pcw-chart-empty strong{color:#1e3a8a}.pcw-module-hero{position:relative;overflow:hidden;border:1px solid rgba(37,99,235,.12);background:linear-gradient(135deg,#f8fbff 0%,#eef6ff 55%,#fff7ed 100%)}.pcw-module-hero::after{content:"";position:absolute;right:-60px;top:-72px;width:180px;height:180px;border-radius:999px;background:rgba(37,99,235,.1)}.pcw-module-copy,.pcw-module-actions{position:relative;z-index:1}.pcw-module-actions button.primary,.pcw-more-quotes,.pcw-top-actions button.primary{background:linear-gradient(135deg,#2563eb,#1d4ed8);border-color:#1d4ed8;box-shadow:0 12px 22px rgba(37,99,235,.2)}.pcw-module-actions button:not(.primary),.pcw-card-head button,.pcw-top-actions button:not(.primary){border-color:#dbeafe;background:#f8fbff;color:#1d4ed8}.pcw table th{font-weight:700;color:#475569;background:#f8fafc}.pcw table td{color:#26364f}.pcw tbody tr:hover{background:#f8fbff}.pcw-segments{padding:3px;border-radius:999px;background:#eef4ff}.pcw-segments button{border:0;border-radius:999px}.pcw-segments button.active{background:#2563eb;color:#fff;box-shadow:0 8px 16px rgba(37,99,235,.24)}
+.pcw-card::before{content:"";display:block;height:3px;background:linear-gradient(90deg,#2563eb,#60a5fa 56%,#f59e0b);opacity:.86}.pcw-table-card::before,.pcw-trend-chart-card::before{background:linear-gradient(90deg,#1d4ed8,#60a5fa,#22c55e)}.pcw-module-market .pcw-module-main::before,.pcw-module-market .pcw-module-side::before{background:linear-gradient(90deg,#0ea5e9,#2563eb,#22c55e)}.pcw-module-plan .pcw-module-main::before,.pcw-module-plan .pcw-module-side::before{background:linear-gradient(90deg,#7c3aed,#2563eb,#f59e0b)}.pcw-module-reports .pcw-module-main::before,.pcw-module-reports .pcw-module-side::before{background:linear-gradient(90deg,#0891b2,#2563eb,#14b8a6)}.pcw-module-settings .pcw-module-main::before,.pcw-module-settings .pcw-module-side::before{background:linear-gradient(90deg,#64748b,#2563eb,#94a3b8)}.pcw-card-head h2{letter-spacing:-.01em}.pcw-card-head h2::after{content:"";display:block;width:28px;height:3px;margin-top:7px;border-radius:999px;background:#2563eb}.pcw-module-market .pcw-card-head h2::after{background:#0ea5e9}.pcw-module-plan .pcw-card-head h2::after{background:#7c3aed}.pcw-module-reports .pcw-card-head h2::after{background:#0891b2}.pcw-module-settings .pcw-card-head h2::after{background:#64748b}.pcw-empty-row td,.pcw-panel-empty,.pcw-chart-empty{background:linear-gradient(135deg,#f8fbff,#eef6ff);border-radius:14px;color:#64748b}.pcw-chart-empty{min-height:210px;display:grid;place-content:center;text-align:center;border:1px dashed #bfdbfe}.pcw-panel-empty strong,.pcw-chart-empty strong{color:#1e3a8a}.pcw-module-hero{position:relative;overflow:hidden;border:1px solid rgba(37,99,235,.12);background:linear-gradient(135deg,#f8fbff 0%,#eef6ff 55%,#fff7ed 100%)}.pcw-module-hero::after{content:"";position:absolute;right:-60px;top:-72px;width:180px;height:180px;border-radius:999px;background:rgba(37,99,235,.1)}.pcw-module-copy,.pcw-module-actions{position:relative;z-index:1}.pcw-module-actions button.primary,.pcw-more-quotes,.pcw-top-actions button.primary{background:linear-gradient(135deg,#2563eb,#1d4ed8);border-color:#1d4ed8;box-shadow:0 12px 22px rgba(37,99,235,.2)}.pcw-module-actions button:not(.primary),.pcw-card-head button,.pcw-top-actions button:not(.primary){border-color:#dbeafe;background:#f8fbff;color:#1d4ed8}.pcw table th{font-weight:700;color:#475569;background:#f8fafc}.pcw table td{color:#26364f}.pcw tbody tr:hover{background:#f8fbff}.pcw-segments{padding:3px;border-radius:999px;background:#eef4ff}.pcw-segments button{border:0;border-radius:999px}.pcw-segments button.active{background:#2563eb;color:#fff;box-shadow:0 8px 16px rgba(37,99,235,.24)}
 
 
 
@@ -27211,15 +26877,7 @@ function moduleStatusTone(value: string) {
 
 
 
-.pcw-module-layout-workflow .pcw-module-flow,.pcw-module-layout-insight .pcw-module-chart-panel,.pcw-module-layout-ops .pcw-module-panel{min-height:220px}.pcw-module-layout-ledger .pcw-module-table,.pcw-module-layout-coverage .pcw-module-table,.pcw-module-layout-network .pcw-module-table{min-height:506px}.pcw-module-layout-workflow .pcw-module-table{min-height:420px}.pcw-module-layout-insight .pcw-module-chart-panel svg{height:270px}.pcw-module-layout-ledger .pcw-module-activity,.pcw-module-layout-network .pcw-module-activity,.pcw-module-layout-ops .pcw-module-activity{min-height:190px}.pcw-module-layout-coverage .pcw-module-panel article{grid-template-columns:42px minmax(0,1fr)}.pcw-module-layout-workflow .pcw-module-flow p{grid-template-columns:52px minmax(0,1fr);min-height:64px}.pcw-module-layout-ledger .pcw-module-table td{height:42px!important}.pcw-module-layout-insight .pcw-module-table-note,.pcw-module-layout-ops .pcw-module-table-note{display:block}
-
-
-
-
-
-
-
-@media (max-width:1180px){.pcw{grid-template-columns:190px minmax(0,1fr)}.pcw-side{padding-inline:10px}.pcw-nav-item{grid-template-columns:20px minmax(0,1fr) auto;padding-inline:8px}.pcw-grid,.pcw-bottom,.pcw-alert-page,.pcw-module-grid{grid-template-columns:1fr;grid-template-areas:none}.pcw-alert-page>*,.pcw-module-grid>*{grid-area:auto}.pcw-right{grid-template-columns:repeat(2,minmax(0,1fr))}.pcw-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}.pcw-kpis article{border-bottom:1px solid #e8edf4}.pcw-filter,.pcw-filter.is-trend,.pcw-filter.is-alert,.pcw-filter.is-module{grid-template-columns:repeat(2,1fr)}.pcw-module-hero{align-items:flex-start}.pcw-module-actions{flex-direction:column;align-items:stretch}.pcw-module-actions button{width:104px}}
+.pcw-module-layout-workflow .pcw-module-flow,.pcw-module-layout-insight .pcw-module-chart-panel,.pcw-module-layout-ops .pcw-module-panel{min-height:220px}.pcw-module-layout-ledger .pcw-module-table,.pcw-module-layout-coverage .pcw-module-table,.pcw-module-layout-network .pcw-module-table{min-height:506px}.pcw-module-layout-workflow .pcw-module-table{min-height:420px}.pcw-module-layout-insight .pcw-module-chart-panel svg{height:270px}.pcw-module-layout-ledger .pcw-module-activity,.pcw-module-layout-network .pcw-module-activity,.pcw-module-layout-ops .pcw-module-activity{min-height:190px}.pcw-module-layout-coverage .pcw-module-panel article{grid-template-columns:42px minmax(0,1fr)}.pcw-module-layout-workflow .pcw-module-flow p{grid-template-columns:52px minmax(0,1fr);min-height:64px}.pcw-module-layout-ledger .pcw-module-table td{height:42px!important}.pcw-module-layout-insight .pcw-module-table-note,.pcw-module-layout-ops .pcw-module-table-note{display:block}@media (max-width:1180px){.pcw{grid-template-columns:190px minmax(0,1fr)}.pcw-side{padding-inline:10px}.pcw-nav-item{grid-template-columns:20px minmax(0,1fr) auto;padding-inline:8px}.pcw-right{grid-template-columns:repeat(2,minmax(0,1fr))}.pcw-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}.pcw-kpis article{border-bottom:1px solid #e8edf4}.pcw-filter,.pcw-filter.is-trend,.pcw-filter.is-alert,.pcw-filter.is-module{grid-template-columns:repeat(2,1fr)}.pcw-module-hero{align-items:flex-start}.pcw-module-actions{flex-direction:column;align-items:stretch}.pcw-module-actions button{width:104px}}
 
 
 
@@ -28403,31 +28061,7 @@ tbody tr:hover td{background:#fafafa}
 
 
 
-.pcw-alert-page{grid-template-columns:minmax(0,1fr) 430px;grid-template-areas:"command command" "tasks side" "chart advice" "chart rules" "chart records";gap:12px}
-
-
-
-
-
-
-
 .pcw-alert-table-card td{height:40px}
-
-
-
-
-
-
-
-.pcw-alert-chart svg{height:250px}
-
-
-
-
-
-
-
-.pcw-alert-records{grid-area:records}
 
 
 
@@ -28499,15 +28133,7 @@ tbody tr:hover td{background:#fafafa}
 
 
 
-.pcw-action-toast{border-color:var(--pcw-border);border-radius:10px;background:var(--pcw-ink);color:#fff;box-shadow:0 12px 28px rgba(15,23,42,.18)}
-
-
-
-
-
-
-
-@media (max-width:1180px){.pcw{grid-template-columns:196px minmax(0,1fr)}.pcw-grid,.pcw-alert-page,.pcw-module-grid{grid-template-columns:1fr}.pcw-right{grid-template-columns:repeat(2,minmax(0,1fr))}.pcw-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}.pcw-filter,.pcw-filter.section-alerts,.pcw-filter.is-alert,.pcw-filter.section-market,.pcw-filter.section-purchase,.pcw-filter.section-plan,.pcw-filter.section-reports,.pcw-filter.section-settings,.pcw-filter.section-suppliers,.pcw-filter.section-quotes{grid-template-columns:repeat(2,minmax(0,1fr));}}
+.pcw-action-toast{border-color:var(--pcw-border);border-radius:10px;background:var(--pcw-ink);color:#fff;box-shadow:0 12px 28px rgba(15,23,42,.18)}@media (max-width:1180px){.pcw{grid-template-columns:196px minmax(0,1fr)}.pcw-right{grid-template-columns:repeat(2,minmax(0,1fr))}.pcw-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}.pcw-filter,.pcw-filter.section-alerts,.pcw-filter.is-alert,.pcw-filter.section-market,.pcw-filter.section-purchase,.pcw-filter.section-plan,.pcw-filter.section-reports,.pcw-filter.section-settings,.pcw-filter.section-suppliers,.pcw-filter.section-quotes{grid-template-columns:repeat(2,minmax(0,1fr));}}
 
 
 
@@ -28540,14 +28166,6 @@ tbody tr:hover td{background:#fafafa}
 
 
 .pcw-card-head h2::after{content:none!important;display:none!important}
-
-
-
-
-
-
-
-.pcw-card,.pcw-kpis article,.pcw-filter,.pcw-alert-command,.pcw-module-command{border-radius:14px}
 
 
 
@@ -28635,7 +28253,7 @@ th{font-size:12px;letter-spacing:0;background:#f7faff}tbody tr:hover td{backgrou
 
 
 
-.pcw-trend-page{grid-template-columns:minmax(0,1.36fr) 360px;gap:14px}.pcw-trend-chart-card{min-height:360px}.pcw-big-chart{height:278px}.pcw-segments{padding:3px;border:1px solid #dbe7f6;border-radius:999px;background:#f8fbff}.pcw-segments button{height:30px;border:0;border-radius:999px;background:transparent}.pcw-segments button.active{background:var(--pcw-primary);color:#fff;box-shadow:0 6px 14px rgba(37,99,235,.2)}.pcw-legend.trend{justify-content:flex-end;padding:12px 16px 4px}.pcw-market-compare td:nth-child(2),.pcw-trend-quotes td:nth-child(3){color:var(--pcw-primary);font-weight:800}
+.pcw-trend-page{grid-template-columns:minmax(0,1.36fr) 360px;gap:14px}.pcw-trend-chart-card{min-height:360px}.pcw-segments{padding:3px;border:1px solid #dbe7f6;border-radius:999px;background:#f8fbff}.pcw-segments button{height:30px;border:0;border-radius:999px;background:transparent}.pcw-segments button.active{background:var(--pcw-primary);color:#fff;box-shadow:0 6px 14px rgba(37,99,235,.2)}.pcw-legend.trend{justify-content:flex-end;padding:12px 16px 4px}.pcw-alert-command-metrics article{border-radius:12px;padding:14px 14px 14px 18px}.pcw-alert-command-metrics article:before{top:14px;bottom:14px;width:4px}.pcw-alert-table-card td{height:46px}.pcw-alert-table-card td:nth-child(4){font-weight:800}.pcw-alert-table-card .pcw-module-status,.pcw-module-status{border-radius:999px}
 
 
 
@@ -28643,23 +28261,7 @@ th{font-size:12px;letter-spacing:0;background:#f7faff}tbody tr:hover td{backgrou
 
 
 
-.pcw-alert-command{border-color:#dbeafe;background:linear-gradient(135deg,#f8fbff 0%,#fff 58%,#fff7ed 100%);box-shadow:0 8px 22px rgba(15,23,42,.025)}.pcw-alert-command-metrics article{border-radius:12px;padding:14px 14px 14px 18px}.pcw-alert-command-metrics article:before{top:14px;bottom:14px;width:4px}.pcw-alert-table-card td{height:46px}.pcw-alert-table-card td:nth-child(4){font-weight:800}.pcw-alert-table-card .pcw-module-status,.pcw-module-status{border-radius:999px}.pcw-priority-alerts article{border-left-width:4px;border-radius:10px}.pcw-rule-card,.pcw-alert-ops,.pcw-alert-records{border-radius:14px}
-
-
-
-
-
-
-
-.pcw-side-systems:before{content:none}.pcw-side-systems{display:grid;gap:8px}.pcw-side-systems .pcw-system,.pcw-side-systems .pcw-side-sync{display:grid}.pcw-side-sync{padding:8px 10px;border-radius:10px;background:#f8fbff}
-
-
-
-
-
-
-
-@media (max-width:1180px){.pcw{grid-template-columns:196px minmax(0,1fr)}.pcw-grid,.pcw-alert-page,.pcw-module-grid,.pcw-trend-page{grid-template-columns:1fr}.pcw-right{grid-template-columns:repeat(2,minmax(0,1fr))}.pcw-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}.pcw-filter,.pcw-filter.section-alerts,.pcw-filter.is-alert,.pcw-filter.section-market,.pcw-filter.section-purchase,.pcw-filter.section-plan,.pcw-filter.section-reports,.pcw-filter.section-settings,.pcw-filter.section-suppliers,.pcw-filter.section-quotes{display:flex}.pcw-filter-item{flex:1 1 180px}.pcw-filter .pcw-export{margin-left:0}}
+.pcw-side-systems:before{content:none}.pcw-side-systems{display:grid;gap:8px}.pcw-side-systems .pcw-system,.pcw-side-systems .pcw-side-sync{display:grid}.pcw-side-sync{padding:8px 10px;border-radius:10px;background:#f8fbff}@media (max-width:1180px){.pcw{grid-template-columns:196px minmax(0,1fr)}.pcw-right{grid-template-columns:repeat(2,minmax(0,1fr))}.pcw-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}.pcw-filter,.pcw-filter.section-alerts,.pcw-filter.is-alert,.pcw-filter.section-market,.pcw-filter.section-purchase,.pcw-filter.section-plan,.pcw-filter.section-reports,.pcw-filter.section-settings,.pcw-filter.section-suppliers,.pcw-filter.section-quotes{display:flex}.pcw-filter-item{flex:1 1 180px}.pcw-filter .pcw-export{margin-left:0}}
 
 
 
@@ -28707,14 +28309,6 @@ th{font-size:12px;letter-spacing:0;background:#f7faff}tbody tr:hover td{backgrou
 
 
 
-.pcw-table-card .pcw-card-head,.pcw-quotes .pcw-card-head,.pcw-chart .pcw-card-head,.pcw-bottom .pcw-card-head{background:#fff}
-
-
-
-
-
-
-
 .pcw-table-card table{table-layout:fixed}
 
 
@@ -28739,7 +28333,7 @@ th{font-size:12px;letter-spacing:0;background:#f7faff}tbody tr:hover td{backgrou
 
 
 
-.pcw-right{gap:14px}.pcw-quotes{overflow:hidden}.pcw-right-table tr{display:grid;grid-template-columns:minmax(0,1fr) 74px 52px;align-items:center;padding:0 12px}.pcw-right-table td,.pcw-right-table th{display:block!important;height:auto;padding:10px 0;border-bottom:0}.pcw-right-table td:first-child{display:flex!important;align-items:center;gap:8px;min-width:0}.pcw-right-table td:first-child strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pcw-right-table td:nth-child(2){justify-self:end}.pcw-right-table td:nth-child(3){justify-self:end;color:#64748b;font-size:12px}.pcw-right-table tr:not(:last-child){border-bottom:1px solid #eef3f8}
+.pcw-right{gap:14px}.pcw-right-table tr{display:grid;grid-template-columns:minmax(0,1fr) 74px 52px;align-items:center;padding:0 12px}.pcw-right-table td,.pcw-right-table th{display:block!important;height:auto;padding:10px 0;border-bottom:0}.pcw-right-table td:first-child{display:flex!important;align-items:center;gap:8px;min-width:0}.pcw-right-table td:first-child strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pcw-right-table td:nth-child(2){justify-self:end}.pcw-right-table td:nth-child(3){justify-self:end;color:#64748b;font-size:12px}.pcw-right-table tr:not(:last-child){border-bottom:1px solid #eef3f8}
 
 
 
@@ -28763,14 +28357,6 @@ th{font-size:12px;letter-spacing:0;background:#f7faff}tbody tr:hover td{backgrou
 
 
 
-.pcw-advice ul,.pcw-suggestion ul,.pcw-alert-advice ul{list-style:none;margin:0;padding:10px 14px 14px}.pcw-advice li,.pcw-suggestion li,.pcw-alert-advice li{position:relative;margin:0;padding:9px 0 9px 18px;border-bottom:1px solid #eef3f8;color:#24344d;font-size:13px;line-height:1.5}.pcw-advice li:before,.pcw-suggestion li:before,.pcw-alert-advice li:before{content:"";position:absolute;left:0;top:16px;width:7px;height:7px;border-radius:999px;background:var(--pcw-primary)}.pcw-advice li:last-child,.pcw-suggestion li:last-child,.pcw-alert-advice li:last-child{border-bottom:0}
-
-
-
-
-
-
-
 .pcw-alerts p{grid-template-columns:minmax(0,1fr) auto;gap:6px 10px;margin:0 14px;padding:10px 0 10px 12px;border-left:3px solid var(--pcw-danger);color:#24344d}.pcw-alerts p strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pcw-alerts p span{justify-self:end;color:#10203d;font-weight:800}.pcw-alerts p small{grid-column:1/-1;color:#64748b}.pcw-alerts p.fall{border-left-color:var(--pcw-success)}.pcw-alerts p.warn{border-left-color:var(--pcw-warn)}
 
 
@@ -28779,31 +28365,7 @@ th{font-size:12px;letter-spacing:0;background:#f7faff}tbody tr:hover td{backgrou
 
 
 
-.pcw-trend-page{grid-template-columns:minmax(0,1.42fr) 352px;grid-template-areas:"chart side" "market side" "dynamics peers";gap:14px}.pcw-trend-chart-card{min-height:382px}.pcw-trend-chart-card .pcw-card-head{height:52px}.pcw-big-chart{height:292px;padding:8px 18px 14px}.pcw-trend-side{gap:14px}.pcw-trend-quotes thead{display:none}.pcw-trend-quotes tr{display:grid;grid-template-columns:minmax(0,1fr) 58px 72px 50px;align-items:center;padding:0 12px}.pcw-trend-quotes td{height:auto;padding:10px 0;border-bottom:0}.pcw-trend-quotes tr:not(:last-child){border-bottom:1px solid #eef3f8}.pcw-trend-alert thead{display:none}.pcw-trend-alert tr{display:grid;grid-template-columns:minmax(0,1fr) 70px 58px;align-items:center;padding:0 12px}.pcw-trend-alert td{height:auto;padding:10px 0;border-bottom:0}.pcw-trend-alert tr:not(:last-child){border-bottom:1px solid #eef3f8}.pcw-market-compare,.pcw-peer-products{overflow:hidden}.pcw-market-compare td,.pcw-peer-products td{height:42px}.pcw-trend-dynamics p{display:grid;grid-template-columns:54px auto minmax(0,1fr);align-items:center;gap:8px}.pcw-trend-dynamics p span{margin:0}
-
-
-
-
-
-
-
-.pcw-alert-page{grid-template-columns:minmax(0,1fr) 380px;grid-template-areas:"command command" "tasks side" "chart advice" "chart rules" "records records";gap:14px}.pcw-alert-command{border-radius:16px;padding:18px 20px}.pcw-alert-command-copy h2{font-size:21px}.pcw-alert-command-metrics article{border-radius:12px;background:#fff}.pcw-alert-command-actions button{border-radius:9px}.pcw-alert-table-card{overflow:hidden}.pcw-alert-table-card table{table-layout:fixed}.pcw-alert-table-card th,.pcw-alert-table-card td{padding:0 10px}.pcw-alert-table-card td:first-child{display:flex;align-items:center;gap:8px;min-width:0}.pcw-alert-table-card td:first-child strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pcw-alert-type,.pcw-alert-state{height:24px;border-radius:999px}.pcw-alert-side{gap:14px}.pcw-priority-alerts article{margin:0 12px 8px;padding:10px 10px 10px 12px;border:1px solid #eef3f8;border-left:4px solid var(--pcw-danger);background:#fff;border-radius:10px}.pcw-priority-alerts article.warn{border-left-color:var(--pcw-warn)}.pcw-priority-alerts article.green{border-left-color:var(--pcw-success)}.pcw-priority-alerts article.blue{border-left-color:var(--pcw-primary)}.pcw-alert-ops article{margin:0 12px;padding:11px 0}.pcw-alert-chart svg{height:258px}.pcw-rule-card p{grid-template-columns:26px 78px minmax(0,1fr);margin:0 14px}.pcw-alert-records p{grid-template-columns:10px 64px minmax(0,1fr) 64px;margin:0 16px}
-
-
-
-
-
-
-
-@media (max-width:1320px){.pcw-bottom{grid-template-columns:minmax(0,1fr) 360px}.pcw-alerts{grid-column:1/-1}.pcw-alert-page{grid-template-columns:minmax(0,1fr) 350px}.pcw-trend-page{grid-template-columns:minmax(0,1fr) 340px}}
-
-
-
-
-
-
-
-@media (max-width:1180px){.pcw-bottom,.pcw-grid,.pcw-trend-page,.pcw-alert-page{grid-template-columns:1fr}.pcw-trend-page{grid-template-areas:"chart" "side" "market" "dynamics" "peers"}.pcw-alert-page{grid-template-areas:"command" "tasks" "side" "chart" "advice" "rules" "records"}.pcw-bottom{display:grid}.pcw-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.pcw-trend-page{grid-template-columns:minmax(0,1.42fr) 352px;grid-template-areas:"chart side" "market side" "dynamics peers";gap:14px}.pcw-trend-chart-card{min-height:382px}.pcw-trend-chart-card .pcw-card-head{height:52px}.pcw-trend-side{gap:14px}.pcw-trend-quotes thead{display:none}.pcw-trend-quotes tr{display:grid;grid-template-columns:minmax(0,1fr) 58px 72px 50px;align-items:center;padding:0 12px}.pcw-trend-quotes td{height:auto;padding:10px 0;border-bottom:0}.pcw-trend-quotes tr:not(:last-child){border-bottom:1px solid #eef3f8}.pcw-trend-alert thead{display:none}.pcw-trend-alert tr{display:grid;grid-template-columns:minmax(0,1fr) 70px 58px;align-items:center;padding:0 12px}.pcw-trend-alert td{height:auto;padding:10px 0;border-bottom:0}.pcw-trend-alert tr:not(:last-child){border-bottom:1px solid #eef3f8}.pcw-trend-dynamics p{display:grid;grid-template-columns:54px auto minmax(0,1fr);align-items:center;gap:8px}.pcw-trend-dynamics p span{margin:0}.pcw-alert-command-copy h2{font-size:21px}.pcw-alert-command-metrics article{border-radius:12px;background:#fff}.pcw-alert-command-actions button{border-radius:9px}.pcw-alert-table-card{overflow:hidden}.pcw-alert-table-card table{table-layout:fixed}.pcw-alert-table-card th,.pcw-alert-table-card td{padding:0 10px}.pcw-alert-table-card td:first-child{display:flex;align-items:center;gap:8px;min-width:0}.pcw-alert-table-card td:first-child strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}@media (max-width:1320px){.pcw-bottom{grid-template-columns:minmax(0,1fr) 360px}.pcw-alerts{grid-column:1/-1}.pcw-trend-page{grid-template-columns:minmax(0,1fr) 340px}}@media (max-width:1180px){.pcw-trend-page{grid-template-areas:"chart" "side" "market" "dynamics" "peers"}.pcw-bottom{display:grid}.pcw-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
 
 
 
@@ -28915,23 +28477,7 @@ th{font-size:12px;letter-spacing:0;background:#f7faff}tbody tr:hover td{backgrou
 
 
 
-.pcw-trend-chart-card,.pcw-alert-command,.pcw-alert-table-card,.pcw-priority-alerts,.pcw-rule-card,.pcw-alert-ops,.pcw-alert-records{border-radius:14px}
-
-
-
-
-
-
-
 .pcw-trend-chart-card{overflow:hidden}.pcw-trend-chart-card .pcw-card-head{height:50px}.pcw-trend-chart-card .pcw-legend{padding-top:10px}.pcw-trend-chart-card .pcw-chart-empty{border-radius:12px}
-
-
-
-
-
-
-
-.pcw-alert-command-copy p,.pcw-alert-advice li,.pcw-suggestion li,.pcw-advice li{font-size:13px;line-height:1.55}
 
 
 
@@ -28947,23 +28493,7 @@ th{font-size:12px;letter-spacing:0;background:#f7faff}tbody tr:hover td{backgrou
 
 
 
-.pcw-priority-alerts article p,.pcw-priority-alerts article span,.pcw-priority-alerts article time{line-height:1.45}
-
-
-
-
-
-
-
-.pcw-module-command{border-radius:14px}.pcw-module-hero{border-radius:14px}.pcw-module-panel,.pcw-module-flow,.pcw-module-activity{border-radius:14px}
-
-
-
-
-
-
-
-@media (max-width:1180px){.pcw-side{position:sticky}.pcw-top{height:auto;min-height:54px;flex-wrap:wrap;padding:10px 16px}.pcw-filter{padding:10px}.pcw-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.pcw-bottom{grid-template-columns:1fr}.pcw-trend-page,.pcw-alert-page{gap:12px}}
+.pcw-module-command{border-radius:14px}.pcw-module-hero{border-radius:14px}.pcw-module-panel,.pcw-module-flow,.pcw-module-activity{border-radius:14px}@media (max-width:1180px){.pcw-side{position:sticky}.pcw-top{height:auto;min-height:54px;flex-wrap:wrap;padding:10px 16px}.pcw-filter{padding:10px}.pcw-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.pcw-bottom{grid-template-columns:1fr}}
 
 
 
@@ -29027,15 +28557,7 @@ th{height:36px;background:#f8fafc;color:#64748b;font-size:12px;font-weight:600}t
 
 
 
-.pcw-alert-table-toolbar{padding:10px 14px}.pcw-alert-table-toolbar span{height:24px;padding:0 8px;border-radius:999px;background:#f8fbff;border:1px solid #e2e8f0}.pcw-alert-table-toolbar b{background:#eaf2ff}
-
-
-
-
-
-
-
-@media (max-width:1180px){.pcw-side-systems{min-height:36px}.pcw-filter{gap:8px 10px}.pcw-filter-item{flex:1 1 160px}}
+.pcw-alert-table-toolbar{padding:10px 14px}.pcw-alert-table-toolbar span{height:24px;padding:0 8px;border-radius:999px;background:#f8fbff;border:1px solid #e2e8f0}.pcw-alert-table-toolbar b{background:#eaf2ff}@media (max-width:1180px){.pcw-side-systems{min-height:36px}.pcw-filter{gap:8px 10px}.pcw-filter-item{flex:1 1 160px}}
 
 
 
@@ -29059,7 +28581,7 @@ th{height:36px;background:#f8fafc;color:#64748b;font-size:12px;font-weight:600}t
 
 
 
-.pcw-trend-chart-card{background:linear-gradient(180deg,#fff 0%,#f8fbff 100%)}.pcw-trend-chart-card .pcw-big-chart{box-sizing:border-box;width:calc(100% - 32px);margin:0 16px 16px;padding:12px 18px 14px;border:1px solid #eef3f8;border-radius:12px;background:linear-gradient(180deg,#fbfdff,#fff)}.pcw-trend-chart-card .grid path{stroke:#e8eef6}.pcw-trend-chart-card .line-blue{stroke-width:3}.pcw-trend-chart-card .line-green{stroke-width:2.7}
+.pcw-trend-chart-card{background:linear-gradient(180deg,#fff 0%,#f8fbff 100%)}.pcw-trend-chart-card .grid path{stroke:#e8eef6}.pcw-trend-chart-card .line-blue{stroke-width:3}.pcw-trend-chart-card .line-green{stroke-width:2.7}.pcw-alert-command-copy{padding-left:4px}.pcw-alert-command-copy span{color:var(--pcw-danger)}
 
 
 
@@ -29067,23 +28589,7 @@ th{height:36px;background:#f8fafc;color:#64748b;font-size:12px;font-weight:600}t
 
 
 
-.pcw-alert-command{position:relative;overflow:hidden;background:#fff;border-color:#dfe7f1;box-shadow:0 8px 22px rgba(15,23,42,.035)}.pcw-alert-command:before{content:"";position:absolute;left:0;top:18px;bottom:18px;width:4px;border-radius:999px;background:linear-gradient(180deg,var(--pcw-danger),var(--pcw-warn))}.pcw-alert-command-copy{padding-left:4px}.pcw-alert-command-copy span{color:var(--pcw-danger)}
-
-
-
-
-
-
-
-.pcw-top-actions .pcw-user{min-width:72px;background:#f8fbff;color:#334155}.pcw-top-actions .pcw-user:hover{background:#eef5ff;color:var(--pcw-primary)}
-
-
-
-
-
-
-
-@media (max-width:1180px){.pcw-kpis.is-summary article{padding-left:68px}.pcw-trend-chart-card .pcw-big-chart{width:calc(100% - 24px);margin:0 12px 12px}}
+.pcw-top-actions .pcw-user{min-width:72px;background:#f8fbff;color:#334155}.pcw-top-actions .pcw-user:hover{background:#eef5ff;color:var(--pcw-primary)}@media (max-width:1180px){.pcw-kpis.is-summary article{padding-left:68px}}
 
 
 
@@ -29163,7 +28669,7 @@ th{height:36px;background:#f8fafc;color:#64748b;font-size:12px;font-weight:600}t
 
 
 
-.pcw-right-table tr{min-height:48px}.pcw-right-table td:nth-child(2),.pcw-trend-quotes td:nth-child(3),.pcw-market-compare td:nth-child(2){font-variant-numeric:tabular-nums}.pcw-right-tag{height:20px;padding-inline:7px;background:#eef6ff;color:#2563eb;font-weight:800}
+.pcw-right-table tr{min-height:48px}.pcw-right-tag{height:20px;padding-inline:7px;background:#eef6ff;color:#2563eb;font-weight:800}
 
 
 
@@ -29187,31 +28693,7 @@ th{height:36px;background:#f8fafc;color:#64748b;font-size:12px;font-weight:600}t
 
 
 
-.pcw-trend-page{grid-template-columns:minmax(0,1.45fr) 348px}.pcw-trend-chart-card{min-height:376px}.pcw-trend-chart-card .pcw-big-chart{height:286px}.pcw-segments{background:#f5f8fd}.pcw-segments button{font-size:12px;font-weight:700}.pcw-trend-quotes tr,.pcw-trend-alert tr{min-height:46px}.pcw-trend-dynamics p span{background:#eef5ff;color:#2563eb;font-weight:700}.pcw-suggestion li:before,.pcw-alert-advice li:before{background:#2563eb}
-
-
-
-
-
-
-
-.pcw-alert-command{border-radius:14px}.pcw-alert-command-copy h2{font-size:20px}.pcw-alert-command-metrics article{box-shadow:0 1px 2px rgba(15,23,42,.025)}.pcw-alert-table-card td{height:42px}.pcw-priority-alerts article{box-shadow:0 1px 2px rgba(15,23,42,.02)}.pcw-alert-type,.pcw-alert-state,.pcw-module-status{font-size:11px;font-weight:800}
-
-
-
-
-
-
-
-@media (max-width:1320px){.pcw-bottom{grid-template-columns:minmax(0,1fr) 340px}.pcw-advice{grid-column:1/-1}.pcw-trend-page{grid-template-columns:minmax(0,1fr) 340px}}
-
-
-
-
-
-
-
-@media (max-width:1180px){.pcw-main{padding:16px}.pcw-kpis{gap:10px}.pcw-bottom,.pcw-trend-page,.pcw-alert-page{grid-template-columns:1fr}.pcw-filter{padding:0}.pcw-filter-item{flex:1 1 160px}.pcw-filter .pcw-export{margin-left:0}}
+.pcw-trend-page{grid-template-columns:minmax(0,1.45fr) 348px}.pcw-trend-chart-card{min-height:376px}.pcw-segments{background:#f5f8fd}.pcw-segments button{font-size:12px;font-weight:700}.pcw-trend-quotes tr,.pcw-trend-alert tr{min-height:46px}.pcw-trend-dynamics p span{background:#eef5ff;color:#2563eb;font-weight:700}.pcw-alert-command-copy h2{font-size:20px}.pcw-alert-command-metrics article{box-shadow:0 1px 2px rgba(15,23,42,.025)}.pcw-alert-table-card td{height:42px}@media (max-width:1320px){.pcw-bottom{grid-template-columns:minmax(0,1fr) 340px}.pcw-advice{grid-column:1/-1}.pcw-trend-page{grid-template-columns:minmax(0,1fr) 340px}}@media (max-width:1180px){.pcw-main{padding:16px}.pcw-kpis{gap:10px}.pcw-filter{padding:0}.pcw-filter-item{flex:1 1 160px}.pcw-filter .pcw-export{margin-left:0}}
 
 
 
@@ -29451,31 +28933,7 @@ th{height:36px;background:#f8fafc;color:#64748b;font-size:12px;font-weight:600}t
 
 
 
-.pcw-trend-page{grid-template-columns:minmax(0,1.45fr) 360px;gap:16px}.pcw-trend-chart-card{min-height:382px}.pcw-trend-chart-card .pcw-big-chart{height:292px;border-radius:14px}.pcw-segments{border-radius:999px;background:#f5f8fd}.pcw-segments button{font-weight:800}.pcw-trend-side{gap:16px}.pcw-market-compare,.pcw-trend-dynamics,.pcw-peer-products{border-radius:14px}
-
-
-
-
-
-
-
-.pcw-alert-page{grid-template-columns:minmax(0,1fr) 388px;gap:16px}.pcw-alert-command{border-radius:16px;background:linear-gradient(135deg,#fff 0%,#fff 58%,#fff7ed 100%)}.pcw-alert-command-copy h2{font-size:21px}.pcw-alert-command-metrics article{border-radius:13px}.pcw-alert-table-card td{height:42px}.pcw-priority-alerts article{border-radius:12px}.pcw-alert-type,.pcw-alert-state,.pcw-module-status{border-radius:999px;font-weight:800}
-
-
-
-
-
-
-
-@media (max-width:1320px){.pcw-trend-page{grid-template-columns:minmax(0,1fr) 348px}.pcw-alert-page{grid-template-columns:minmax(0,1fr) 360px}}
-
-
-
-
-
-
-
-@media (max-width:1180px){.pcw{grid-template-columns:196px minmax(0,1fr)}.pcw-side{width:196px}}
+.pcw-trend-page{grid-template-columns:minmax(0,1.45fr) 360px;gap:16px}.pcw-trend-chart-card{min-height:382px}.pcw-segments{border-radius:999px;background:#f5f8fd}.pcw-segments button{font-weight:800}.pcw-trend-side{gap:16px}.pcw-alert-command-copy h2{font-size:21px}.pcw-alert-command-metrics article{border-radius:13px}.pcw-alert-table-card td{height:42px}@media (max-width:1320px){.pcw-trend-page{grid-template-columns:minmax(0,1fr) 348px}}@media (max-width:1180px){.pcw{grid-template-columns:196px minmax(0,1fr)}.pcw-side{width:196px}}
 
 
 
@@ -29619,7 +29077,7 @@ th{height:36px;background:#f8fafc;color:#64748b;font-size:12px;font-weight:600}t
 
 
 
-.pcw-right{grid-template-rows:auto minmax(226px,auto)}.pcw-quotes,.pcw-chart{background:linear-gradient(180deg,#fff 0%,#fbfdff 100%)}.pcw-right-table tr{grid-template-columns:minmax(0,1fr) 78px 48px;min-height:46px}.pcw-right-table td:first-child strong{font-size:12px}.pcw-right-tag{height:18px;padding-inline:6px;font-size:10px}.pcw-right-table .pcw-link{height:24px;padding:0 8px;border-radius:999px;background:#f8fbff;font-size:12px}.pcw-chart{min-height:232px}.pcw-chart .pcw-legend{justify-content:center;padding-top:10px}.pcw-chart svg{height:158px}.pcw-chart-foot{height:38px}.pcw-chart-empty.mini{top:54%;width:min(286px,78%);border-radius:12px}
+.pcw-right{grid-template-rows:auto minmax(226px,auto)}.pcw-right-table tr{grid-template-columns:minmax(0,1fr) 78px 48px;min-height:46px}.pcw-right-table td:first-child strong{font-size:12px}.pcw-right-tag{height:18px;padding-inline:6px;font-size:10px}.pcw-right-table .pcw-link{height:24px;padding:0 8px;border-radius:999px;background:#f8fbff;font-size:12px}.pcw-chart{min-height:232px}.pcw-chart .pcw-legend{justify-content:center;padding-top:10px}.pcw-chart svg{height:158px}.pcw-chart-foot{height:38px}.pcw-chart-empty.mini{top:54%;width:min(286px,78%);border-radius:12px}
 
 
 
@@ -29635,23 +29093,7 @@ th{height:36px;background:#f8fafc;color:#64748b;font-size:12px;font-weight:600}t
 
 
 
-.pcw-module-table td,.pcw-alert-table-card td{height:42px!important}.pcw-module-panel article,.pcw-module-flow p,.pcw-module-activity article,.pcw-priority-alerts article{min-height:52px}.pcw-module-chart-panel svg{height:238px}.pcw-alert-chart svg{height:248px}
-
-
-
-
-
-
-
-@media (max-width:1320px){.pcw-grid{grid-template-columns:minmax(0,1fr) 340px}.pcw-bottom{grid-template-columns:minmax(0,1fr) 340px}.pcw-advice{grid-column:1/-1}}
-
-
-
-
-
-
-
-@media (max-width:1180px){.pcw-main{padding:16px}.pcw-grid,.pcw-bottom,.pcw-trend-page,.pcw-alert-page{grid-template-columns:1fr}.pcw-kpis{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.pcw-filter-item{flex:1 1 160px}.pcw-filter .pcw-export{margin-left:0}.pcw-nav-item.active{padding-left:12px}.pcw-nav-item.active:before{content:none}}
+.pcw-module-table td,.pcw-alert-table-card td{height:42px!important}.pcw-module-chart-panel svg{height:238px}@media (max-width:1320px){.pcw-grid{grid-template-columns:minmax(0,1fr) 340px}.pcw-bottom{grid-template-columns:minmax(0,1fr) 340px}.pcw-advice{grid-column:1/-1}}@media (max-width:1180px){.pcw-main{padding:16px}.pcw-kpis{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.pcw-filter-item{flex:1 1 160px}.pcw-filter .pcw-export{margin-left:0}.pcw-nav-item.active{padding-left:12px}.pcw-nav-item.active:before{content:none}}
 
 
 
@@ -29749,10 +29191,7 @@ th{height:36px;background:#f8fafc;color:#64748b;font-size:12px;font-weight:600}t
 
 
 
-.pcw-filter-item>button small,.pcw-location-button small{transition:transform .16s ease,color .16s ease}.pcw-filter-item>button.open small,.pcw-location-button[aria-expanded="true"] small{transform:rotate(180deg);color:#2563eb}.pcw-filter button:disabled,.pcw-top-actions button:disabled{opacity:.58;cursor:not-allowed}.pcw-top-actions button:disabled:hover{background:transparent;box-shadow:none;color:#94a3b8}
-
-
-.pcw-table-card,.pcw-alert-table-card,.pcw-module-table,.pcw-market-compare,.pcw-peer-products{overflow:auto}.pcw-table-card table,.pcw-alert-table-card table,.pcw-module-table table,.pcw-market-compare table,.pcw-peer-products table{min-width:720px}.pcw-right-table{min-width:0}.pcw-empty-row td{white-space:normal}.pcw-action-toast{position:fixed;right:24px;bottom:24px;z-index:80;max-width:min(360px,calc(100vw - 48px));pointer-events:none}
+.pcw-filter-item>button small,.pcw-location-button small{transition:transform .16s ease,color .16s ease}.pcw-filter-item>button.open small,.pcw-location-button[aria-expanded="true"] small{transform:rotate(180deg);color:#2563eb}.pcw-filter button:disabled,.pcw-top-actions button:disabled{opacity:.58;cursor:not-allowed}.pcw-top-actions button:disabled:hover{background:transparent;box-shadow:none;color:#94a3b8}.pcw-right-table{min-width:0}.pcw-empty-row td{white-space:normal}.pcw-action-toast{position:fixed;right:24px;bottom:24px;z-index:80;max-width:min(360px,calc(100vw - 48px));pointer-events:none}
 
 
 
@@ -29760,30 +29199,10 @@ th{height:36px;background:#f8fafc;color:#64748b;font-size:12px;font-weight:600}t
 
 
 
-.pcw-card-head h2,.pcw-top h1{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pcw-card-head span{max-width:46%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pcw-dot{outline:none}.pcw-dot-hit{fill:transparent!important;pointer-events:all}.pcw-dot circle:not(.pcw-dot-hit){transition:r .14s ease,stroke .14s ease}.pcw-dot-active{fill:#1d4ed8!important;stroke:#fff;stroke-width:2}
-
-
-
-
-
-
-
-@media (prefers-reduced-motion:reduce){.pcw *{scroll-behavior:auto!important;transition:none!important;animation:none!important}.pcw-card:hover{transform:none}}
-
-
-
-
-
-
-
-@media (max-width:900px){.pcw{grid-template-columns:1fr}.pcw-side{position:relative;width:auto;grid-row:auto;padding:12px 14px}.pcw-side-head{height:38px}.pcw-nav{display:grid;grid-auto-flow:column;grid-auto-columns:max-content;gap:8px;overflow-x:auto;padding:8px 0 2px}.pcw-nav-group{display:contents}.pcw-nav-group>span{display:none}.pcw-nav-item{min-width:118px}.pcw-side-systems{display:none}.pcw-app{grid-template-rows:auto 1fr}.pcw-top{position:sticky;top:0;z-index:30;gap:10px;padding:10px 14px}.pcw-location{min-width:0}.pcw-top-actions{margin-left:0}.pcw-filter{display:flex;flex-wrap:wrap}.pcw-filter-item{flex:1 1 150px}.pcw-filter .pcw-export{width:auto;min-width:112px}.pcw-kpis{grid-template-columns:1fr}.pcw-card-head span{max-width:52%}.pcw-action-toast{right:12px;bottom:12px;max-width:calc(100vw - 24px)}}
-
-@media (max-width:1100px){
+.pcw-card-head h2,.pcw-top h1{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pcw-card-head span{max-width:46%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pcw-dot{outline:none}.pcw-dot-hit{fill:transparent!important;pointer-events:all}.pcw-dot circle:not(.pcw-dot-hit){transition:r .14s ease,stroke .14s ease}.pcw-dot-active{fill:#1d4ed8!important;stroke:#fff;stroke-width:2}@media (prefers-reduced-motion:reduce){.pcw *{scroll-behavior:auto!important;transition:none!important;animation:none!important}.pcw-card:hover{transform:none}}@media (max-width:900px){.pcw{grid-template-columns:1fr}.pcw-side{position:relative;width:auto;grid-row:auto;padding:12px 14px}.pcw-side-head{height:38px}.pcw-nav{display:grid;grid-auto-flow:column;grid-auto-columns:max-content;gap:8px;overflow-x:auto;padding:8px 0 2px}.pcw-nav-group{display:contents}.pcw-nav-group>span{display:none}.pcw-nav-item{min-width:118px}.pcw-side-systems{display:none}.pcw-app{grid-template-rows:auto 1fr}.pcw-top{position:sticky;top:0;z-index:30;gap:10px;padding:10px 14px}.pcw-location{min-width:0}.pcw-top-actions{margin-left:0}.pcw-filter{display:flex;flex-wrap:wrap}.pcw-filter-item{flex:1 1 150px}.pcw-filter .pcw-export{width:auto;min-width:112px}.pcw-kpis{grid-template-columns:1fr}.pcw-card-head span{max-width:52%}.pcw-action-toast{right:12px;bottom:12px;max-width:calc(100vw - 24px)}}@media (max-width:1100px){
   .pcw-filter.section-summary .pcw-filter-item{flex:1 1 180px}
   .pcw-filter.section-summary .pcw-export{width:100%;min-width:0}
-}
-
-@media (max-width:720px){
+}@media (max-width:720px){
   .pcw-location{min-width:0;max-width:100%}
   .pcw-location-button{max-width:100%}
   .pcw-location-menu{left:0;right:auto;width:min(320px,calc(100vw - 32px))}
@@ -29804,7 +29223,7 @@ th{height:36px;background:#f8fafc;color:#64748b;font-size:12px;font-weight:600}t
 
 
 
-.pcw-main{gap:18px}.pcw-grid,.pcw-bottom,.pcw-right,.pcw-trend-page,.pcw-alert-page,.pcw-module,.pcw-module-grid{gap:16px}.pcw-card,.pcw-kpis article,.pcw-alert-command,.pcw-module-command{border-color:#e6edf6}.pcw-right .pcw-card,.pcw-bottom .pcw-card,.pcw-module-panel,.pcw-module-flow,.pcw-module-activity{box-shadow:0 6px 16px rgba(15,23,42,.025)}
+.pcw-main{gap:18px}.pcw-right .pcw-card,.pcw-bottom .pcw-card,.pcw-module-panel,.pcw-module-flow,.pcw-module-activity{box-shadow:0 6px 16px rgba(15,23,42,.025)}
 
 
 
@@ -29836,23 +29255,7 @@ th{height:36px;background:#f8fafc;color:#64748b;font-size:12px;font-weight:600}t
 
 
 
-.pcw-timeline p{display:grid;grid-template-columns:58px minmax(0,1fr);gap:10px;align-items:center}.pcw-timeline p span{width:auto}.pcw-alerts p{grid-template-columns:minmax(0,1fr) auto auto;align-items:center}.pcw-alerts p em,.pcw-alerts p strong{min-width:0}.pcw-card-head button,.pcw-link{transition:background-color .14s ease,color .14s ease,border-color .14s ease,box-shadow .14s ease}.pcw-link:focus-visible{box-shadow:0 0 0 3px #dbeafe}
-
-
-
-
-
-
-
-@media (max-width:1320px){.pcw-main{gap:16px}.pcw-grid,.pcw-bottom,.pcw-right,.pcw-module-grid{gap:14px}.pcw-table-card table,.pcw-alert-table-card table,.pcw-module-table table{min-width:760px}}
-
-
-
-
-
-
-
-@media (max-width:900px){.pcw-main{gap:14px;padding:14px}.pcw-grid,.pcw-bottom,.pcw-right,.pcw-trend-page,.pcw-alert-page,.pcw-module,.pcw-module-grid{gap:12px}.pcw-table-card td,.pcw-alert-table-card td,.pcw-module-table td{height:44px}.pcw-timeline p,.pcw-alerts p{white-space:normal}.pcw-timeline p{grid-template-columns:52px minmax(0,1fr)}}
+.pcw-timeline p{display:grid;grid-template-columns:58px minmax(0,1fr);gap:10px;align-items:center}.pcw-timeline p span{width:auto}.pcw-alerts p{grid-template-columns:minmax(0,1fr) auto auto;align-items:center}.pcw-alerts p em,.pcw-alerts p strong{min-width:0}.pcw-card-head button,.pcw-link{transition:background-color .14s ease,color .14s ease,border-color .14s ease,box-shadow .14s ease}.pcw-link:focus-visible{box-shadow:0 0 0 3px #dbeafe}@media (max-width:1320px){.pcw-main{gap:16px}.pcw-grid,.pcw-bottom,.pcw-right,.pcw-module-grid{gap:14px}.pcw-table-card table,.pcw-alert-table-card table,.pcw-module-table table{min-width:760px}}@media (max-width:900px){.pcw-main{gap:14px;padding:14px}.pcw-table-card td,.pcw-alert-table-card td,.pcw-module-table td{height:44px}.pcw-timeline p,.pcw-alerts p{white-space:normal}.pcw-timeline p{grid-template-columns:52px minmax(0,1fr)}}
 
 
 
@@ -30112,15 +29515,7 @@ th{height:36px;background:#f8fafc;color:#64748b;font-size:12px;font-weight:600}t
 
 
 
-}
-
-
-
-
-
-
-
-@media (min-width:1440px){
+}@media (min-width:1440px){
 
 
 
@@ -30152,14 +29547,6 @@ th{height:36px;background:#f8fafc;color:#64748b;font-size:12px;font-weight:600}t
 
 
 
-  .pcw-alert-page{grid-template-columns:minmax(0,1fr) 400px}
-
-
-
-
-
-
-
   .pcw-module-layout-coverage .pcw-module-grid,.pcw-module-layout-network .pcw-module-grid,.pcw-module-layout-ops .pcw-module-grid{grid-template-columns:minmax(520px,.98fr) minmax(0,1.02fr)}
 
 
@@ -30168,15 +29555,7 @@ th{height:36px;background:#f8fafc;color:#64748b;font-size:12px;font-weight:600}t
 
 
 
-}
-
-
-
-
-
-
-
-@media (min-width:1181px) and (max-width:1360px){
+}@media (min-width:1181px) and (max-width:1360px){
 
 
 
@@ -30336,23 +29715,7 @@ th{height:36px;background:#f8fafc;color:#64748b;font-size:12px;font-weight:600}t
 
 
 
-.pcw-module-panel article strong,.pcw-module-panel article small,.pcw-module-flow p span,.pcw-module-activity article span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pcw-module-panel article{border-radius:10px}.pcw-module-panel article:hover,.pcw-module-flow p:hover,.pcw-module-activity article:hover{background:#f8fbff}
-
-
-
-
-
-
-
-@media (min-width:1181px) and (max-width:1360px){.pcw-module-command{grid-template-columns:1fr;grid-template-areas:"copy" "actions" "metrics" "brief"}.pcw-module-command-actions{justify-self:start}.pcw-module-command-brief{min-width:0}.pcw-module-layout-workflow .pcw-module-grid,.pcw-module-layout-ledger .pcw-module-grid,.pcw-module-layout-insight .pcw-module-grid{grid-template-columns:minmax(0,1fr)}.pcw-module-layout-workflow .pcw-module-grid>*,.pcw-module-layout-ledger .pcw-module-grid>*,.pcw-module-layout-insight .pcw-module-grid>*{grid-area:auto}.pcw-module-table table{min-width:720px}}
-
-
-
-
-
-
-
-@media (max-width:900px){.pcw-module-command{grid-template-columns:1fr;grid-template-areas:"copy" "actions" "metrics" "brief"}.pcw-module-command-metrics{grid-template-columns:1fr}.pcw-module-command-brief{min-width:0}.pcw-module-command-actions{justify-self:start}}
+.pcw-module-panel article strong,.pcw-module-panel article small,.pcw-module-flow p span,.pcw-module-activity article span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pcw-module-panel article{border-radius:10px}.pcw-module-panel article:hover,.pcw-module-flow p:hover,.pcw-module-activity article:hover{background:#f8fbff}@media (min-width:1181px) and (max-width:1360px){.pcw-module-command{grid-template-columns:1fr;grid-template-areas:"copy" "actions" "metrics" "brief"}.pcw-module-command-actions{justify-self:start}.pcw-module-command-brief{min-width:0}.pcw-module-layout-workflow .pcw-module-grid,.pcw-module-layout-ledger .pcw-module-grid,.pcw-module-layout-insight .pcw-module-grid{grid-template-columns:minmax(0,1fr)}.pcw-module-layout-workflow .pcw-module-grid>*,.pcw-module-layout-ledger .pcw-module-grid>*,.pcw-module-layout-insight .pcw-module-grid>*{grid-area:auto}.pcw-module-table table{min-width:720px}}@media (max-width:900px){.pcw-module-command{grid-template-columns:1fr;grid-template-areas:"copy" "actions" "metrics" "brief"}.pcw-module-command-metrics{grid-template-columns:1fr}.pcw-module-command-brief{min-width:0}.pcw-module-command-actions{justify-self:start}}
 
 
 
@@ -30481,11 +29844,6 @@ th{height:36px;background:#f8fafc;color:#64748b;font-size:12px;font-weight:600}t
 }
 
 .pcw-grid-summary-full .pcw-table-card {
-  min-height: 0 !important;
-}
-
-.pcw-grid-summary-full .pcw-quotes {
-  align-self: start;
   min-height: 0 !important;
 }
 
@@ -30941,9 +30299,7 @@ th{height:36px;background:#f8fafc;color:#64748b;font-size:12px;font-weight:600}t
   min-width: 104px;
   border-radius: 10px;
   font-weight: 700;
-}
-
-@media (max-width: 1320px) {
+}@media (max-width: 1320px){
   .pcw-alert-table-card table {
     min-width: 880px !important;
   }
@@ -30952,30 +30308,10 @@ th{height:36px;background:#f8fafc;color:#64748b;font-size:12px;font-weight:600}t
   .pcw-alert-col-type { width: 21% !important; }
   .pcw-alert-col-owner { width: 16% !important; }
   .pcw-alert-col-actions { width: 22% !important; }
-}
-
-@media (min-width: 1321px) and (max-width: 1400px) {
+}@media (min-width: 1321px) and (max-width: 1400px){
   .pcw-alert-table-card table {
     min-width: 960px !important;
   }
-}
-
-
-/* Alert page final layout guard: keep the main warning table readable on 1366/1440 PC screens. */
-.pcw-alert-page {
-  grid-template-columns: minmax(0, 1fr) !important;
-  grid-template-areas:
-    "command"
-    "tasks"
-    "records" !important;
-}
-
-.pcw-alert-command,
-.pcw-alert-table-card,
-.pcw-alert-records {
-  grid-column: 1 / -1 !important;
-  width: 100% !important;
-  max-width: none !important;
 }
 
 .pcw-alert-table-card {
@@ -30993,15 +30329,6 @@ th{height:36px;background:#f8fafc;color:#64748b;font-size:12px;font-weight:600}t
 .pcw-alert-col-owner { width: 18% !important; }
 .pcw-alert-col-state { width: 9% !important; }
 .pcw-alert-col-actions { width: 19% !important; }
-
-.pcw-alert-table-card .pcw-alert-actions {
-  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-}
-
-.pcw-alert-table-card .pcw-alert-actions .pcw-link {
-  justify-content: center !important;
-  min-width: 0;
-}
 
 
 /* Price alert final visual guard: table fills the card and keeps actions visible on PC. */
@@ -31033,26 +30360,7 @@ th{height:36px;background:#f8fafc;color:#64748b;font-size:12px;font-weight:600}t
 .pcw-alert-table-card td:nth-child(6),
 .pcw-alert-table-card th:nth-child(6) {
   padding-right: 14px !important;
-}
-
-.pcw-alert-table-card .pcw-alert-actions {
-  display: grid !important;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px;
-  min-width: 0 !important;
-  overflow: visible !important;
-}
-
-.pcw-alert-table-card .pcw-alert-actions .pcw-link {
-  min-width: 0 !important;
-  width: 100% !important;
-  max-width: 100%;
-  padding-inline: 6px !important;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-@media (min-width: 901px) and (max-width: 1320px) {
+}@media (min-width: 901px) and (max-width: 1320px){
   .pcw-alert-col-product { width: 18% !important; }
   .pcw-alert-col-type { width: 20% !important; }
   .pcw-alert-col-owner { width: 15% !important; }
@@ -31061,11 +30369,6 @@ th{height:36px;background:#f8fafc;color:#64748b;font-size:12px;font-weight:600}t
   .pcw-alert-table-card th,
   .pcw-alert-table-card td {
     padding-inline: 8px !important;
-  }
-
-  .pcw-alert-table-card .pcw-alert-actions {
-    grid-template-columns: repeat(2, minmax(54px, 1fr));
-    gap: 5px;
   }
 }
 
@@ -32340,14 +31643,7 @@ th{height:36px;background:#f8fafc;color:#64748b;font-size:12px;font-weight:600}t
 
 .pcw-trend-chart-card {
   min-height: 0;
-}
-
-.pcw-big-chart {
-  height: 236px;
-  padding: 4px 14px 8px;
-}
-
-@media (max-width: 1100px) {
+}@media (max-width: 1100px){
   .pcw-grid-summary-full {
     grid-template-columns: 1fr !important;
   }
@@ -32392,9 +31688,7 @@ th{height:36px;background:#f8fafc;color:#64748b;font-size:12px;font-weight:600}t
     flex: 1 1 calc(50% - 10px);
     min-width: 0;
   }
-}
-
-@media (max-width: 720px) {
+}@media (max-width: 720px){
   .pcw-bottom,
   .pcw-summary-action-grid,
   .pcw-summary-brief-grid,
@@ -32419,6 +31713,18 @@ th{height:36px;background:#f8fafc;color:#64748b;font-size:12px;font-weight:600}t
     max-width: none;
     width: 100%;
   }
+}
+
+.pcw-quotes {
+  display: grid;
+  align-self: start;
+  min-height: 0 !important;
+  overflow: hidden;
+  background: linear-gradient(180deg, #fff 0%, #fbfdff 100%);
+}
+
+.pcw-quotes .pcw-card-head {
+  background: #fff;
 }
 
 .pcw-build-badge {

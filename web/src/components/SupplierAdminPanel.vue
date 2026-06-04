@@ -2020,7 +2020,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { ElCheckbox } from 'element-plus/es/components/checkbox/index.mjs'
-import { ElMessage } from 'element-plus/es/components/message/index.mjs'
 import { ElMessageBox } from 'element-plus/es/components/message-box/index.mjs'
 import {
   buildSupplierSettlementsFromQuotes,
@@ -2041,7 +2040,9 @@ import {
   submitSupplierQuote,
   updateSupplier,
   updateSupplierSettlement,
-} from '../api'
+} from '../lazyApi'
+import { lazyElMessage as ElMessage } from '../lazyElementMessage'
+import { loadXlsxModule } from '../lazyXlsx'
 import type {
   ProductOptionItem,
   AuthUserRole,
@@ -3635,7 +3636,7 @@ async function parseQuoteCsvFile(file: File) {
 }
 
 async function parseQuoteSpreadsheetFile(file: File) {
-  const xlsx = await import('xlsx')
+  const xlsx = await loadXlsxModule()
   const buffer = await file.arrayBuffer()
   const workbook = xlsx.read(buffer, { type: 'array' })
   const firstSheetName = workbook.SheetNames[0]
@@ -4627,7 +4628,7 @@ async function downloadLastBatchOperationResults(format: 'xlsx' | 'csv') {
 
   try {
     if (format === 'xlsx') {
-      const xlsx = await import('xlsx')
+      const xlsx = await loadXlsxModule()
       const worksheet = xlsx.utils.json_to_sheet(lastBatchOperationRows.value)
       const workbook = xlsx.utils.book_new()
       xlsx.utils.book_append_sheet(workbook, worksheet, '批量操作结果')
@@ -5033,7 +5034,7 @@ async function exportSettlementRows(format: 'xlsx' | 'csv') {
 
   try {
     if (format === 'xlsx') {
-      const xlsx = await import('xlsx')
+      const xlsx = await loadXlsxModule()
       const worksheet = xlsx.utils.json_to_sheet(exportRows)
       const workbook = xlsx.utils.book_new()
       xlsx.utils.book_append_sheet(workbook, worksheet, '结算台账')
@@ -5591,7 +5592,7 @@ async function downloadQuoteImportTemplate() {
   }
 
   try {
-    const xlsx = await import('xlsx')
+    const xlsx = await loadXlsxModule()
     const sampleProduct = selectedProductOption.value
     const today = new Date()
     const worksheet = xlsx.utils.json_to_sheet([
@@ -5712,7 +5713,7 @@ async function exportQuoteImportFailureRows(rows: QuoteImportPreviewRow[], sourc
   }
 
   try {
-    const xlsx = await import('xlsx')
+    const xlsx = await loadXlsxModule()
     const worksheet = xlsx.utils.json_to_sheet(
       rows.map((item) => ({
         行号: item.row_number,
@@ -6145,7 +6146,7 @@ async function exportQuoteRows(
 
   try {
     if (format === 'xlsx') {
-      const xlsx = await import('xlsx')
+      const xlsx = await loadXlsxModule()
       const worksheet = xlsx.utils.json_to_sheet(exportRows)
       const workbook = xlsx.utils.book_new()
       xlsx.utils.book_append_sheet(workbook, worksheet, '历史报价')

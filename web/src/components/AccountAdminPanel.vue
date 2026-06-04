@@ -174,7 +174,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessageBox } from 'element-plus/es/components/message-box/index.mjs'
-import { ElMessage } from 'element-plus/es/components/message/index.mjs'
+import { lazyElMessage as ElMessage } from '../lazyElementMessage'
 
 import {
   createAuthUser,
@@ -183,7 +183,7 @@ import {
   fetchAuthUsers,
   fetchSuppliers,
   updateAuthUser,
-} from '../api'
+} from '../lazyApi'
 import type { AuthUserItem, AuthUserRole, SupplierItem } from '../types'
 
 const props = defineProps<{

@@ -268,7 +268,7 @@ import {
   readAuthSession,
   resetAuthPassword,
   writeAuthSession,
-} from './api'
+} from './lazyApi'
 import { useViewport } from './composables/useViewport'
 import { lazyElMessage } from './lazyElementMessage'
 import type {
@@ -648,7 +648,8 @@ async function submitAuthLogin() {
     })
     applyAuthSession(session)
     authForm.password = ''
-    ;(await lazyElMessage()).success(`已登录为${session.user.display_name || session.user.username}`)
+    await loadBackendContext()
+    lazyElMessage.success(`已登录为${session.user.display_name || session.user.username}`)
   } catch (error) {
     authError.value = extractApiErrorDetail(error) || dataSourceState.lastError || '登录失败，请检查账号和密码'
   } finally {
@@ -659,7 +660,7 @@ async function submitAuthLogin() {
 async function logoutAuthSession() {
   applyAuthSession(null)
   authForm.password = ''
-  ;(await lazyElMessage()).success('已退出登录')
+  lazyElMessage.success('已退出登录')
 }
 
 function showPasswordHelp() {
@@ -694,7 +695,7 @@ async function submitPasswordReset() {
     authForm.username = username
     authForm.password = ''
     passwordResetVisible.value = false
-    ;(await lazyElMessage()).success('密码已重置')
+    lazyElMessage.success('密码已重置')
   } catch (error) {
     passwordResetError.value = extractApiErrorDetail(error) || dataSourceState.lastError || '密码重置失败'
   } finally {
@@ -781,7 +782,10 @@ async function loadBackendContext() {
 }
 
 onMounted(async () => {
-  await Promise.all([restoreAuthSession(), loadBackendContext()])
+  await restoreAuthSession()
+  if (isAuthenticated.value) {
+    await loadBackendContext()
+  }
 })
 
 watch(

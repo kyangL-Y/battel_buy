@@ -258,7 +258,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import ElAlert from 'element-plus/es/components/alert/index.mjs'
-import { ElMessage } from 'element-plus/es/components/message/index.mjs'
 
 import {
   clearAuthSession,
@@ -271,7 +270,8 @@ import {
   readAuthSession,
   updateSupplier,
   writeAuthSession,
-} from '../api'
+} from '../lazyApi'
+import { lazyElMessage as ElMessage } from '../lazyElementMessage'
 import AccountAdminPanel from './AccountAdminPanel.vue'
 import type { AuthLoginResponse, AuthUserRole, SupplierItem, SupplierOverviewResponse, SupplierUpdatePayload } from '../types'
 

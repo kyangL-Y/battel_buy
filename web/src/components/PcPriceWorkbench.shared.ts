@@ -1,4 +1,14 @@
-export type SectionId = 'summary' | 'trend' | 'alerts' | 'market' | 'suppliers' | 'purchase' | 'quotes' | 'plan' | 'reports' | 'settings'
+export type SectionId =
+  | 'summary'
+  | 'trend'
+  | 'alerts'
+  | 'market'
+  | 'suppliers'
+  | 'purchase'
+  | 'quotes'
+  | 'plan'
+  | 'reports'
+  | 'settings'
 
 export type MessageSection = Extract<SectionId, 'summary' | 'alerts' | 'quotes' | 'market' | 'purchase' | 'settings'>
 
@@ -25,9 +35,28 @@ export type ModuleView = {
   flow: ModuleFlowItem[]
 }
 
-export const WORKBENCH_SECTION_IDS: readonly SectionId[] = ['summary', 'trend', 'alerts', 'market', 'suppliers', 'purchase', 'quotes', 'plan', 'reports', 'settings']
+export const WORKBENCH_SECTION_IDS: readonly SectionId[] = [
+  'summary',
+  'trend',
+  'alerts',
+  'market',
+  'suppliers',
+  'purchase',
+  'quotes',
+  'plan',
+  'reports',
+  'settings',
+]
 
-export const GENERATED_MODULE_SECTIONS: readonly SectionId[] = ['market', 'suppliers', 'purchase', 'quotes', 'plan', 'reports', 'settings']
+export const GENERATED_MODULE_SECTIONS: readonly SectionId[] = [
+  'market',
+  'suppliers',
+  'purchase',
+  'quotes',
+  'plan',
+  'reports',
+  'settings',
+]
 
 const MODULE_LAYOUT_BY_SECTION: Partial<Record<SectionId, ModuleLayout>> = {
   market: 'coverage',

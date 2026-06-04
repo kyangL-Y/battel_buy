@@ -79,7 +79,9 @@ export function upsertProductAlertRule(
   const normalized = normalizeProductAlertRule(nextRule)
   if (!normalized.identityKey || !normalized.productLabel) return existingRules
   const now = new Date().toISOString()
-  const previous = existingRules.find((item) => item.identityKey === normalized.identityKey && item.sourceName === normalized.sourceName)
+  const previous = existingRules.find(
+    (item) => item.identityKey === normalized.identityKey && item.sourceName === normalized.sourceName,
+  )
   const merged: ProductAlertRule = {
     ...normalized,
     createdAt: previous?.createdAt || now,
@@ -87,7 +89,9 @@ export function upsertProductAlertRule(
   }
   return [
     merged,
-    ...existingRules.filter((item) => !(item.identityKey === normalized.identityKey && item.sourceName === normalized.sourceName)),
+    ...existingRules.filter(
+      (item) => !(item.identityKey === normalized.identityKey && item.sourceName === normalized.sourceName),
+    ),
   ]
 }
 
@@ -194,7 +198,9 @@ export function buildProductAlertHit(
       triggered: false,
       tone: 'warn',
       type: '价格观察',
-      rule: nearestDistance !== Number.POSITIVE_INFINITY ? `当前价 ${currentPrice.toFixed(2)}，${nearestRuleText}` : `当前价 ${currentPrice.toFixed(2)}`,
+      rule: nearestDistance !== Number.POSITIVE_INFINITY
+        ? `当前价 ${currentPrice.toFixed(2)}，${nearestRuleText}`
+        : `当前价 ${currentPrice.toFixed(2)}`,
     }
   }
   return null

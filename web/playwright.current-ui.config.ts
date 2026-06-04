@@ -20,5 +20,13 @@ export default defineConfig({
         browserName: 'chromium',
       },
     },
+    {
+      name: 'current-ui-pc-layout',
+      testMatch: /pc-workbench-layout-audit\.spec\.ts/,
+      use: {
+        ...devices['Desktop Chrome'],
+        browserName: 'chromium',
+      },
+    },
   ],
 })
