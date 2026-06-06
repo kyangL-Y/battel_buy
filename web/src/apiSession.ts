@@ -7,6 +7,7 @@ const AUTH_STORAGE_KEYS = {
   admin: 'battel.auth.session.admin',
 } as const
 const LEGACY_AUTH_STORAGE_KEY = 'battel.auth.session'
+const AUTH_TOKEN_EXPIRY_SKEW_MS = 30_000
 
 export type AuthSessionState = {
   access_token: string
@@ -30,6 +31,24 @@ function resolveAuthSessionScope(scope?: AuthSessionScope): AuthSessionScope {
   return 'procurement'
 }
 
+function decodeJwtPayload(token: string): Record<string, unknown> | null {
+  const [, payload] = String(token || '').split('.')
+  if (!payload) return null
+  try {
+    const normalizedPayload = payload.replace(/-/g, '+').replace(/_/g, '/')
+    const paddedPayload = normalizedPayload.padEnd(Math.ceil(normalizedPayload.length / 4) * 4, '=')
+    return JSON.parse(window.atob(paddedPayload)) as Record<string, unknown>
+  } catch {
+    return null
+  }
+}
+
+function isExpiredJwtSession(session: AuthSessionState) {
+  const payload = decodeJwtPayload(session.access_token)
+  if (!payload || typeof payload.exp !== 'number') return false
+  return payload.exp * 1000 <= Date.now() + AUTH_TOKEN_EXPIRY_SKEW_MS
+}
+
 function readScopedAuthSession(scope?: AuthSessionScope): AuthSessionState | null {
   if (!canUseStorage()) {
     return null
@@ -43,6 +62,11 @@ function readScopedAuthSession(scope?: AuthSessionScope): AuthSessionState | nul
     const parsed = JSON.parse(rawValue) as AuthSessionState
     if (!window.localStorage.getItem(storageKey)) {
       window.localStorage.setItem(storageKey, rawValue)
+    }
+    if (parsed?.access_token && isExpiredJwtSession(parsed)) {
+      window.localStorage.removeItem(storageKey)
+      window.localStorage.removeItem(LEGACY_AUTH_STORAGE_KEY)
+      return null
     }
     return parsed
   } catch {

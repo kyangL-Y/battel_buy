@@ -20,6 +20,7 @@ import pandas as pd
 from fastapi import Body, Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
+from sqlalchemy.exc import OperationalError
 
 from analysis.metrics import (
     build_cross_market_product_trend,
@@ -33,6 +34,7 @@ from analysis.alerts import AlertRule, load_alert_rules, save_alert_rules
 from api.crawl_manager import CrawlManager
 from api.deps import (
     ensure_supplier_access,
+    clear_dataframe_cache,
     get_actor_display_name,
     get_auth_user_by_username,
     get_procurement_supplier_ids,
@@ -48,6 +50,7 @@ from api.deps import (
     get_product_history_identity_df,
     require_admin_user,
     require_authenticated_user,
+    require_procurement_or_admin_user,
     get_runtime_settings,
     get_signal_history_df,
     resolve_settlement_record_access_supplier_id,
@@ -386,20 +389,44 @@ async def _warm_startup_caches() -> None:
     return None
 
 
+def _backfill_startup_meicai_product_image_urls() -> int:
+    try:
+        updated_count = get_db().backfill_meicai_product_image_urls()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("美菜商品图片启动回填失败: %s", exc)
+        return 0
+    if updated_count <= 0:
+        return 0
+    clear_dataframe_cache()
+    _clear_product_response_caches()
+    _clear_market_summary_disk_cache()
+    logger.info("美菜商品图片启动回填完成: updated_count=%s", updated_count)
+    return updated_count
+
+
 @lru_cache(maxsize=64)
 def _cached_product_history_payload(identity_key: str, cache_bucket: int) -> tuple[dict, ...]:
     history_df = get_product_history_identity_df(identity_key)
-    supplier_history_df = _build_supplier_quotes_market_frame(get_identity_aliases(identity_key))
-    if history_df is None or history_df.empty:
-        history_df = supplier_history_df
-    elif not supplier_history_df.empty:
-        history_df = pd.concat([history_df, supplier_history_df], ignore_index=True, sort=False)
     return tuple(_sanitize_dataframe(history_df))
 
 
 def _cached_product_history_df(identity_key: str, cache_bucket: int) -> pd.DataFrame:
     rows = _cached_product_history_payload(str(identity_key or ""), cache_bucket)
     return pd.DataFrame(list(rows))
+
+
+def _product_history_df_for_supplier_scope(
+    identity_key: str,
+    cache_bucket: int,
+    supplier_ids: list[int] | None,
+) -> pd.DataFrame:
+    history_df = _cached_product_history_df(identity_key, cache_bucket)
+    supplier_history_df = _build_supplier_quotes_market_frame(get_identity_aliases(identity_key), supplier_ids=supplier_ids)
+    if history_df.empty:
+        return supplier_history_df
+    if supplier_history_df.empty:
+        return history_df
+    return pd.concat([history_df, supplier_history_df], ignore_index=True, sort=False)
 
 
 @lru_cache(maxsize=128)
@@ -415,6 +442,35 @@ def _cached_product_summary_payload(
     liancai_brand: str,
 ) -> dict:
     history_df = _cached_product_history_df(identity_key, cache_bucket)
+    history_df = _filter_by_source_name(history_df, source_name or None)
+    history_df = _filter_by_liancai_category(
+        history_df,
+        liancai_top_category=liancai_top_category or None,
+        liancai_subcategory=liancai_subcategory or None,
+        liancai_keyword=liancai_keyword or None,
+        liancai_brand=liancai_brand or None,
+    )
+    return compute_single_product_summary(
+        history_df,
+        identity_key,
+        selected_province=province or None,
+        selected_city=city or None,
+    )
+
+
+def _build_scoped_product_summary_payload(
+    identity_key: str,
+    cache_bucket: int,
+    province: str,
+    city: str,
+    source_name: str,
+    liancai_top_category: str,
+    liancai_subcategory: str,
+    liancai_keyword: str,
+    liancai_brand: str,
+    supplier_ids: list[int] | None,
+) -> dict:
+    history_df = _product_history_df_for_supplier_scope(identity_key, cache_bucket, supplier_ids)
     history_df = _filter_by_source_name(history_df, source_name or None)
     history_df = _filter_by_liancai_category(
         history_df,
@@ -447,6 +503,51 @@ def _cached_product_trend_payload(
     liancai_brand: str,
 ) -> tuple[str, tuple[dict, ...]]:
     history_df = _cached_product_history_df(identity_key, cache_bucket)
+    history_df = _filter_by_source_name(history_df, source_name or None)
+    history_df = _filter_by_liancai_category(
+        history_df,
+        liancai_top_category=liancai_top_category or None,
+        liancai_subcategory=liancai_subcategory or None,
+        liancai_keyword=liancai_keyword or None,
+        liancai_brand=liancai_brand or None,
+    )
+    if mode == "single_market":
+        trend_df = build_single_market_product_trend(
+            history_df,
+            identity_key,
+            site_name or None,
+            series_key or None,
+            selected_province=province or None,
+            selected_city=city or None,
+        )
+        resolved_mode = "single_market"
+    else:
+        trend_df = build_cross_market_product_trend(
+            history_df,
+            identity_key,
+            selected_province=province or None,
+            selected_city=city or None,
+        )
+        resolved_mode = "cross_market"
+    return resolved_mode, tuple(_sanitize_dataframe(trend_df))
+
+
+def _build_scoped_product_trend_payload(
+    identity_key: str,
+    cache_bucket: int,
+    mode: str,
+    site_name: str,
+    series_key: str,
+    province: str,
+    city: str,
+    source_name: str,
+    liancai_top_category: str,
+    liancai_subcategory: str,
+    liancai_keyword: str,
+    liancai_brand: str,
+    supplier_ids: list[int] | None,
+) -> tuple[str, tuple[dict, ...]]:
+    history_df = _product_history_df_for_supplier_scope(identity_key, cache_bucket, supplier_ids)
     history_df = _filter_by_source_name(history_df, source_name or None)
     history_df = _filter_by_liancai_category(
         history_df,
@@ -528,6 +629,48 @@ def _product_options_page_from_market_summary(
         )
     return {
         "items": _sanitize_dataframe(pd.DataFrame(items)) if items else [],
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "has_more": end < total,
+    }
+
+
+def _product_options_page_from_market_summary_cache_or_empty(
+    *,
+    province: str | None,
+    city: str | None,
+    keyword: str | None,
+    source_name: str | None,
+    liancai_top_category: str | None,
+    liancai_subcategory: str | None,
+    liancai_keyword: str | None,
+    liancai_brand: str | None,
+    limit: int,
+    offset: int,
+) -> dict:
+    cached_summary_rows = _load_market_summary_disk_cache(
+        _market_summary_cache_path(
+            str(province or ""),
+            str(city or ""),
+            "",
+            str(source_name or ""),
+            str(liancai_top_category or ""),
+            str(liancai_subcategory or ""),
+            str(liancai_keyword or ""),
+            str(liancai_brand or ""),
+        )
+    )
+    if cached_summary_rows is None:
+        return {"items": [], "total": 0, "limit": limit, "offset": offset, "has_more": False}
+
+    all_cached_options = _product_options_page_from_market_summary(cached_summary_rows, limit=0, offset=0)["items"]
+    matching_options = _filter_product_option_items(all_cached_options, keyword)
+    total = len(matching_options)
+    start = min(offset, total)
+    end = total if limit == 0 else min(start + limit, total)
+    return {
+        "items": list(matching_options[start:end]),
         "total": total,
         "limit": limit,
         "offset": offset,
@@ -668,6 +811,11 @@ def _fetch_latest_product_rows(
             NULL AS raw_payload,
             CASE
                 WHEN (p.site_name LIKE '莲菜网%' OR p.source_url LIKE '%liancaiwang.cn%') THEN p.image_url
+                WHEN (
+                    p.site_name LIKE '美菜网%'
+                    OR p.source_url LIKE '%yunshanmeicai.com%'
+                    OR p.source_url LIKE '%meicai.cn%'
+                ) THEN p.image_url
                 ELSE NULL
             END AS image_url,
             CASE
@@ -937,9 +1085,6 @@ def _cached_market_summary_payload(
     # 旧磁盘缓存可能缺少真实报价记录数，或者是在 get_latest_records 未透传
     # image_url 时生成的全空图片缓存；这里主动重算，避免前端商品图/报价数继续丢失。
     latest_df = get_latest_df()
-    supplier_df = _build_supplier_quotes_market_frame()
-    if not supplier_df.empty:
-        latest_df = pd.concat([latest_df, supplier_df], ignore_index=True, sort=False)
     latest_df = _filter_by_source_name(latest_df, source_name or None)
     latest_df = _filter_by_liancai_category(
         latest_df,
@@ -959,6 +1104,41 @@ def _cached_market_summary_payload(
     summary_rows = tuple(_sanitize_dataframe(summary_df))
     _save_market_summary_disk_cache(cache_path, summary_rows)
     return summary_rows
+
+
+def _build_scoped_market_summary_payload(
+    cache_bucket: int,
+    province: str,
+    city: str,
+    keyword: str,
+    source_name: str,
+    liancai_top_category: str,
+    liancai_subcategory: str,
+    liancai_keyword: str,
+    liancai_brand: str,
+    supplier_ids: list[int] | None,
+) -> tuple[dict, ...]:
+    latest_df = get_latest_df()
+    supplier_df = _build_supplier_quotes_market_frame(supplier_ids=supplier_ids)
+    if not supplier_df.empty:
+        latest_df = pd.concat([latest_df, supplier_df], ignore_index=True, sort=False)
+    latest_df = _filter_by_source_name(latest_df, source_name or None)
+    latest_df = _filter_by_liancai_category(
+        latest_df,
+        liancai_top_category=liancai_top_category or None,
+        liancai_subcategory=liancai_subcategory or None,
+        liancai_keyword=liancai_keyword or None,
+        liancai_brand=liancai_brand or None,
+    )
+    if keyword and "product_name" in latest_df.columns:
+        search_text = latest_df["product_name"].fillna("").astype(str)
+        latest_df = latest_df[search_text.str.contains(keyword, regex=False)]
+    summary_df = compute_cross_site_price_summary(
+        latest_df,
+        selected_province=province or None,
+        selected_city=city or None,
+    )
+    return tuple(_sanitize_dataframe(summary_df))
 
 
 def _normalize_float(value: object) -> float | None:
@@ -999,6 +1179,7 @@ def _normalize_date_bound(value: str | None, boundary: str) -> str | None:
 
 def _build_supplier_quotes_market_frame(
     price_identity_keys: list[str] | None = None,
+    supplier_ids: list[int] | None = None,
 ) -> pd.DataFrame:
     try:
         quote_df = get_db().get_latest_supplier_quotes(price_identity_keys=price_identity_keys)
@@ -1010,20 +1191,24 @@ def _build_supplier_quotes_market_frame(
         return pd.DataFrame()
 
     rows: list[dict] = []
+    normalized_supplier_ids = set(_normalize_supplier_id_list(supplier_ids))
     for row in _sanitize_dataframe(quote_df):
+        supplier_id = int(row.get("supplier_id") or 0)
+        if normalized_supplier_ids and supplier_id not in normalized_supplier_ids:
+            continue
         price_identity_key = str(row.get("price_identity_key") or "").strip()
         if not price_identity_key:
             continue
         price_identity_label = str(row.get("price_identity_label") or row.get("product_name") or price_identity_key).strip()
-        supplier_name = str(row.get("supplier_name") or "").strip() or "供应平台"
+        supplier_name = str(row.get("supplier_name") or "").strip() or "供应商"
         market_category = str(row.get("market_category") or row.get("supplier_market_category") or row.get("category") or "").strip()
         rows.append(
             {
-                "group_name": "供应平台",
+                "group_name": supplier_name,
                 "product_name": row.get("product_name") or price_identity_label,
                 "product_key": price_identity_key,
                 "site_name": supplier_name,
-                "source_url": f"supplier://{row.get('supplier_id') or 0}/price-record/{row.get('record_id') or 0}",
+                "source_url": f"supplier://{supplier_id}/price-record/{row.get('record_id') or 0}",
                 "market_name": "供应商报价",
                 "category": market_category,
                 "liancai_top_category": row.get("market_category") or row.get("supplier_market_category"),
@@ -1235,6 +1420,14 @@ def _filter_suppliers_by_current_user(current_user: dict, items: list[dict]) -> 
     return [item for item in items if int(item.get("id") or 0) == supplier_scope]
 
 
+def _visible_supplier_ids_for_price_read(current_user: dict) -> list[int] | None:
+    if is_admin_user(current_user):
+        return None
+    if is_procurement_user(current_user):
+        return get_procurement_supplier_ids(current_user)
+    return [ensure_supplier_access(current_user, int(current_user.get("supplier_id") or 0))]
+
+
 def _resolve_supplier_quote_write_supplier_id(current_user: dict, requested_supplier_id: int | None) -> int | None:
     if is_admin_user(current_user):
         return requested_supplier_id
@@ -1302,7 +1495,7 @@ def _build_product_supplier_quotes_response(
 ) -> dict:
     decoded_key = str(identity_key or "").strip()
     history_df = get_product_history_identity_df(decoded_key)
-    supplier_history_df = _build_supplier_quotes_market_frame(get_identity_aliases(decoded_key))
+    supplier_history_df = _build_supplier_quotes_market_frame(get_identity_aliases(decoded_key), supplier_ids=supplier_ids)
     if history_df is None or history_df.empty:
         history_df = supplier_history_df
     elif not supplier_history_df.empty:
@@ -2103,6 +2296,7 @@ async def _app_lifespan(_: FastAPI):
     manager = get_crawl_manager()
     manager.start()
     try:
+        await asyncio.to_thread(_backfill_startup_meicai_product_image_urls)
         await _warm_startup_caches()
         yield
     finally:
@@ -2124,11 +2318,14 @@ def create_app() -> FastAPI:
         return {"status": "ok"}
 
     @app.get("/api/crawl/status")
-    def crawl_status() -> dict:
+    def crawl_status(current_user: dict = Depends(require_procurement_or_admin_user)) -> dict:
         return {"item": _sync_product_response_cache_with_crawl_status(get_crawl_manager().get_status())}
 
     @app.post("/api/crawl/run", response_model=CrawlRunResponse)
-    def crawl_run(payload: CrawlRunRequest = Body(default_factory=CrawlRunRequest)) -> CrawlRunResponse:
+    def crawl_run(
+        payload: CrawlRunRequest = Body(default_factory=CrawlRunRequest),
+        current_user: dict = Depends(require_admin_user),
+    ) -> CrawlRunResponse:
         accepted, item = get_crawl_manager().trigger_run(
             "manual",
             target_scope=payload.target_scope,
@@ -2140,7 +2337,10 @@ def create_app() -> FastAPI:
         return CrawlRunResponse(accepted=accepted, item=_sync_product_response_cache_with_crawl_status(item))
 
     @app.post("/api/crawl/schedule")
-    def crawl_schedule(payload: CrawlScheduleUpdateRequest) -> dict:
+    def crawl_schedule(
+        payload: CrawlScheduleUpdateRequest,
+        current_user: dict = Depends(require_admin_user),
+    ) -> dict:
         item = get_crawl_manager().update_schedule(
             enabled=payload.enabled,
             mode=payload.mode,
@@ -2190,23 +2390,32 @@ def create_app() -> FastAPI:
         return {**suggestion, "message": None}
 
     @app.get("/api/source/coverage")
-    def source_coverage() -> dict:
+    def source_coverage(current_user: dict = Depends(require_procurement_or_admin_user)) -> dict:
         return {"items": _build_source_coverage_rows()}
 
     @app.put("/api/source/coverage")
-    def update_source_coverage(payload: SourceConfigUpdateRequest) -> dict:
+    def update_source_coverage(
+        payload: SourceConfigUpdateRequest,
+        current_user: dict = Depends(require_admin_user),
+    ) -> dict:
         return {"item": _update_source_config_item(payload)}
 
     @app.put("/api/source/strategy")
-    def update_source_strategy(payload: SourceStrategyUpdateRequest) -> dict:
+    def update_source_strategy(
+        payload: SourceStrategyUpdateRequest,
+        current_user: dict = Depends(require_admin_user),
+    ) -> dict:
         return {"item": _update_source_strategy_item(payload)}
 
     @app.get("/api/settings/alerts")
-    def get_global_alert_rules() -> dict:
+    def get_global_alert_rules(current_user: dict = Depends(require_procurement_or_admin_user)) -> dict:
         return {"items": _serialize_global_alert_rules()}
 
     @app.put("/api/settings/alerts")
-    def update_global_alert_rules(payload: GlobalAlertRulesUpdateRequest) -> dict:
+    def update_global_alert_rules(
+        payload: GlobalAlertRulesUpdateRequest,
+        current_user: dict = Depends(require_admin_user),
+    ) -> dict:
         return {"items": _save_global_alert_rules(payload)}
 
     @app.get("/api/market/summary")
@@ -2221,10 +2430,12 @@ def create_app() -> FastAPI:
         liancai_brand: str | None = Query(default=None),
         limit: int = Query(default=_DEFAULT_MARKET_SUMMARY_LIMIT, ge=0),
         offset: int = Query(default=0, ge=0),
+        current_user: dict = Depends(require_procurement_or_admin_user),
     ) -> dict:
 
 
-        items = _cached_market_summary_payload(
+        supplier_scope_ids = _visible_supplier_ids_for_price_read(current_user)
+        market_summary_arguments = (
             _product_response_cache_bucket(),
             str(province or ""),
             str(city or ""),
@@ -2234,6 +2445,11 @@ def create_app() -> FastAPI:
             str(liancai_subcategory or ""),
             str(liancai_keyword or ""),
             str(liancai_brand or ""),
+        )
+        items = (
+            _cached_market_summary_payload(*market_summary_arguments)
+            if supplier_scope_ids is None
+            else _build_scoped_market_summary_payload(*market_summary_arguments, supplier_scope_ids)
         )
         total = len(items)
         start = min(offset, total)
@@ -2259,8 +2475,25 @@ def create_app() -> FastAPI:
         liancai_brand: str | None = Query(default=None),
         limit: int = Query(default=300, ge=0, le=1000),
         offset: int = Query(default=0, ge=0),
+        current_user: dict = Depends(require_procurement_or_admin_user),
     ) -> dict:
         cache_bucket = _product_response_cache_bucket()
+
+        def cached_or_empty_product_options_page(error: OperationalError) -> dict:
+            logger.warning("商品选项查询数据库不可用，返回缓存降级页: %s", error)
+            return _product_options_page_from_market_summary_cache_or_empty(
+                province=province,
+                city=city,
+                keyword=keyword,
+                source_name=source_name,
+                liancai_top_category=liancai_top_category,
+                liancai_subcategory=liancai_subcategory,
+                liancai_keyword=liancai_keyword,
+                liancai_brand=liancai_brand,
+                limit=limit,
+                offset=offset,
+            )
+
         should_compute_full_options = bool(
             province
             or city
@@ -2270,16 +2503,19 @@ def create_app() -> FastAPI:
             or limit == 0
         )
         if should_compute_full_options:
-            items = _filter_product_option_items(_cached_product_options_payload(
-                cache_bucket,
-                str(province or ""),
-                str(city or ""),
-                str(source_name or ""),
-                str(liancai_top_category or ""),
-                str(liancai_subcategory or ""),
-                str(liancai_keyword or ""),
-                str(liancai_brand or ""),
-            ), keyword)
+            try:
+                items = _filter_product_option_items(_cached_product_options_payload(
+                    cache_bucket,
+                    str(province or ""),
+                    str(city or ""),
+                    str(source_name or ""),
+                    str(liancai_top_category or ""),
+                    str(liancai_subcategory or ""),
+                    str(liancai_keyword or ""),
+                    str(liancai_brand or ""),
+                ), keyword)
+            except OperationalError as exc:
+                return cached_or_empty_product_options_page(exc)
             total = len(items)
             start = min(offset, total)
             end = total if limit == 0 else min(start + limit, total)
@@ -2299,27 +2535,33 @@ def create_app() -> FastAPI:
             and offset + limit <= _PRODUCT_OPTIONS_FULL_COMPUTE_LIMIT
         )
         if should_use_fast_page:
-            fast_page = _build_fast_product_options_page(
-                province=province,
-                city=city,
-                source_name=source_name,
-                liancai_top_category=liancai_top_category,
-                liancai_subcategory=liancai_subcategory,
-                limit=limit,
-                offset=offset,
-            )
+            try:
+                fast_page = _build_fast_product_options_page(
+                    province=province,
+                    city=city,
+                    source_name=source_name,
+                    liancai_top_category=liancai_top_category,
+                    liancai_subcategory=liancai_subcategory,
+                    limit=limit,
+                    offset=offset,
+                )
+            except OperationalError as exc:
+                return cached_or_empty_product_options_page(exc)
             if fast_page.get("items") or fast_page.get("has_more"):
                 return fast_page
-            items = _cached_product_options_payload.__wrapped__(
-                cache_bucket,
-                str(province or ""),
-                str(city or ""),
-                str(source_name or ""),
-                str(liancai_top_category or ""),
-                str(liancai_subcategory or ""),
-                str(liancai_keyword or ""),
-                str(liancai_brand or ""),
-            )
+            try:
+                items = _cached_product_options_payload.__wrapped__(
+                    cache_bucket,
+                    str(province or ""),
+                    str(city or ""),
+                    str(source_name or ""),
+                    str(liancai_top_category or ""),
+                    str(liancai_subcategory or ""),
+                    str(liancai_keyword or ""),
+                    str(liancai_brand or ""),
+                )
+            except OperationalError as exc:
+                return cached_or_empty_product_options_page(exc)
             items = _filter_product_option_items(items, keyword)
             total = len(items)
             start = min(offset, total)
@@ -2331,7 +2573,8 @@ def create_app() -> FastAPI:
                 "offset": offset,
                 "has_more": end < total,
             }
-        summary_rows = _cached_market_summary_payload(
+        supplier_scope_ids = _visible_supplier_ids_for_price_read(current_user)
+        market_summary_arguments = (
             cache_bucket,
             str(province or ""),
             str(city or ""),
@@ -2342,6 +2585,14 @@ def create_app() -> FastAPI:
             str(liancai_keyword or ""),
             str(liancai_brand or ""),
         )
+        try:
+            summary_rows = (
+                _cached_market_summary_payload(*market_summary_arguments)
+                if supplier_scope_ids is None
+                else _build_scoped_market_summary_payload(*market_summary_arguments, supplier_scope_ids)
+            )
+        except OperationalError as exc:
+            return cached_or_empty_product_options_page(exc)
         return _product_options_page_from_market_summary(summary_rows, limit=limit, offset=offset)
 
     @app.get("/api/product/{identity_key}/summary")
@@ -2354,9 +2605,11 @@ def create_app() -> FastAPI:
         liancai_subcategory: str | None = Query(default=None),
         liancai_keyword: str | None = Query(default=None),
         liancai_brand: str | None = Query(default=None),
+        current_user: dict = Depends(require_procurement_or_admin_user),
     ) -> dict:
         decoded_key = unquote(identity_key)
-        item = _cached_product_summary_payload(
+        supplier_scope_ids = _visible_supplier_ids_for_price_read(current_user)
+        product_summary_arguments = (
             decoded_key,
             _product_response_cache_bucket(),
             str(province or ""),
@@ -2366,6 +2619,11 @@ def create_app() -> FastAPI:
             str(liancai_subcategory or ""),
             str(liancai_keyword or ""),
             str(liancai_brand or ""),
+        )
+        item = (
+            _cached_product_summary_payload(*product_summary_arguments)
+            if supplier_scope_ids is None
+            else _build_scoped_product_summary_payload(*product_summary_arguments, supplier_scope_ids)
         )
         return {"item": item}
 
@@ -2382,9 +2640,11 @@ def create_app() -> FastAPI:
         liancai_subcategory: str | None = Query(default=None),
         liancai_keyword: str | None = Query(default=None),
         liancai_brand: str | None = Query(default=None),
+        current_user: dict = Depends(require_procurement_or_admin_user),
     ) -> dict:
         decoded_key = unquote(identity_key)
-        resolved_mode, items = _cached_product_trend_payload(
+        supplier_scope_ids = _visible_supplier_ids_for_price_read(current_user)
+        product_trend_arguments = (
             decoded_key,
             _product_response_cache_bucket(),
             mode,
@@ -2398,10 +2658,18 @@ def create_app() -> FastAPI:
             str(liancai_keyword or ""),
             str(liancai_brand or ""),
         )
+        resolved_mode, items = (
+            _cached_product_trend_payload(*product_trend_arguments)
+            if supplier_scope_ids is None
+            else _build_scoped_product_trend_payload(*product_trend_arguments, supplier_scope_ids)
+        )
         return {"mode": resolved_mode, "items": list(items)}
 
     @app.get("/api/liancai/category-summary")
-    def liancai_category_summary(source_name: str | None = None) -> dict:
+    def liancai_category_summary(
+        source_name: str | None = None,
+        current_user: dict = Depends(require_procurement_or_admin_user),
+    ) -> dict:
         source_filter = source_name.strip() if source_name else None
         if source_filter:
             summary_df = get_db().get_liancai_category_summary(source_name=source_filter)
@@ -2413,6 +2681,7 @@ def create_app() -> FastAPI:
     def liancai_facets(
         liancai_top_category: str | None = Query(default=None),
         liancai_subcategory: str | None = Query(default=None),
+        current_user: dict = Depends(require_procurement_or_admin_user),
     ) -> dict:
         return _cached_liancai_facets_payload(
             str(liancai_top_category or ""),
@@ -3363,7 +3632,10 @@ def create_app() -> FastAPI:
         return created_item
 
     @app.post("/api/menu/plan", response_model=MenuPlanResponse)
-    def menu_plan(payload: MenuPlanRequest) -> MenuPlanResponse:
+    def menu_plan(
+        payload: MenuPlanRequest,
+        current_user: dict = Depends(require_procurement_or_admin_user),
+    ) -> MenuPlanResponse:
         latest_df = get_latest_df()
         runtime_settings = get_runtime_settings()
         menu_items = [item.model_dump() for item in payload.menu_items]
@@ -3394,6 +3666,7 @@ def create_app() -> FastAPI:
         province: str | None = Query(default=None),
         city: str | None = Query(default=None),
         focus: str | None = Query(default=None),
+        current_user: dict = Depends(require_procurement_or_admin_user),
     ) -> SignalOverviewResponse:
         latest_df = get_latest_df()
         return SignalOverviewResponse(
@@ -3411,6 +3684,7 @@ def create_app() -> FastAPI:
         identity_key: str,
         province: str | None = Query(default=None),
         city: str | None = Query(default=None),
+        current_user: dict = Depends(require_procurement_or_admin_user),
     ) -> SignalInsightItem:
         decoded_key = unquote(identity_key)
         history_df = get_product_history_identity_df(decoded_key)
@@ -3425,7 +3699,10 @@ def create_app() -> FastAPI:
         return SignalInsightItem(**signal)
 
     @app.post("/api/procurement/recommend", response_model=ProcurementRecommendationResponse)
-    def procurement_recommend(payload: MenuPlanRequest) -> ProcurementRecommendationResponse:
+    def procurement_recommend(
+        payload: MenuPlanRequest,
+        current_user: dict = Depends(require_procurement_or_admin_user),
+    ) -> ProcurementRecommendationResponse:
         latest_df = get_latest_df()
         runtime_settings = get_runtime_settings()
         menu_items = [item.model_dump() for item in payload.menu_items]
@@ -3472,7 +3749,10 @@ def create_app() -> FastAPI:
         return PricingPackagesResponse(**build_pricing_packages())
 
     @app.post("/api/ai/search", response_model=AISearchResponse)
-    def ai_search(payload: AISearchRequest) -> AISearchResponse:
+    def ai_search(
+        payload: AISearchRequest,
+        current_user: dict = Depends(require_procurement_or_admin_user),
+    ) -> AISearchResponse:
         runtime_settings = get_runtime_settings()
         try:
             answer = run_search_query(payload.query, runtime_config=runtime_settings)

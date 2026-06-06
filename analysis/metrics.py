@@ -188,9 +188,12 @@ def _extract_source_group_name(site_name: Any, source_url: Any = None) -> str:
     if source_url is not None and not pd.isna(source_url):
         source_url_text = str(source_url).strip().lower()
     if source_url_text.startswith("supplier://"):
-        return "供应平台"
+        site_text = "" if site_name is None or pd.isna(site_name) else str(site_name).strip()
+        return site_text or ""
     if "liancaiwang.cn" in source_url_text:
         return "莲菜网"
+    if "yunshanmeicai.com" in source_url_text or "meicai.cn" in source_url_text:
+        return "美菜网"
     if "pfsc.agri.cn" in source_url_text:
         return "PFSC"
     if "chinaprice.cn" in source_url_text:
@@ -205,10 +208,14 @@ def _extract_source_group_name(site_name: Any, source_url: Any = None) -> str:
         return ""
     if text.startswith("莲菜网"):
         return "莲菜网"
+    if text.startswith("美菜网"):
+        return "美菜网"
     if "|" in text:
         return text.split("|", 1)[0].strip()
     if text.startswith("莲菜网"):
         return "莲菜网"
+    if text.startswith("美菜网"):
+        return "美菜网"
     return text
 
 
@@ -1517,6 +1524,11 @@ def compute_cross_site_price_summary(
         selected_province=selected_province,
         selected_city=selected_city,
     )
+    latest = filter_by_location(
+        latest,
+        selected_province=selected_province,
+        selected_city=selected_city,
+    )
     if latest.empty:
         return pd.DataFrame()
 
@@ -1636,13 +1648,16 @@ def compute_cross_site_price_summary(
             liancai_group = group[group.get("source_name", pd.Series("", index=group.index)).fillna("").astype(str).eq("莲菜网")]
             metadata_group = liancai_group if not liancai_group.empty else group
             representative = representative_rows.loc[identity_key] if identity_key in representative_rows.index else metadata_group.iloc[0]
+            image_url = _build_liancai_selector_image_url(group, selector_image_lookup)
+            if "莲菜网" not in source_names and "美菜网" in source_names:
+                image_url = _build_meicai_selector_image_url(group)
             liancai_meta_rows.append(
                 {
                     "cross_site_identity_key": identity_key,
                     "source_name": "莲菜网" if "莲菜网" in source_names else representative.get("source_name"),
                     "liancai_top_category": _first_non_empty(metadata_group, "liancai_top_category"),
                     "liancai_subcategory": _first_non_empty(metadata_group, "liancai_subcategory"),
-                    "image_url": _build_selector_image_url(group, selector_image_lookup),
+                    "image_url": image_url,
                 }
             )
         liancai_summary = pd.DataFrame(liancai_meta_rows)[["cross_site_identity_key", *liancai_columns]]
@@ -1910,7 +1925,7 @@ def _build_selector_image_lookup(df: pd.DataFrame) -> dict[str, str]:
     return lookup
 
 
-def _build_selector_image_url(group: pd.DataFrame, image_lookup: dict[str, str] | None = None) -> str | None:
+def _build_liancai_selector_image_url(group: pd.DataFrame, image_lookup: dict[str, str] | None = None) -> str | None:
     liancai_mask = group.get("source_name", pd.Series("", index=group.index)).fillna("").astype(str).eq("莲菜网")
     if not liancai_mask.any():
         if image_lookup:
@@ -1936,6 +1951,17 @@ def _build_selector_image_url(group: pd.DataFrame, image_lookup: dict[str, str] 
         values = values[values.ne("")]
         if not values.empty:
             return values.iloc[0]
+    return None
+
+
+def _build_meicai_selector_image_url(group: pd.DataFrame) -> str | None:
+    if "image_url" not in group.columns:
+        return None
+    meicai_mask = group.get("source_name", pd.Series("", index=group.index)).fillna("").astype(str).eq("美菜网")
+    values = group.loc[meicai_mask, "image_url"].dropna().astype(str).str.strip()
+    values = values[values.ne("")]
+    if not values.empty:
+        return values.iloc[0]
     return None
 
 
@@ -1998,13 +2024,17 @@ def build_single_product_selector_options(
         dropna=False,
     ):
         source_names = [str(value).strip() for value in group.get("source_name", pd.Series(dtype="object")).dropna() if str(value).strip()]
+        source_name = "莲菜网" if "莲菜网" in source_names else (source_names[0] if source_names else "")
+        image_url = _build_liancai_selector_image_url(group)
+        if source_name == "美菜网":
+            image_url = _build_meicai_selector_image_url(group)
         selector_meta.append(
             {
                 "price_identity_key": identity_key,
-                "source_name": "莲菜网" if "莲菜网" in source_names else (source_names[0] if source_names else ""),
+                "source_name": source_name,
                 "source_category": _build_selector_source_category(group),
                 "liancai_subcategory": _build_selector_liancai_subcategory(group),
-                "image_url": _build_selector_image_url(group),
+                "image_url": image_url,
             }
         )
     if selector_meta:

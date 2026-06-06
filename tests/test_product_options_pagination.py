@@ -4,9 +4,28 @@ import asyncio
 
 import pandas as pd
 from fastapi.testclient import TestClient
+from sqlalchemy.exc import OperationalError
 
 import api.app as api_app_module
 from api.app import create_app
+
+
+def _create_procurement_client(monkeypatch):
+    monkeypatch.setattr(
+        api_app_module,
+        "require_procurement_or_admin_user",
+        lambda: {
+            "id": 1,
+            "username": "pagination-buyer",
+            "role": "procurement",
+            "display_name": "分页采购",
+            "is_active": True,
+            "supplier_id": None,
+            "procurement_supplier_ids": [],
+            "supplier_profile": None,
+        },
+    )
+    return TestClient(create_app())
 
 
 def test_product_options_first_page_uses_fast_page_provider_without_market_summary(monkeypatch):
@@ -37,7 +56,7 @@ def test_product_options_first_page_uses_fast_page_provider_without_market_summa
     monkeypatch.setattr(api_app_module, "_build_fast_product_options_page", fake_fast_page)
     monkeypatch.setattr(api_app_module, "_cached_market_summary_payload", fake_market_summary)
 
-    client = TestClient(create_app())
+    client = _create_procurement_client(monkeypatch)
     response = client.get("/api/product/options?limit=2")
 
     assert response.status_code == 200
@@ -69,12 +88,66 @@ def test_product_options_endpoint_forwards_source_name_to_fast_page(monkeypatch)
 
     monkeypatch.setattr(api_app_module, "_build_fast_product_options_page", fake_fast_page)
 
-    client = TestClient(create_app())
+    client = _create_procurement_client(monkeypatch)
     response = client.get("/api/product/options?source_name=%E8%8E%B2%E8%8F%9C%E7%BD%91&limit=2")
 
     assert response.status_code == 200
     assert captured["source_name"] == "莲菜网"
     assert response.json()["items"][0]["source_name"] == "莲菜网"
+
+
+def test_product_options_endpoint_returns_cached_page_when_fast_db_query_is_unavailable(monkeypatch):
+    cached_rows = tuple(
+        {
+            "price_identity_key": f"cached-{index}",
+            "product_name": f"缓存商品{index}",
+            "site_count": 1,
+            "market_count": 1,
+            "latest_captured_at": "2026-04-10T08:00:00",
+            "source_name": "莲菜网",
+            "source_category": "调味品",
+            "liancai_subcategory": "调味料",
+            "image_url": f"https://cdnlcw.liancaiwang.cn/uploads/cached-{index}.jpg",
+        }
+        for index in range(3)
+    )
+
+    def failing_fast_page(**kwargs):
+        raise OperationalError("SELECT products", {}, Exception("database name resolution failed"))
+
+    monkeypatch.setattr(api_app_module, "_build_fast_product_options_page", failing_fast_page)
+    monkeypatch.setattr(api_app_module, "_load_market_summary_disk_cache", lambda cache_path: cached_rows)
+
+    client = _create_procurement_client(monkeypatch)
+    response = client.get("/api/product/options?limit=2")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total"] == 3
+    assert payload["limit"] == 2
+    assert payload["offset"] == 0
+    assert payload["has_more"] is True
+    assert [item["price_identity_key"] for item in payload["items"]] == ["cached-0", "cached-1"]
+
+
+def test_product_options_endpoint_returns_empty_page_when_fast_db_query_and_cache_are_unavailable(monkeypatch):
+    def failing_fast_page(**kwargs):
+        raise OperationalError("SELECT products", {}, Exception("database name resolution failed"))
+
+    monkeypatch.setattr(api_app_module, "_build_fast_product_options_page", failing_fast_page)
+    monkeypatch.setattr(api_app_module, "_load_market_summary_disk_cache", lambda cache_path: None)
+
+    client = _create_procurement_client(monkeypatch)
+    response = client.get("/api/product/options?limit=2")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "items": [],
+        "total": 0,
+        "limit": 2,
+        "offset": 0,
+        "has_more": False,
+    }
 
 
 def test_product_options_endpoint_uses_market_summary_page_without_full_options_cache(monkeypatch):
@@ -105,8 +178,9 @@ def test_product_options_endpoint_uses_market_summary_page_without_full_options_
     monkeypatch.setattr(api_app_module, "_cached_market_summary_payload", fake_market_summary)
     monkeypatch.setattr(api_app_module, "_cached_product_options_payload", fake_options)
     monkeypatch.setattr(api_app_module, "_PRODUCT_OPTIONS_FULL_COMPUTE_LIMIT", 1)
+    monkeypatch.setattr(api_app_module, "_visible_supplier_ids_for_price_read", lambda current_user: None)
 
-    client = TestClient(create_app())
+    client = _create_procurement_client(monkeypatch)
     response = client.get("/api/product/options?limit=2&offset=1")
 
     assert response.status_code == 200
@@ -137,8 +211,9 @@ def test_product_options_endpoint_paginates_and_reports_total(monkeypatch):
     )
     monkeypatch.setattr(api_app_module, "_cached_market_summary_payload", lambda *args: rows)
     monkeypatch.setattr(api_app_module, "_PRODUCT_OPTIONS_FULL_COMPUTE_LIMIT", 0)
+    monkeypatch.setattr(api_app_module, "_visible_supplier_ids_for_price_read", lambda current_user: None)
 
-    client = TestClient(create_app())
+    client = _create_procurement_client(monkeypatch)
     response = client.get("/api/product/options?limit=2&offset=1")
 
     assert response.status_code == 200
@@ -168,8 +243,9 @@ def test_product_options_endpoint_defaults_to_bounded_payload(monkeypatch):
     )
     monkeypatch.setattr(api_app_module, "_cached_market_summary_payload", lambda *args: rows)
     monkeypatch.setattr(api_app_module, "_PRODUCT_OPTIONS_FULL_COMPUTE_LIMIT", 0)
+    monkeypatch.setattr(api_app_module, "_visible_supplier_ids_for_price_read", lambda current_user: None)
 
-    client = TestClient(create_app())
+    client = _create_procurement_client(monkeypatch)
     response = client.get("/api/product/options")
 
     assert response.status_code == 200
@@ -202,3 +278,20 @@ def test_warm_startup_caches_skips_expensive_product_options(monkeypatch):
     asyncio.run(api_app_module._warm_startup_caches())
 
     assert called == []
+
+
+def test_startup_meicai_image_backfill_clears_product_caches(monkeypatch):
+    called: list[str] = []
+
+    class DatabaseStub:
+        def backfill_meicai_product_image_urls(self):
+            called.append("backfill_meicai")
+            return 2
+
+    monkeypatch.setattr(api_app_module, "get_db", lambda: DatabaseStub())
+    monkeypatch.setattr(api_app_module, "clear_dataframe_cache", lambda: called.append("dataframe_cache"))
+    monkeypatch.setattr(api_app_module, "_clear_product_response_caches", lambda: called.append("response_cache"))
+    monkeypatch.setattr(api_app_module, "_clear_market_summary_disk_cache", lambda: called.append("disk_cache"))
+
+    assert api_app_module._backfill_startup_meicai_product_image_urls() == 2
+    assert called == ["backfill_meicai", "dataframe_cache", "response_cache", "disk_cache"]

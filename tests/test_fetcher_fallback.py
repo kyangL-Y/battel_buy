@@ -279,6 +279,27 @@ def test_build_batch_product_key_uses_compact_market_identity():
     assert key == "wbncp-market-all::蔬菜-萝卜-公斤"
 
 
+def test_build_meicai_batch_key_separates_region_identity():
+    product = {"product_key": "meicai-h5-class-products"}
+    parsed = {
+        "product_name": "小葱 普通",
+        "extra_fields": {
+            "group_name": "美菜网",
+            "compare_key": "小葱 普通",
+            "meicai_sku_id": "1336",
+            "spec_text": "斤",
+            "market_name": "上海美菜网",
+        },
+    }
+
+    shanghai_key = PriceCrawlerService._build_meicai_app_gateway_batch_key(product, parsed, 1)
+    parsed["extra_fields"]["market_name"] = "南京美菜网"
+    nanjing_key = PriceCrawlerService._build_meicai_app_gateway_batch_key(product, parsed, 1)
+
+    assert shanghai_key == "meicai-h5-class-products::美菜网-小葱普通-1336-斤-上海美菜网"
+    assert nanjing_key == "meicai-h5-class-products::美菜网-小葱普通-1336-斤-南京美菜网"
+
+
 
 def test_crawl_product_supports_generic_parse_without_site_rule(monkeypatch):
     def fake_get(*args, **kwargs):

@@ -159,8 +159,9 @@ test.describe('当前采购端全界面冒烟', () => {
     expect(requestedUrls.some((requestUrl) => requestUrl.includes('/api/'))).toBe(false)
 
     await page.getByTestId('enter-workspace-button').click()
-    await expect(page.getByTestId('market-mobile-list')).toBeVisible({ timeout: 45_000 })
-    expect(requestedUrls.some((requestUrl) => /\/src\/components\/MarketSummaryPanel\.vue|\/assets\/MarketSummaryPanel-/.test(requestUrl))).toBe(true)
+    await expect(page.getByRole('dialog', { name: '账号登录' })).toBeVisible()
+    await expect(page.getByTestId('market-mobile-list')).toHaveCount(0)
+    expect(requestedUrls.some((requestUrl) => /\/src\/components\/MarketSummaryPanel\.vue|\/assets\/MarketSummaryPanel-/.test(requestUrl))).toBe(false)
   })
 
   test('移动菜价页不提前加载明细和采购页面', async ({ page, request }) => {
@@ -207,7 +208,10 @@ test.describe('当前采购端全界面冒烟', () => {
   })
 
   test('真实 MySQL 商品接口可返回当前规格商品并打开走势接口', async ({ request }) => {
+    const authSession = await loginAsAdmin(request)
+    const headers = { Authorization: `Bearer ${authSession.access_token}` }
     const optionsResponse = await request.get(`${API_BASE_URL}/api/product/options`, {
+      headers,
       params: { keyword: '三黄鸡', limit: 20 },
       timeout: 70_000,
     })
@@ -219,6 +223,7 @@ test.describe('当前采购端全界面冒烟', () => {
     expect(product).toBeTruthy()
 
     const trendResponse = await request.get(`${API_BASE_URL}/api/product/${encodeURIComponent(product.price_identity_key)}/trend`, {
+      headers,
       params: { mode: 'cross_market' },
       timeout: 70_000,
     })

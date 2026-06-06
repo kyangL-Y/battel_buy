@@ -1543,7 +1543,7 @@
 
 
 
-                <tr v-for="row in displayRows" :key="row.name" data-testid="pcw-summary-data-row">
+                <tr v-for="row in displayRows" :key="row.displayKey || row.identityKey || row.name" data-testid="pcw-summary-data-row">
 
 
 
@@ -4458,9 +4458,10 @@
 
 
 
-        <section v-else-if="currentSection === 'suppliers'" key="pcw-section-suppliers" class="pcw-supplier-admin-embedded">
+        <section v-else-if="currentSection === 'suppliers' || currentSection === 'accounts'" key="pcw-section-suppliers" class="pcw-supplier-admin-embedded">
           <ProcurementSupplierAdminPanel
             :auth-role="props.authRole || null"
+            :initial-view="currentSection === 'accounts' ? 'accounts' : 'archive'"
           />
         </section>
 
@@ -4891,19 +4892,6 @@
               <section>
                 <strong>当前卡点</strong>
                 <p v-for="item in purchaseEmptyBlockers" :key="item">{{ item }}</p>
-              </section>
-              <section>
-                <strong>最近可参考趋势</strong>
-                <button
-                  v-for="item in purchaseTrendCarryRows"
-                  :key="`${item.source}-${item.time}-${item.price}`"
-                  type="button"
-                  @click="openWorkbenchActionSection('trend', item.identityKey)"
-                >
-                  <span>{{ item.source }} · {{ item.time }}</span>
-                  <b>{{ item.price }}</b>
-                </button>
-                <p v-if="!purchaseTrendCarryRows.length">先从汇总行情选择商品，再查看历史行情确认价格来源。</p>
               </section>
             </div>
           </section>
@@ -5695,7 +5683,7 @@
 
 
 
-            <section class="pcw-card pcw-module-chart-panel">
+            <section v-if="currentSection !== 'quotes' && currentSection !== 'purchase'" class="pcw-card pcw-module-chart-panel">
 
 
 
@@ -7898,6 +7886,10 @@ const tablePage = ref<Record<SectionId, number>>({
 
 
 
+  accounts: 1,
+
+
+
 
 
 
@@ -7999,6 +7991,10 @@ const filterSelections = ref<Record<SectionId, number[]>>({
 
 
   suppliers: [0, 0, 0, 0],
+
+
+
+  accounts: [0, 0, 0, 0],
 
 
 
@@ -8248,7 +8244,7 @@ const sectionToWorkspaceTab: Partial<Record<SectionId, 'signals' | 'summary' | '
 function syncSectionFromActiveTab(tab: string) {
   if (
     tab === 'summary'
-    && ['trend', 'alerts', 'market', 'suppliers', 'quotes', 'reports', 'settings', 'purchase', 'plan'].includes(currentSection.value)
+    && ['trend', 'alerts', 'market', 'suppliers', 'accounts', 'quotes', 'reports', 'settings', 'purchase', 'plan'].includes(currentSection.value)
   ) {
     return
   }
@@ -8568,6 +8564,10 @@ const navItems = computed(() => [
 
   { id: 'suppliers', target: 'suppliers', label: '供应商管理', icon: ['M5 10h14v9H5z', 'M7 10V7h10v3', 'M8 14h8'] },
 
+  ...(props.authRole === 'admin'
+    ? [{ id: 'accounts' as const, target: 'suppliers' as const, label: '账号管理', icon: ['M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8z', 'M4 21a8 8 0 0 1 16 0', 'M18 8h4', 'M20 6v4'] }]
+    : []),
+
 
 
 
@@ -8646,7 +8646,7 @@ const navGroups = computed(() => [
 
 
 
-  { title: '去执行', items: navItems.value.slice(3, 8) },
+  { title: '去执行', items: navItems.value.filter((item) => ['market', 'suppliers', 'accounts', 'purchase', 'quotes', 'plan'].includes(item.id)) },
 
 
 
@@ -8654,7 +8654,7 @@ const navGroups = computed(() => [
 
 
 
-  { title: '系统与复盘', items: navItems.value.slice(8) },
+  { title: '系统与复盘', items: navItems.value.filter((item) => ['reports', 'settings'].includes(item.id)) },
 
 
 
@@ -12942,6 +12942,7 @@ const sectionModuleViews = computed<Record<SectionId, ModuleView>>(() => ({
   alerts: alertModuleView.value,
   market: marketModuleView.value,
   suppliers: supplierModuleView.value,
+  accounts: supplierModuleView.value,
   purchase: purchaseModuleView.value,
   quotes: quotesModuleView.value,
   plan: planModuleView.value,
@@ -13678,6 +13679,10 @@ const sourceCategories = uniqueText((props.sourceCoverageRows || []).map((item) 
 
 
 
+    accounts: [['全部角色⌄', '管理员', '采购账号', '供应商'], ['启用状态⌄', '启用', '停用'], ['全部组织'], [latestDataFilterLabel.value]],
+
+
+
 
 
 
@@ -13755,6 +13760,10 @@ const moduleHealthKpis = computed<Record<Exclude<SectionId, 'summary' | 'trend' 
 
 
   suppliers: { label: '近24小时活跃', value: String(props.supplierOverview?.summary?.active_supplier_count || 0), detail: '最近有报价动作的供应商', tone: 'green' },
+
+
+
+  accounts: { label: '账号状态', value: '管理', detail: '管理员入口', tone: 'blue' },
 
 
 
@@ -14000,10 +14009,10 @@ const displayedTopFilters = computed(() => {
     .map((index) => ({ index, value: values[index] }))
 })
 
-const showWorkbenchFilter = computed(() => currentSection.value !== 'suppliers')
+const showWorkbenchFilter = computed(() => currentSection.value !== 'suppliers' && currentSection.value !== 'accounts')
 
 const topKpis = computed(() => {
-  if (currentSection.value === 'suppliers') return []
+  if (currentSection.value === 'suppliers' || currentSection.value === 'accounts') return []
 
 
 
@@ -18548,14 +18557,6 @@ const summaryOpportunityRows = computed(() => (
     }))
 ))
 
-const purchaseTrendCarryRows = computed(() => trendChartRows.value.slice(-4).reverse().map((item) => ({
-  source: item.source_name || item.trend_series_name || item.site_name || '价格来源',
-  market: item.market_name || item.region_label || item.city || '本地市场',
-  price: formatNumber(item.current_price),
-  time: item.captured_at ? formatShortDateTime(item.captured_at) : '最新',
-  identityKey: props.selectedIdentityKey || selectedSummaryRow.value?.price_identity_key || '',
-})))
-
 const purchaseRunbookSteps = computed(() => {
   const currentProductName = selectedProductName.value || selectedSummaryRow.value?.product_name || '当前商品'
   const recommendationCount = props.procurementRecommendations?.length || 0
@@ -18970,6 +18971,8 @@ const productOptionDisplayRows = computed(() => (props.productOptions || []).map
   keyword: String(item.liancai_keyword || '').trim() || undefined,
   brandName: String(item.liancai_brand_name || '').trim() || undefined,
   source: normalizeLiancaiSourceLabel(item.source_name) || '商品',
+  sourceTier: '',
+  sourceUrl: '',
   capturedDate: formatDateFilterValue(item.latest_captured_at),
   capturedDates: formatDateFilterValue(item.latest_captured_at),
   avg: '-',
@@ -18981,6 +18984,14 @@ const productOptionDisplayRows = computed(() => (props.productOptions || []).map
   thumb: 'blue',
   imageUrl: item.image_url || '',
   identityKey: item.price_identity_key || item.price_identity_label,
+  displayKey: buildSummaryDisplayKey({
+    product_name: item.price_identity_label,
+    price_identity_key: item.price_identity_key,
+    liancai_top_category: item.liancai_top_category,
+    liancai_subcategory: item.liancai_subcategory,
+    liancai_brand_name: item.liancai_brand_name,
+    liancai_keyword: item.liancai_keyword,
+  }),
 })))
 
 function resolveSafeImageUrl(value?: string | null) {
@@ -18990,6 +19001,123 @@ function resolveSafeImageUrl(value?: string | null) {
     return url.replace(/^https?:\/\/mst\.liancaiwang\.cn\/upload\//i, 'https://cdnlcw.liancaiwang.cn/')
   }
   return url
+}
+
+function normalizeSummaryProductKey(value?: string | null) {
+  return simplifyProductName(value)
+    .normalize('NFKC')
+    .replace(/[【】[\]（）()《》<>]/g, ' ')
+    .replace(/[\s·•/,_|｜\-+]+/g, ' ')
+    .replace(/\b(精品|精选|优选|新鲜|特级|一级|二级|净菜|现货|散装|整箱|盒装|袋装|小份|大份)\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function buildSummaryDisplayKey(row: {
+  product_name?: string | null
+  price_identity_key?: string | null
+  liancai_top_category?: string | null
+  liancai_subcategory?: string | null
+  liancai_brand_name?: string | null
+  liancai_keyword?: string | null
+}) {
+  return [
+    normalizeSummaryProductKey(row.price_identity_key || row.product_name),
+    String(row.liancai_top_category || '').trim(),
+    String(row.liancai_subcategory || '').trim(),
+    String(row.liancai_brand_name || '').trim(),
+    String(row.liancai_keyword || '').trim(),
+  ]
+    .filter(Boolean)
+    .join('|')
+    .toLowerCase()
+}
+
+function scoreSummaryDisplayRow(row: {
+  source: string
+  sourceTier?: string
+  sourceUrl?: string
+  avg: string
+  low: string
+  spread: string
+  quotes: string
+  change: string
+  imageUrl: string
+  identityKey: string
+}) {
+  let score = 0
+  if (resolveSafeImageUrl(row.imageUrl)) score += 1000
+  if (isSupplierSummaryDisplayRow(row)) score += 120
+  if (String(row.identityKey || '').trim()) score += 40
+  if (String(row.avg || '') !== '-') score += 24
+  if (String(row.low || '') !== '-') score += 18
+  if (String(row.spread || '') !== '-') score += 10
+  const quoteCount = Number.parseInt(String(row.quotes || '0'), 10)
+  if (Number.isFinite(quoteCount) && quoteCount > 0) score += Math.min(quoteCount, 24)
+  if (String(row.change || '') !== '待同步') score += 8
+  return score
+}
+
+function isSupplierSummaryDisplayRow(row: {
+  sourceTier?: string
+  sourceUrl?: string
+}) {
+  return String(row.sourceTier || '').trim() === '供应商报价'
+    || String(row.sourceUrl || '').trim().startsWith('supplier://')
+}
+
+function mergeSummaryDisplayRows<T extends {
+  displayKey: string
+  name: string
+  category: string
+  subcategory?: string
+  keyword?: string
+  brandName?: string
+  source: string
+  sourceTier?: string
+  sourceUrl?: string
+  capturedDate: string
+  capturedDates: string
+  avg: string
+  low: string
+  spread: string
+  change: string
+  changeTone: string
+  quotes: string
+  thumb: string
+  imageUrl: string
+  identityKey: string
+}>(currentRow: T, nextRow: T) {
+  const currentScore = scoreSummaryDisplayRow(currentRow)
+  const nextScore = scoreSummaryDisplayRow(nextRow)
+  const preferredRow = nextScore > currentScore ? nextRow : currentRow
+  const preferredImageUrl = resolveSafeImageUrl(preferredRow.imageUrl) || resolveSafeImageUrl(currentRow.imageUrl) || resolveSafeImageUrl(nextRow.imageUrl)
+  const currentQuotes = Number.parseInt(String(currentRow.quotes || '0'), 10)
+  const nextQuotes = Number.parseInt(String(nextRow.quotes || '0'), 10)
+  return {
+    ...currentRow,
+    ...nextRow,
+    displayKey: currentRow.displayKey,
+    name: preferredRow.name,
+    category: preferredRow.category || currentRow.category,
+    subcategory: preferredRow.subcategory || currentRow.subcategory,
+    keyword: preferredRow.keyword || currentRow.keyword,
+    brandName: preferredRow.brandName || currentRow.brandName,
+    source: preferredRow.source || currentRow.source,
+    sourceTier: preferredRow.sourceTier || currentRow.sourceTier || nextRow.sourceTier,
+    sourceUrl: preferredRow.sourceUrl || currentRow.sourceUrl || nextRow.sourceUrl,
+    capturedDate: preferredRow.capturedDate || currentRow.capturedDate,
+    capturedDates: preferredRow.capturedDates || currentRow.capturedDates,
+    avg: preferredRow.avg !== '-' ? preferredRow.avg : currentRow.avg,
+    low: preferredRow.low !== '-' ? preferredRow.low : currentRow.low,
+    spread: preferredRow.spread !== '-' ? preferredRow.spread : currentRow.spread,
+    change: preferredRow.change || currentRow.change,
+    changeTone: preferredRow.changeTone || currentRow.changeTone,
+    quotes: String(Math.max(currentQuotes || 0, nextQuotes || 0, Number.parseInt(String(preferredRow.quotes || '0'), 10) || 0)),
+    thumb: preferredImageUrl ? preferredRow.thumb : currentRow.thumb,
+    imageUrl: preferredImageUrl,
+    identityKey: preferredRow.identityKey || currentRow.identityKey || nextRow.identityKey,
+  }
 }
 
 function resetSectionFilters(sectionId: SectionId) {
@@ -19055,6 +19183,8 @@ const allDisplayRows = computed(() => {
 
 
     source: summarizeSourceNames(row.source_names || row.source_display_names || row.lowest_price_site),
+    sourceTier: row.source_tier || '',
+    sourceUrl: row.source_url || '',
 
 
 
@@ -19136,6 +19266,7 @@ const allDisplayRows = computed(() => {
 
 
     identityKey: row.price_identity_key || row.product_name,
+    displayKey: buildSummaryDisplayKey(row),
 
 
 
@@ -19144,21 +19275,23 @@ const allDisplayRows = computed(() => {
 
 
   })).sort((left, right) => {
-    const leftIsSupplier = String(left.source || '').includes('供应平台')
-    const rightIsSupplier = String(right.source || '').includes('供应平台')
+    const leftIsSupplier = isSupplierSummaryDisplayRow(left)
+    const rightIsSupplier = isSupplierSummaryDisplayRow(right)
     if (leftIsSupplier && !rightIsSupplier) return -1
     if (!leftIsSupplier && rightIsSupplier) return 1
     return 0
   })
+  const dedupedSummaryRows = summaryRows.reduce<typeof summaryRows>((rows, row) => {
+    const existingIndex = rows.findIndex((item) => item.displayKey === row.displayKey)
+    if (existingIndex < 0) {
+      rows.push(row)
+      return rows
+    }
+    rows[existingIndex] = mergeSummaryDisplayRows(rows[existingIndex], row)
+    return rows
+  }, [])
 
-
-
-
-
-  return summaryRows.length ? summaryRows : productOptionDisplayRows.value
-
-
-
+  return dedupedSummaryRows.length ? dedupedSummaryRows : productOptionDisplayRows.value
 })
 
 
@@ -19213,8 +19346,8 @@ const filteredDisplayRows = computed(() => allDisplayRows.value.filter((row) => 
 
 ], 'summary') && summaryDisplayRowMatchesLiancaiFilter(row)).sort((left, right) => {
   const currentIdentityKey = String(props.rows.find((item) => item.price_identity_key)?.price_identity_key || '').trim()
-  const leftIsCurrentSupplier = String(left.identityKey || '').trim() === currentIdentityKey && String(left.source || '').includes('供应平台')
-  const rightIsCurrentSupplier = String(right.identityKey || '').trim() === currentIdentityKey && String(right.source || '').includes('供应平台')
+  const leftIsCurrentSupplier = String(left.identityKey || '').trim() === currentIdentityKey && isSupplierSummaryDisplayRow(left)
+  const rightIsCurrentSupplier = String(right.identityKey || '').trim() === currentIdentityKey && isSupplierSummaryDisplayRow(right)
   if (leftIsCurrentSupplier && !rightIsCurrentSupplier) return -1
   if (!leftIsCurrentSupplier && rightIsCurrentSupplier) return 1
   return 0
@@ -29907,6 +30040,8 @@ th{height:36px;background:#f8fafc;color:#64748b;font-size:12px;font-weight:600}t
 
 /* PC summary compact density: keep all core columns visible at 1366px. */
 .pcw-grid-summary-full .pcw-table-card table {
+  width: 100% !important;
+  table-layout: fixed !important;
   min-width: 920px !important;
 }
 
@@ -29945,6 +30080,41 @@ th{height:36px;background:#f8fafc;color:#64748b;font-size:12px;font-weight:600}t
 .pcw-grid-summary-full .pcw-table-card th:nth-child(7),
 .pcw-grid-summary-full .pcw-table-card td:nth-child(7) {
   width: 86px !important;
+}
+
+@media (max-width: 720px) {
+  .pcw-grid-summary-full .pcw-table-card table {
+    min-width: 0 !important;
+  }
+
+  .pcw-grid-summary-full .pcw-table-card th:nth-child(1),
+  .pcw-grid-summary-full .pcw-table-card td:nth-child(1) {
+    width: 34% !important;
+  }
+
+  .pcw-grid-summary-full .pcw-table-card th:nth-child(2),
+  .pcw-grid-summary-full .pcw-table-card td:nth-child(2) {
+    width: 14% !important;
+  }
+
+  .pcw-grid-summary-full .pcw-table-card th:nth-child(3),
+  .pcw-grid-summary-full .pcw-table-card td:nth-child(3),
+  .pcw-grid-summary-full .pcw-table-card th:nth-child(4),
+  .pcw-grid-summary-full .pcw-table-card td:nth-child(4),
+  .pcw-grid-summary-full .pcw-table-card th:nth-child(5),
+  .pcw-grid-summary-full .pcw-table-card td:nth-child(5) {
+    width: 12% !important;
+  }
+
+  .pcw-grid-summary-full .pcw-table-card th:nth-child(6),
+  .pcw-grid-summary-full .pcw-table-card td:nth-child(6) {
+    width: 10% !important;
+  }
+
+  .pcw-grid-summary-full .pcw-table-card th:nth-child(7),
+  .pcw-grid-summary-full .pcw-table-card td:nth-child(7) {
+    width: 8% !important;
+  }
 }
 
 .pcw-grid-summary-full .pcw-product {
@@ -30800,7 +30970,6 @@ th{height:36px;background:#f8fafc;color:#64748b;font-size:12px;font-weight:600}t
 
 .pcw-purchase-empty-feed {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(300px, 0.82fr);
   gap: 12px;
   padding: 0 16px 16px;
 }
@@ -31310,6 +31479,64 @@ th{height:36px;background:#f8fafc;color:#64748b;font-size:12px;font-weight:600}t
   padding: 18px 20px;
 }
 
+.pcw-module-quotes .pcw-module-grid {
+  grid-template-columns: minmax(0, 1fr) 420px !important;
+  grid-template-areas:
+    "table panel"
+    "table flow"
+    "activity activity" !important;
+  gap: 16px !important;
+}
+
+.pcw-module-quotes .pcw-module-table {
+  grid-area: table;
+}
+
+.pcw-module-quotes .pcw-module-side {
+  display: contents;
+}
+
+.pcw-module-quotes .pcw-module-panel {
+  grid-area: panel;
+}
+
+.pcw-module-quotes .pcw-module-flow {
+  grid-area: flow;
+}
+
+.pcw-module-quotes .pcw-module-activity {
+  grid-area: activity;
+}
+
+.pcw-module-purchase .pcw-module-grid {
+  grid-template-columns: minmax(0, 1fr) 420px !important;
+  grid-template-areas:
+    "table panel"
+    "table flow"
+    "activity activity" !important;
+  gap: 16px !important;
+}
+
+.pcw-module-purchase .pcw-module-table {
+  grid-area: table;
+}
+
+.pcw-module-purchase .pcw-module-side {
+  display: contents;
+}
+
+.pcw-module-purchase .pcw-module-panel {
+  grid-area: panel;
+}
+
+.pcw-module-purchase .pcw-module-flow {
+  grid-area: flow;
+}
+
+.pcw-module-purchase .pcw-module-activity {
+  grid-area: activity;
+}
+
 .pcw-quotes-empty-compact {
   display: grid;
   align-content: start;
@@ -31713,6 +31940,43 @@ th{height:36px;background:#f8fafc;color:#64748b;font-size:12px;font-weight:600}t
     max-width: none;
     width: 100%;
   }
+
+  .pcw-grid-summary-full .pcw-table-card {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .pcw-grid-summary-full .pcw-table-card table {
+    min-width: 0 !important;
+    width: 100% !important;
+    table-layout: auto !important;
+  }
+
+  .pcw-grid-summary-full .pcw-table-card th,
+  .pcw-grid-summary-full .pcw-table-card td {
+    width: auto !important;
+    white-space: normal !important;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .pcw-grid-summary-full .pcw-table-card td:nth-child(1),
+  .pcw-grid-summary-full .pcw-table-card td:nth-child(2),
+  .pcw-grid-summary-full .pcw-table-card td:nth-child(3) {
+    overflow-wrap: anywhere;
+  }
+
+  .pcw-grid-summary-full .pcw-product {
+    width: 100%;
+    min-width: 0;
+    align-items: flex-start;
+  }
+
+  .pcw-grid-summary-full .pcw-product-copy strong,
+  .pcw-grid-summary-full .pcw-product-copy small {
+    white-space: normal !important;
+    overflow-wrap: anywhere;
+  }
 }
 
 .pcw-quotes {
@@ -31741,6 +32005,125 @@ th{height:36px;background:#f8fafc;color:#64748b;font-size:12px;font-weight:600}t
   vertical-align: middle;
 }
 
+/* Alert workspace layout guard: keep right-side cards aligned with the alert table. */
+.pcw-alert-page {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) clamp(360px, 28vw, 460px) !important;
+  grid-template-areas:
+    "command command"
+    "table side"
+    "advice side"
+    "records rule" !important;
+  gap: 16px !important;
+  align-items: start !important;
+}
+
+.pcw-alert-command {
+  grid-area: command !important;
+  grid-column: 1 / -1 !important;
+  grid-row: 1 !important;
+}
+
+.pcw-alert-table-card {
+  grid-area: table !important;
+  grid-column: 1 !important;
+  grid-row: 2 !important;
+}
+
+.pcw-alert-side {
+  grid-area: side !important;
+  grid-column: 2 !important;
+  grid-row: 2 / span 2 !important;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  min-width: 0;
+}
+
+.pcw-alert-advice {
+  grid-area: advice !important;
+  grid-column: 1 !important;
+  grid-row: 3 !important;
+}
+
+.pcw-rule-card {
+  grid-area: rule !important;
+  grid-column: 2 !important;
+  grid-row: 4 !important;
+  align-self: start;
+}
+
+.pcw-alert-records {
+  grid-area: records !important;
+  grid-column: 1 !important;
+  grid-row: 4 !important;
+}
+
+.pcw-alert-side,
+.pcw-rule-card {
+  width: 100%;
+}
+
+.pcw-alert-side .pcw-card,
+.pcw-alert-advice,
+.pcw-rule-card {
+  margin: 0;
+}
+
+.pcw-alert-advice ul {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  padding: 12px 14px 14px;
+}
+
+.pcw-alert-advice li {
+  min-height: 54px;
+  margin: 0;
+  padding: 12px 12px 12px 28px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.pcw-rule-card {
+  display: grid;
+  align-content: start;
+}
+
+.pcw-rule-card p {
+  margin: 0 14px 10px;
+}
+
+@media (max-width: 1180px) {
+  .pcw-alert-page {
+    grid-template-columns: minmax(0, 1fr) !important;
+    grid-template-areas:
+      "command"
+      "table"
+      "side"
+      "advice"
+      "rule"
+      "records" !important;
+  }
+
+  .pcw-alert-side,
+  .pcw-alert-advice ul {
+    grid-template-columns: 1fr;
+  }
+
+  .pcw-alert-command,
+  .pcw-alert-table-card,
+  .pcw-alert-side,
+  .pcw-alert-advice,
+  .pcw-rule-card,
+  .pcw-alert-records {
+    grid-column: 1 !important;
+    grid-row: auto !important;
+  }
+}
+
 
 
 </style>
+

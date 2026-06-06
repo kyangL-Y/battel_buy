@@ -1682,6 +1682,7 @@ class PriceCrawlerService:
             extra_fields.get("compare_key") or parsed.get("product_name"),
             extra_fields.get("meicai_sku_id") or extra_fields.get("product_series"),
             extra_fields.get("spec_text"),
+            extra_fields.get("market_name"),
         ]
         return _join_compact_key(str(base_key), parts, index)
 

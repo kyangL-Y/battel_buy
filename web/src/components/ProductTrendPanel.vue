@@ -67,7 +67,7 @@
             :value="item.price_identity_key"
           >
             <span class="trend-product-option" :title="item.price_identity_label">
-              <img v-if="item.source_name === '莲菜网' && item.image_url" :src="item.image_url" alt="" loading="lazy" @click.stop="openImagePreview(item.image_url, item.price_identity_label)" />
+              <img v-if="isSourceProductImageAllowed(item.source_name) && item.image_url" :src="item.image_url" alt="" loading="lazy" @click.stop="openImagePreview(item.image_url, item.price_identity_label)" />
               <span>
                 <strong>{{ item.price_identity_label }}</strong>
                 <small>{{ item.source_name || '来源' }} · {{ item.source_category || '未分类' }}</small>
@@ -184,7 +184,7 @@
             class="trend-empty-product-button primary"
             @click="selectRecommendedTrendProduct(item.price_identity_key)"
           >
-            <img v-if="item.source_name === '莲菜网' && item.image_url" :src="item.image_url" alt="" loading="lazy" @click.stop="openImagePreview(item.image_url, item.price_identity_label)" />
+            <img v-if="isSourceProductImageAllowed(item.source_name) && item.image_url" :src="item.image_url" alt="" loading="lazy" @click.stop="openImagePreview(item.image_url, item.price_identity_label)" />
             <span>
               <strong>{{ item.price_identity_label }}</strong>
               <small>{{ item.source_name || '来源' }} · {{ item.source_category || '未分类' }}</small>
@@ -490,7 +490,7 @@
           class="trend-empty-product-button"
           @click="selectRecommendedTrendProduct(item.price_identity_key)"
         >
-          <img v-if="item.source_name === '莲菜网' && item.image_url" :src="item.image_url" alt="" loading="lazy" @click.stop="openImagePreview(item.image_url, item.price_identity_label)" />
+          <img v-if="isSourceProductImageAllowed(item.source_name) && item.image_url" :src="item.image_url" alt="" loading="lazy" @click.stop="openImagePreview(item.image_url, item.price_identity_label)" />
           <span>
             <strong>{{ item.price_identity_label }}</strong>
             <small>{{ item.source_name || '来源' }} · {{ item.source_category || '未分类' }}</small>
@@ -956,6 +956,19 @@ function openImagePreview(url: string | null | undefined, title: string) {
   imagePreviewUrl.value = normalizedUrl
   imagePreviewTitle.value = String(title || '').trim()
   imagePreviewVisible.value = true
+}
+
+function isLiancaiProductImageSource(sourceName: string) {
+  return sourceName === '莲菜网'
+}
+
+function isMeicaiProductImageSource(sourceName: string) {
+  return sourceName === '美菜网'
+}
+
+function isSourceProductImageAllowed(sourceName: string | null | undefined) {
+  const normalizedSourceName = String(sourceName || '').trim()
+  return isLiancaiProductImageSource(normalizedSourceName) || isMeicaiProductImageSource(normalizedSourceName)
 }
 
 function closeImagePreview() {

@@ -4,6 +4,85 @@ import { expectNoHorizontalOverflow } from './helpers/layout'
 
 test.setTimeout(90_000)
 
+async function seedProcurementSession(page: import('@playwright/test').Page) {
+  const procurementUser = {
+    id: 1,
+    username: 'mobile-buyer',
+    display_name: '移动采购',
+    role: 'procurement',
+    supplier_id: null,
+    is_active: true,
+  }
+  const authSession = {
+    access_token: 'mobile-procurement-token',
+    token_type: 'Bearer',
+    expires_in: 3600,
+    user: procurementUser,
+  }
+  await page.addInitScript((session) => {
+    window.localStorage.setItem('battel.auth.session.procurement', JSON.stringify(session))
+  }, authSession)
+  await page.route('**/api/auth/me', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({ user: procurementUser }),
+    })
+  })
+}
+
+async function expectUsableMobileLandingLayout(page: import('@playwright/test').Page) {
+  const landingGeometry = await page.evaluate(() => {
+    const viewportWidth = window.innerWidth
+    const readBox = (selector: string) => {
+      const element = document.querySelector(selector)
+      if (!element) {
+        return null
+      }
+      const box = element.getBoundingClientRect()
+      return { top: box.top, bottom: box.bottom, width: box.width, height: box.height }
+    }
+    const commandButtonHeights = Array.from(document.querySelectorAll('.mobile-redesign-command-grid button'))
+      .map((element) => element.getBoundingClientRect().height)
+    const touchTargets = Array.from(document.querySelectorAll([
+      '.mobile-redesign-login-button',
+      '.mobile-redesign-search button',
+      '.mobile-redesign-command-grid button',
+      '.mobile-redesign-priority-card',
+      '.mobile-redesign-nav .market-mobile-bottom-item',
+    ].join(','))).map((element) => {
+      const box = element.getBoundingClientRect()
+      return { width: box.width, height: box.height, label: element.textContent?.trim() || element.getAttribute('aria-label') || '' }
+    })
+    return {
+      viewportWidth,
+      heroBox: readBox('.mobile-redesign-hero-card'),
+      searchBox: readBox('.mobile-redesign-search'),
+      navBox: readBox('.mobile-redesign-nav'),
+      firstSectionBox: readBox('.mobile-redesign-main .mobile-redesign-section'),
+      priorityCardBox: readBox('.mobile-redesign-priority-card'),
+      commandButtonHeights,
+      touchTargets,
+    }
+  })
+
+  expect(landingGeometry.heroBox?.width).toBeGreaterThanOrEqual(landingGeometry.viewportWidth - 32)
+  expect(landingGeometry.heroBox?.height).toBeLessThanOrEqual(650)
+  expect(landingGeometry.searchBox?.height).toBeGreaterThanOrEqual(60)
+  expect(landingGeometry.navBox?.height).toBeGreaterThanOrEqual(66)
+  expect(landingGeometry.firstSectionBox?.height).toBeGreaterThanOrEqual(140)
+  expect(landingGeometry.firstSectionBox?.top).toBeLessThanOrEqual((landingGeometry.navBox?.top ?? 0) - 71)
+  expect(landingGeometry.priorityCardBox?.top).toBeLessThan((landingGeometry.navBox?.top ?? 0) - 44)
+  expect(landingGeometry.commandButtonHeights.length).toBe(3)
+  for (const commandButtonHeight of landingGeometry.commandButtonHeights) {
+    expect(commandButtonHeight).toBeGreaterThanOrEqual(72)
+  }
+  expect(landingGeometry.touchTargets.length).toBeGreaterThanOrEqual(10)
+  for (const touchTarget of landingGeometry.touchTargets) {
+    expect.soft(touchTarget.height, `${touchTarget.label} height`).toBeGreaterThanOrEqual(44)
+    expect.soft(touchTarget.width, `${touchTarget.label} width`).toBeGreaterThanOrEqual(44)
+  }
+}
+
 test('移动端未登录时只在用户点定位后切到本地市场', async ({ page }) => {
   let locationSuggestionRequestCount = 0
   await page.route('**/api/location/suggest**', async (route) => {
@@ -37,6 +116,65 @@ test('移动端未登录时只在用户点定位后切到本地市场', async ({
   await expect(page.getByText('浏览器定位 · 郑州')).toBeVisible()
   expect(locationSuggestionRequestCount).toBe(1)
   await expectNoHorizontalOverflow(page)
+})
+
+test('移动端选择上海市后汇总行情按上海市场请求', async ({ page }) => {
+  await seedProcurementSession(page)
+  const summaryRequests: string[] = []
+  await page.route('**/api/location/options', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        provinces: ['河南省', '上海市'],
+        cities: ['郑州市', '上海市'],
+        province_city_map: {
+          河南省: ['郑州市'],
+          上海市: ['上海市'],
+        },
+      }),
+    })
+  })
+  await page.route('**/api/market/summary**', async (route) => {
+    summaryRequests.push(route.request().url())
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        items: [
+          {
+            price_identity_key: 'sh-greens',
+            product_name: '上海青 | 公斤',
+            lowest_price: 3.8,
+            highest_price: 3.8,
+            average_price: 3.8,
+            market_count: 1,
+            site_count: 1,
+            lowest_price_site: '上海江桥',
+            highest_price_site: '上海江桥',
+            region_label: '上海市',
+            latest_captured_at: '2026-06-06T08:00:00',
+          },
+        ],
+        total: 1,
+        limit: 200,
+        offset: 0,
+        has_more: false,
+      }),
+    })
+  })
+
+  await page.goto('/', { waitUntil: 'domcontentloaded' })
+  await expect(page.getByTestId('sales-landing-view')).toBeVisible()
+  await page.locator('.mobile-redesign-location').click()
+  await page.getByRole('button', { name: '上海市' }).click()
+  await expect(page.locator('.mobile-redesign-location')).toContainText('上海市')
+  await page.getByTestId('enter-workspace-button').click()
+
+  await expect(page.getByTestId('market-mobile-list')).toBeVisible()
+  await expect.poll(() => summaryRequests.some((url) => {
+    const params = new URL(url).searchParams
+    return params.get('province') === '上海市' && params.get('city') === '上海市'
+  })).toBe(true)
+  await expect(page.getByTestId('market-mobile-list')).toContainText('上海青')
 })
 
 test('移动端账号绑定地区时定位和手选都不能覆盖账号市场', async ({ page }) => {
@@ -100,6 +238,7 @@ test('移动端账号绑定地区时定位和手选都不能覆盖账号市场',
 })
 
 test('移动端从提醒直达页可继续切换其他工作区', async ({ page }) => {
+  await seedProcurementSession(page)
   await page.goto('/?mode=workspace&tab=alerts', { waitUntil: 'domcontentloaded' })
 
   await expect(page.getByText('价格提醒').first()).toBeVisible()
@@ -131,6 +270,7 @@ test('移动端首页改为卡片流且底部主导航进入采购登录门禁',
   await expect(page.locator('.market-mobile-pc-filter.main')).toHaveCount(0)
   await expect(page.getByTestId('mobile-spotlight-feed')).toBeVisible()
   await expect(page.getByTestId('mobile-source-groups')).toBeVisible()
+  await expectUsableMobileLandingLayout(page)
   await expectNoHorizontalOverflow(page)
 
   await page.locator('.market-mobile-bottom-item').filter({ hasText: '菜价' }).click()
@@ -162,6 +302,7 @@ test('移动端供应商入口只保留账号登录和找回密码', async ({ pa
 })
 
 test('移动端汇总行情在重型汇总接口未返回前用商品选项先展示首屏数据', async ({ page }) => {
+  await seedProcurementSession(page)
   await page.route('**/api/market/summary**', async () => {
     // 模拟真实问题：汇总接口长时间不返回。
   })
@@ -197,8 +338,76 @@ test('移动端汇总行情在重型汇总接口未返回前用商品选项先�
   await expect(page.getByTestId('market-summary-empty-state')).toHaveCount(0)
 })
 
+test('移动端未登录直达汇总页会清理过期登录态且不请求行情', async ({ page }) => {
+  let currentUserRequestCount = 0
+  let summaryRequestCount = 0
+  await page.addInitScript(() => {
+    const encodeBase64Url = (value: string) => window.btoa(value)
+      .replace(/=/g, '')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+    const expiredToken = [
+      encodeBase64Url(JSON.stringify({ alg: 'HS256', typ: 'JWT' })),
+      encodeBase64Url(JSON.stringify({ sub: '1', role: 'procurement', exp: 1 })),
+      'signature',
+    ].join('.')
+    window.localStorage.setItem('battel.auth.session.procurement', JSON.stringify({
+      access_token: expiredToken,
+      token_type: 'Bearer',
+      expires_in: 3600,
+      user: {
+        id: 1,
+        username: 'expired-buyer',
+        display_name: '过期采购',
+        role: 'procurement',
+        supplier_id: null,
+        is_active: true,
+      },
+    }))
+  })
+  await page.route('**/api/auth/me', async (route) => {
+    currentUserRequestCount += 1
+    await route.fulfill({
+      status: 401,
+      contentType: 'application/json',
+      body: JSON.stringify({ detail: '登录状态已失效，请重新登录' }),
+    })
+  })
+  await page.route('**/api/market/summary**', async (route) => {
+    summaryRequestCount += 1
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        items: [
+          {
+            price_identity_key: 'public-summary|001',
+            product_name: '公开行情商品',
+            group_name: '公开行情商品',
+            category: '测试分类',
+            average_price: 8.8,
+            lowest_price: 8.2,
+            highest_price: 9.1,
+            market_count: 2,
+            site_count: 2,
+          },
+        ],
+      }),
+    })
+  })
+
+  await page.goto('/?mode=workspace&tab=summary', { waitUntil: 'domcontentloaded' })
+
+  await expect(page.getByRole('dialog', { name: '账号登录' })).toBeVisible()
+  await expect(page.getByTestId('market-mobile-list')).toHaveCount(0)
+  expect(currentUserRequestCount).toBe(0)
+  expect(summaryRequestCount).toBe(0)
+  const storedSession = await page.evaluate(() => window.localStorage.getItem('battel.auth.session.procurement'))
+  expect(storedSession).toBeNull()
+})
+
 
 test('移动端点击商品卡片进入单品趋势后保留可刷新分享的商品深链', async ({ page }) => {
+  await seedProcurementSession(page)
   await page.route('**/api/market/summary**', async (route) => {
     await route.fulfill({
       contentType: 'application/json',
@@ -253,6 +462,7 @@ test('移动端点击商品卡片进入单品趋势后保留可刷新分享的�
 })
 
 test('移动端单品详情左上返回优先回到来源行情页', async ({ page }) => {
+  await seedProcurementSession(page)
   const product = {
     price_identity_key: 'return-flow|001',
     price_identity_label: '返回流转商品 | 001',
@@ -448,6 +658,7 @@ test('移动端未登录点击底部明细先进入登录门禁', async ({ page 
 
 
 test('移动端单品选择框展示当前接口返回商品', async ({ page }) => {
+  await seedProcurementSession(page)
   const optionKeywords: string[] = []
   const product = {
     price_identity_key: 'trend-default|001',
@@ -514,11 +725,6 @@ test('移动端单品选择框展示当前接口返回商品', async ({ page }) 
   await page.route('**/api/product/*/supplier-quotes**', async (route) => {
     await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [], summary: null }) })
   })
-  await page.addInitScript(() => {
-    window.localStorage.clear()
-    window.sessionStorage.clear()
-  })
-
   await page.goto('/?mode=workspace&tab=trend', { waitUntil: 'domcontentloaded' })
   await expect.poll(() => optionKeywords.includes('')).toBeTruthy()
   await expect(page.getByLabel('趋势模式切换')).toBeVisible({ timeout: 15_000 })
@@ -530,6 +736,7 @@ test('移动端单品选择框展示当前接口返回商品', async ({ page }) 
 
 
 test('移动端切换到新商品趋势时清理旧版 product 深链参数，避免刷新回到旧商品', async ({ page }) => {
+  await seedProcurementSession(page)
   await page.route('**/api/market/summary**', async (route) => {
     await route.fulfill({
       contentType: 'application/json',
@@ -624,6 +831,7 @@ test('移动端切换到新商品趋势时清理旧版 product 深链参数，�
 })
 
 test('移动端离开单品趋势时清理商品深链参数，避免非单品页分享混入旧商品', async ({ page }) => {
+  await seedProcurementSession(page)
   await page.route('**/api/product/options**', async (route) => {
     await route.fulfill({
       contentType: 'application/json',
@@ -675,6 +883,7 @@ test('移动端离开单品趋势时清理商品深链参数，避免非单品�
 })
 
 test('移动端今日菜价列表过滤接口和缓存中的非商品统计指标', async ({ page }) => {
+  await seedProcurementSession(page)
   const badProduct = '生猪存栏量月度环比变化率'
   const badRow = {
     price_identity_key: 'hog-stock-mom-rate|%',
@@ -720,10 +929,12 @@ test('移动端今日菜价列表过滤接口和缓存中的非商品统计指�
 })
 
 test('移动端主流程无横向溢出且关键工作区可用', async ({ page }) => {
+  await seedProcurementSession(page)
   await page.goto('/', { waitUntil: 'domcontentloaded' })
 
   await expect(page.getByTestId('sales-landing-view')).toBeVisible()
-  await expect(page.getByRole('heading', { name: '登录后查看菜价' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '欢迎，移动采购' })).toBeVisible()
+  await expect(page.locator('.mobile-redesign-login-button')).toContainText('移动采购')
   await expect(page.getByText('今天常买的菜')).toBeVisible()
   await expectNoHorizontalOverflow(page)
 
@@ -783,6 +994,7 @@ test('移动端主流程无横向溢出且关键工作区可用', async ({ page 
 })
 
 test('移动端菜单提交会显示食材整理状态并返回采购建议', async ({ page }) => {
+  await seedProcurementSession(page)
   await page.route('**/api/menu/plan', async (route) => {
     await new Promise((resolve) => setTimeout(resolve, 400))
     await route.fulfill({

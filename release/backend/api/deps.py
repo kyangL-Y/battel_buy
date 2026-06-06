@@ -338,6 +338,13 @@ def require_admin_user(current_user: dict = Depends(require_authenticated_user))
     return current_user
 
 
+def require_procurement_or_admin_user(current_user: dict = Depends(require_authenticated_user)) -> dict:
+    role = str(current_user.get("role") or "")
+    if role not in {"admin", "procurement"}:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="当前账号没有采购端权限")
+    return current_user
+
+
 def is_admin_user(current_user: dict) -> bool:
     return str(current_user.get("role") or "") == "admin"
 
@@ -368,6 +375,10 @@ def ensure_supplier_access(current_user: dict, supplier_id: int) -> int:
     normalized_supplier_id = int(supplier_id)
     if is_admin_user(current_user):
         return normalized_supplier_id
+    if is_procurement_user(current_user):
+        if normalized_supplier_id in set(get_procurement_supplier_ids(current_user)):
+            return normalized_supplier_id
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="不可访问其他采购团队的供应商数据")
 
     current_supplier_id = int(current_user.get("supplier_id") or 0)
     if current_supplier_id <= 0:

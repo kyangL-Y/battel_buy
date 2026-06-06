@@ -1079,6 +1079,7 @@ def test_extract_meicai_goods_rows_reads_runtime_refeactor_skus():
                 "refeactorSkus": [
                     {
                         "skuBase": {"skuName": "韭菜 去根", "skuId": "sku-runtime"},
+                        "skuImg": {"imgUrl": "https://img-oss.yunshanmeicai.com/runtime-chive.jpg"},
                         "selectedSsu": {
                             "ssuFormat": "2斤",
                             "ssuPrice": {"unitPrice": "3.20"},
@@ -1104,6 +1105,7 @@ def test_extract_meicai_goods_rows_reads_runtime_refeactor_skus():
     assert result[0]["current_price"] == 3.2
     assert result[0]["extra_fields"]["spec_text"] == "2斤"
     assert result[0]["extra_fields"]["meicai_sku_id"] == "sku-runtime"
+    assert result[0]["extra_fields"]["cover"] == "https://img-oss.yunshanmeicai.com/runtime-chive.jpg"
 
 
 def test_extract_meicai_goods_rows_reads_h5_spus_skus():

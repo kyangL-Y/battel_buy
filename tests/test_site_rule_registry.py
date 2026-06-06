@@ -213,6 +213,7 @@ def test_upsert_site_rule_preserves_meicai_h5_decrypt_fields(tmp_path: Path):
             "gateway_base_url": "https://mall-entrance.yunshanmeicai.com",
             "request_headers_env": "MEICAI_REQUEST_HEADERS",
             "common_body_env": "MEICAI_COMMON_BODY",
+            "current_address_context_path": ".local-secrets/meicai_current_address_context.json",
             "secret_env_file_env": "MEICAI_SECRET_ENV_FILE",
             "endpoint": "class_products",
             "city_id": "17",
@@ -232,6 +233,7 @@ def test_upsert_site_rule_preserves_meicai_h5_decrypt_fields(tmp_path: Path):
     assert created is True
     assert rule["strategy"] == "meicai_h5_decrypt_batch"
     assert loaded[0]["gateway_base_url"] == "https://mall-entrance.yunshanmeicai.com"
+    assert loaded[0]["current_address_context_path"] == ".local-secrets/meicai_current_address_context.json"
     assert loaded[0]["sale_class_tree_path"] == "tmp/meicai_sale_class_tree.json"
     assert loaded[0]["h5_salts_path"] == "tmp/meicai_h5_salts.json"
     assert loaded[0]["request_source"] == "android"

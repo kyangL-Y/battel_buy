@@ -4,7 +4,11 @@
     <header class="mobile-redesign-hero-card">
       <div class="mobile-redesign-topbar">
         <button type="button" class="mobile-redesign-brand" @click="openProcurementEntry('summary')">
-          <span>采</span>
+          <span class="mobile-redesign-brand-mark" aria-hidden="true">
+            <b>食</b>
+            <b>采</b>
+            <b class="mobile-redesign-brand-cloud">云</b>
+          </span>
           <div>
             <strong>食采云</strong>
             <small>{{ selectedLocationLabel }} · {{ latestSyncLabel }}</small>
@@ -15,8 +19,18 @@
             <i></i>
             {{ selectedLocationLabel }}
           </button>
-          <button type="button" class="mobile-redesign-login-button" aria-label="账号登录" @click="openProcurementEntry()">
-            登录
+          <button
+            type="button"
+            class="mobile-redesign-login-button"
+            :class="{ 'is-authenticated': procurementAccountLabel }"
+            :aria-label="procurementAccountLabel ? `当前账号：${procurementAccountLabel}` : '账号登录'"
+            @click="openProcurementEntry()"
+          >
+            <template v-if="procurementAccountLabel">
+              <span class="mobile-redesign-account-avatar">{{ procurementAccountInitial }}</span>
+              <span class="mobile-redesign-account-name">{{ procurementAccountLabel }}</span>
+            </template>
+            <template v-else>登录</template>
           </button>
           <button type="button" class="mobile-redesign-alert-dot" aria-label="查看价格提醒" @click="openProcurementEntry('alerts')">
             <b>{{ mobileAlertBadge }}</b>
@@ -59,23 +73,8 @@
 
       <div class="mobile-redesign-hero-copy">
         <p>今日采购</p>
-        <h1>登录后查看菜价</h1>
-        <small>{{ selectedLocationLabel }} · {{ latestSyncLabel }}</small>
-      </div>
-
-      <div class="mobile-redesign-auth-panel">
-        <div class="mobile-redesign-auth-panel-copy">
-          <strong>账号登录</strong>
-          <span>登录后查看自己的市场菜价。</span>
-        </div>
-        <div class="mobile-redesign-auth-panel-actions">
-          <button type="button" class="primary" @click="openProcurementEntry()">
-            登录
-          </button>
-          <button type="button" data-testid="supplier-choice-button" @click="openSupplierPortal(false)">
-            我是供应商
-          </button>
-        </div>
+        <h1>{{ mobileLandingHeroTitle }}</h1>
+        <small>{{ mobileLandingHeroSubtitle }}</small>
       </div>
 
       <div class="mobile-redesign-search" :class="{ loading: summaryLoading || locationLoading }">
@@ -905,6 +904,7 @@ import {
 
   buildSnapshotProductSummary,
   clearAuthSession,
+  clearProcurementApiResponseCache,
   dataSourceState,
   extractApiErrorDetail,
   fetchCurrentUser,
@@ -1054,6 +1054,10 @@ const tabs = [
   { key: 'menu', label: '菜单采购', code: 'BUY' },
 ] as const
 const shouldRedirectToStandaloneSupplier = initialPathname !== SUPPLIER_PLATFORM_PATH && (initialMode === 'supplier' || initialTab === 'supplier')
+const initialAuthSession = readAuthSession()
+const initialAuthUserRole = initialAuthSession?.user?.role
+const hasInitialProcurementAccess = Boolean(initialAuthSession?.access_token && (initialAuthUserRole === 'admin' || initialAuthUserRole === 'procurement'))
+const initialWorkspaceRequested = initialMode === 'workspace' || Boolean(initialTab)
 const defaultTab = tabs.some((item) => item.key === initialTab)
 
   ? (initialTab as (typeof tabs)[number]['key'])
@@ -1073,7 +1077,7 @@ const initialWorkbenchSection = isWorkbenchSectionId(initialWorkbenchSectionPara
 
 const viewMode = ref<'landing' | 'workspace'>(
 
-  initialMode === 'workspace' || Boolean(initialTab)
+  initialWorkspaceRequested && hasInitialProcurementAccess
 
     ? 'workspace'
 
@@ -1157,7 +1161,7 @@ const workbenchRefreshing = ref(false)
 const productOptionsContextKey = ref('')
 const mobileTrendSearchOptions = ref<ProductOptionItem[]>([])
 const ACCOUNT_USERNAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.@-]{2,63}$/
-const authSession = ref<AuthLoginResponse | null>(readAuthSession())
+const authSession = ref<AuthLoginResponse | null>(initialAuthSession)
 const procurementAuthVisible = ref(false)
 const procurementAuthSubmitting = ref(false)
 const procurementAuthError = ref('')
@@ -1394,7 +1398,28 @@ const procurementAccountLabel = computed(() => {
   if (!user || (user.role !== 'admin' && user.role !== 'procurement')) return ''
   return user.display_name || user.username
 })
+const procurementAccountInitial = computed(() => procurementAccountLabel.value.trim().charAt(0) || '账')
+const procurementAccountRoleLabel = computed(() => {
+  const role = authSession.value?.user?.role
+  if (role === 'admin') return '管理员'
+  if (role === 'procurement') return '采购账号'
+  return ''
+})
+const mobileLandingHeroTitle = computed(() => (
+  procurementAccountLabel.value
+    ? `欢迎，${procurementAccountLabel.value}`
+    : '登录后查看菜价'
+))
+const mobileLandingHeroSubtitle = computed(() => {
+  const accountRoleLabel = procurementAccountRoleLabel.value
+  return [
+    accountRoleLabel || selectedLocationLabel.value,
+    selectedLocationLabel.value,
+    latestSyncLabel.value,
+  ].filter(Boolean).join(' · ')
+})
 const mobileLocationFallbackOptions = ['河南本地市场', '郑州市', '河南省', '北京', '上海市', '全国']
+const directControlledMunicipalities = new Set(['北京市', '上海市', '天津市', '重庆市'])
 const mobileLocationOptions = computed(() => {
   const options = new Set<string>()
   mobileLocationFallbackOptions.forEach((item) => options.add(item))
@@ -1533,6 +1558,12 @@ function handleRepeatedMobileTab(tabKey: (typeof tabs)[number]['key']) {
   scrollMobileViewportTop()
 }
 
+function ensureProcurementAccess(targetTab: (typeof tabs)[number]['key'] = 'summary') {
+  if (procurementAccountLabel.value) return true
+  openProcurementAuthDialog(targetTab)
+  return false
+}
+
 function handleMobileBack() {
   if (mobileNavigationLocked.value) return
   if (mobileActiveTab.value === 'trend' && mobilePreviousWorkspaceTab.value && mobilePreviousWorkspaceTab.value !== 'trend') {
@@ -1559,6 +1590,7 @@ function syncMobileAlertDraftFromSelection() {
 }
 
 function saveMobileAlertRule() {
+  if (!ensureProcurementAccess('alerts')) return
   syncMobileAlertDraftFromSelection()
   if (!mobileAlertRuleDraft.value.identityKey || !mobileAlertRuleDraft.value.productLabel) return
   const normalizedSourceName = String(mobileAlertRuleDraft.value.sourceName || '').trim()
@@ -1591,6 +1623,7 @@ function resolveMobileAlertIdentityKey(item: MobileAlertActionRow) {
 }
 
 function openMobileAlertTrend(item: MobileAlertActionRow) {
+  if (!ensureProcurementAccess('trend')) return
   const identityKey = resolveMobileAlertIdentityKey(item)
   if (identityKey) {
     handleSelectProduct(identityKey)
@@ -1600,6 +1633,7 @@ function openMobileAlertTrend(item: MobileAlertActionRow) {
 }
 
 function openMobileAlertSupplier(item: MobileAlertActionRow) {
+  if (!ensureProcurementAccess('menu')) return
   const identityKey = resolveMobileAlertIdentityKey(item)
   if (identityKey) {
     selectedProductTouched.value = true
@@ -1615,6 +1649,7 @@ function openMobileAlertSupplier(item: MobileAlertActionRow) {
 }
 
 function acknowledgeMobileAlert(item: MobileAlertActionRow) {
+  if (!ensureProcurementAccess('alerts')) return
   ElMessage.success(`${item.name} 已标记处理`)
 }
 const mobileTabMeta = computed(() => {
@@ -2107,6 +2142,18 @@ function normalizeLiancaiSourceLabel(value?: string | null) {
   return label.includes('莲菜网') ? '莲菜网' : label
 }
 
+function isLiancaiProductImageSource(sourceName: string) {
+  return sourceName === '莲菜网'
+}
+
+function isMeicaiProductImageSource(sourceName: string) {
+  return sourceName === '美菜网'
+}
+
+function isSourceProductImageAllowed(sourceName: string) {
+  return isLiancaiProductImageSource(sourceName) || isMeicaiProductImageSource(sourceName)
+}
+
 function formatMobileAlertMarketLabel(value?: string | null) {
   const rawLabel = String(value || '').trim()
   if (!rawLabel) return selectedLocationLabel.value
@@ -2591,6 +2638,12 @@ const SUMMARY_CACHE_KEY = 'battel.market-summary.cache.v4'
 const PRODUCT_OPTIONS_CACHE_KEY = 'battel.product-options.cache.v3'
 const PRODUCT_SUMMARY_CACHE_KEY = 'battel.product-summary.cache.v3'
 const PRODUCT_TREND_CACHE_KEY = 'battel.product-trend.cache.v3'
+const PROCUREMENT_BUSINESS_CACHE_KEYS = [
+  SUMMARY_CACHE_KEY,
+  PRODUCT_OPTIONS_CACHE_KEY,
+  PRODUCT_SUMMARY_CACHE_KEY,
+  PRODUCT_TREND_CACHE_KEY,
+] as const
 const MOBILE_RECENT_STATE_KEY = 'battel.mobile-recent.v1'
 
 const BEIJING_DATE_FORMATTER = new Intl.DateTimeFormat('zh-CN', {
@@ -2971,6 +3024,62 @@ function writeLocalCache<T>(storageKey: string, cacheKey: string, value: T) {
 
 }
 
+function clearProcurementBusinessCache() {
+  if (typeof window === 'undefined') return
+  const storageKeys = new Set<string>([
+    ...PROCUREMENT_BUSINESS_CACHE_KEYS,
+    'battel.market-summary.cache.v3',
+    'battel.product-options.cache.v2',
+    'battel.product-summary.cache.v2',
+    'battel.product-trend.cache.v2',
+  ])
+  try {
+    storageKeys.forEach((storageKey) => window.localStorage.removeItem(storageKey))
+  } catch {
+    // Ignore local cache cleanup failures.
+  }
+}
+
+function clearProcurementBusinessState() {
+  summaryRequestSequence += 1
+  trendRequestSequence += 1
+  productOptionsLoadSequence += 1
+  marketRows.value = []
+  liancaiCategorySummaryItems.value = []
+  liancaiFacetOptions.value = { keywords: [], brands: [] }
+  sourceCoverageRows.value = []
+  productOptions.value = []
+  productOptionsContextKey.value = ''
+  selectedIdentityKey.value = ''
+  selectedSiteName.value = ''
+  selectedProductFallbackLabel.value = ''
+  productSummary.value = null
+  trendRows.value = []
+  productSupplierQuotes.value = []
+  productSupplierQuotesPromise = null
+  productSupplierQuotesPromiseIdentityKey = ''
+  productSupplierQuotesLoadedIdentityKey = ''
+  trendSiteOptions.value = []
+  trendLoading.value = false
+  summaryLoading.value = false
+  summaryBackfillLoading.value = false
+  summaryCanLoadMore.value = false
+  ingredientRows.value = []
+  planRows.value = []
+  procurementRecommendations.value = []
+  menuPlanLoading.value = false
+  signalOverview.value = null
+  globalAlertRules.value = []
+  supplierOverview.value = null
+  crawlStatus.value = null
+  loadedWorkspaceTabs.clear()
+  loadedWorkbenchSections.clear()
+  summaryNextOffset = 0
+  summaryNextPageParams = null
+  clearProcurementBusinessCache()
+  void clearProcurementApiResponseCache()
+}
+
 if (typeof window !== 'undefined') {
   try {
     window.localStorage.removeItem(PRODUCT_SUMMARY_CACHE_KEY)
@@ -3299,7 +3408,7 @@ function normalizeSelectableProductOption(item: ProductOptionItem): ProductOptio
     liancai_subcategory: item.liancai_subcategory ? String(item.liancai_subcategory).trim() : null,
     liancai_keyword: item.liancai_keyword ? String(item.liancai_keyword).trim() : null,
     liancai_brand_name: item.liancai_brand_name ? String(item.liancai_brand_name).trim() : null,
-    image_url: normalizedSourceName === '莲菜网' && item.image_url ? String(item.image_url).trim() : null,
+    image_url: isSourceProductImageAllowed(normalizedSourceName) && item.image_url ? String(item.image_url).trim() : null,
   }
 }
 
@@ -3641,6 +3750,7 @@ function openLandingPriorityEntry(target: 'alerts' | 'signals' | 'summary') {
 
 
 async function openCategoryMarket(categoryKey: string, subcategoryKey = '') {
+  if (!ensureProcurementAccess('summary')) return
   const normalizedCategory = String(categoryKey || '').trim()
   const normalizedSubcategory = String(subcategoryKey || '').trim()
   const selectedTopCategory = !normalizedCategory || normalizedCategory === '全部' ? '' : normalizedCategory
@@ -3662,6 +3772,7 @@ async function openCategoryMarket(categoryKey: string, subcategoryKey = '') {
 
 
 function openProductDetail(identityKey: string) {
+  if (!ensureProcurementAccess('trend')) return
   if (isMobileViewport.value && mobileNavigationLocked.value && mobileRouteFeedbackTab.value === 'trend') return
 
   if (!identityKey || identityKey === 'placeholder') {
@@ -3700,6 +3811,7 @@ function openProductDetail(identityKey: string) {
 
 
 async function openPrimaryMobileSpotlight() {
+  if (!ensureProcurementAccess('trend')) return
 
   const spotlightKey = primaryMobileSpotlight.value.identityKey
 
@@ -3790,6 +3902,7 @@ function applyAuthSession(session: AuthLoginResponse | null) {
   } else {
 
     clearAuthSession()
+    clearProcurementBusinessState()
 
   }
 
@@ -3815,11 +3928,11 @@ function applyAuthSession(session: AuthLoginResponse | null) {
 }
 
 
-function openProcurementAuthDialog() {
+function openProcurementAuthDialog(targetTab: (typeof tabs)[number]['key'] | '' = '') {
 
   procurementAuthError.value = ''
 
-  pendingProcurementEntryTab.value = ''
+  pendingProcurementEntryTab.value = targetTab
 
   procurementAuthForm.username = authSession.value?.user?.username || procurementAuthForm.username
 
@@ -3856,17 +3969,12 @@ function openProcurementEntry(targetTab: (typeof tabs)[number]['key'] = 'summary
 
   }
 
-  openProcurementAuthDialog()
-
-  pendingProcurementEntryTab.value = targetTab
+  openProcurementAuthDialog(targetTab)
 
 }
 
 function openPublicMarketSummary() {
-  enterWorkspace('summary')
-  if (!marketRows.value.length && !summaryLoading.value) {
-    void reloadSummary()
-  }
+  openProcurementEntry('summary')
 }
 
 
@@ -3967,8 +4075,8 @@ function logoutProcurementAuth() {
 
   procurementAuthForm.password = ''
 
-  if (shouldReloadSummaryForCurrentView()) {
-    void reloadSummary()
+  if (viewMode.value === 'workspace') {
+    goToLanding()
   }
 
   ElMessage.success('已退出采购端账号')
@@ -4000,6 +4108,12 @@ async function restoreAuthSession() {
   } catch {
 
     applyAuthSession(null)
+    if (viewMode.value === 'workspace') {
+      goToLanding()
+      if (initialWorkspaceRequested) {
+        openProcurementAuthDialog(defaultTab)
+      }
+    }
 
   }
 
@@ -4008,6 +4122,10 @@ async function restoreAuthSession() {
 
 
 function enterWorkspace(targetTab: (typeof tabs)[number]['key'] = 'summary', options: { preserveSummaryFilters?: boolean } = {}) {
+  if (!procurementAccountLabel.value) {
+    openProcurementAuthDialog(targetTab)
+    return
+  }
   if (isMobileViewport.value && mobileNavigationLocked.value && mobileRouteFeedbackTab.value === targetTab) return
   if (targetTab === 'summary' && activeTab.value !== 'summary' && !options.preserveSummaryFilters) {
     resetSummaryFilters()
@@ -4161,6 +4279,7 @@ async function activateTab(tabKey: (typeof tabs)[number]['key']) {
 }
 
 function openMobileCategoryDirectory() {
+  if (!ensureProcurementAccess('summary')) return
   mobileHomePanel.value = 'categories'
   scrollMobileViewportTop()
 }
@@ -4172,32 +4291,49 @@ function toggleMobileLocationPanel() {
   }
 }
 
+function resolveMobileLocationSelection(value: string) {
+  const normalized = String(value || '').trim()
+  if (!normalized) return null
+  if (normalized === '北京') return { province: '北京市', city: '北京市', preset: '' as const }
+  if (normalized === '上海') return { province: '上海市', city: '上海市', preset: '' as const }
+  if (normalized === '天津') return { province: '天津市', city: '天津市', preset: '' as const }
+  if (normalized === '重庆') return { province: '重庆市', city: '重庆市', preset: '' as const }
+  if (directControlledMunicipalities.has(normalized)) {
+    return { province: normalized, city: normalized, preset: '' as const }
+  }
+  if (normalized === '河南本地市场' || normalized === '全国') {
+    return {
+      province: normalized === '全国' ? '' : '河南省',
+      city: '',
+      preset: normalized === '全国' ? 'all' as const : 'henan' as const,
+    }
+  }
+  if (provinces.value.includes(normalized)) {
+    return {
+      province: normalized,
+      city: (provinceCityMap.value[normalized] || []).includes(filters.city) ? filters.city : '',
+      preset: '' as const,
+    }
+  }
+  const matchedProvince = Object.entries(provinceCityMap.value).find(([, cityList]) => cityList.includes(normalized))?.[0]
+  return {
+    province: matchedProvince || filters.province,
+    city: normalized,
+    preset: '' as const,
+  }
+}
+
 function selectMobileLocation(value: string) {
   if (isAuthScopedLocationLocked.value) {
     locationSuggestionHint.value = '当前账号已绑定地区'
     ElMessage.info(locationSuggestionHint.value)
     return
   }
-  const normalized = String(value || '').trim()
-  if (!normalized) return
-  if (normalized === '河南本地市场' || normalized === '全国') {
-    mobileLocationPreset.value = normalized === '全国' ? 'all' : 'henan'
-    filters.province = normalized === '全国' ? '' : '河南省'
-    filters.city = ''
-    showMobileLocationPanel.value = false
-    return
-  }
-  mobileLocationPreset.value = ''
-  if (provinces.value.includes(normalized)) {
-    filters.province = normalized
-    if (!(provinceCityMap.value[normalized] || []).includes(filters.city)) {
-      filters.city = ''
-    }
-  } else {
-    const matchedProvince = Object.entries(provinceCityMap.value).find(([, cityList]) => cityList.includes(normalized))?.[0] || filters.province
-    filters.province = matchedProvince || filters.province
-    filters.city = normalized
-  }
+  const selection = resolveMobileLocationSelection(value)
+  if (!selection) return
+  mobileLocationPreset.value = selection.preset
+  filters.province = selection.province
+  filters.city = selection.city
   showMobileLocationPanel.value = false
 }
 
@@ -4836,10 +4972,17 @@ function marketSummaryRowsFromProductOptions(options: ProductOptionItem[]): Mark
 
 const activeSupplierSummaryRow = computed<MarketSummaryItem | null>(() => {
   if (!selectedIdentityKey.value) return null
-  const supplierTrendRows = trendRows.value.filter((item) => String(item.source_name || '').includes('供应平台') && item.current_price != null)
+  const supplierTrendRows = trendRows.value.filter((item) => (
+    String(item.source_tier || '').trim() === '供应商报价'
+    || String(item.source_url || '').trim().startsWith('supplier://')
+  ) && item.current_price != null)
   if (supplierTrendRows.length) {
     const lowestTrend = [...supplierTrendRows].sort((left, right) => Number(left.current_price) - Number(right.current_price))[0]
     const productLabel = lowestTrend.price_identity_label || selectedProductFallbackLabel.value || selectedIdentityKey.value
+    const supplierNames = supplierTrendRows
+      .map((item) => item.site_name || item.source_name)
+      .filter(Boolean)
+      .join('、') || '供应商'
     return {
       product_name: productLabel,
       price_identity_key: selectedIdentityKey.value,
@@ -4852,10 +4995,12 @@ const activeSupplierSummaryRow = computed<MarketSummaryItem | null>(() => {
       highest_price: Number(lowestTrend.current_price),
       market_count: supplierTrendRows.length,
       site_count: supplierTrendRows.length,
-      lowest_price_site: '供应平台',
-      highest_price_site: '供应平台',
-      source_names: '供应平台',
-      source_display_names: supplierTrendRows.map((item) => item.site_name).filter(Boolean).join('、') || '供应平台',
+      lowest_price_site: lowestTrend.site_name || lowestTrend.source_name || '供应商',
+      highest_price_site: lowestTrend.site_name || lowestTrend.source_name || '供应商',
+      source_names: supplierNames,
+      source_display_names: supplierNames,
+      source_tier: '供应商报价',
+      source_url: lowestTrend.source_url || null,
       latest_captured_at: lowestTrend.captured_at || null,
       price_unit_basis: lowestTrend.spec_text || '公斤',
     }
@@ -4865,6 +5010,7 @@ const activeSupplierSummaryRow = computed<MarketSummaryItem | null>(() => {
   if (!activeQuotes.length) return null
   const lowestQuote = [...activeQuotes].sort((left, right) => Number(left.quote_price) - Number(right.quote_price))[0]
   const productLabel = lowestQuote.price_identity_label || selectedProductFallbackLabel.value || selectedIdentityKey.value
+  const supplierNames = activeQuotes.map((item) => item.supplier_name).filter(Boolean).join('、') || '供应商'
   return {
     product_name: productLabel,
     price_identity_key: selectedIdentityKey.value,
@@ -4877,10 +5023,11 @@ const activeSupplierSummaryRow = computed<MarketSummaryItem | null>(() => {
     highest_price: Number(lowestQuote.quote_price),
     market_count: activeQuotes.length,
     site_count: activeQuotes.length,
-    lowest_price_site: '供应平台',
-    highest_price_site: '供应平台',
-    source_names: '供应平台',
-    source_display_names: activeQuotes.map((item) => item.supplier_name).filter(Boolean).join('、') || '供应平台',
+    lowest_price_site: lowestQuote.supplier_name || '供应商',
+    highest_price_site: lowestQuote.supplier_name || '供应商',
+    source_names: supplierNames,
+    source_display_names: supplierNames,
+    source_tier: '供应商报价',
     latest_captured_at: lowestQuote.quoted_at || null,
     price_unit_basis: lowestQuote.quote_unit || '公斤',
   }
@@ -5683,6 +5830,7 @@ function handleMenuPlanConfirmRow(row: MenuPlanRow) {
 }
 
 async function submitMenuPlan() {
+  if (!ensureProcurementAccess('menu')) return
 
   menuPlanLoading.value = true
 
@@ -5853,6 +6001,11 @@ watch(selectedIdentityKey, async (identityKey, prevIdentityKey) => {
 onMounted(async () => {
   if (shouldRedirectToStandaloneSupplier) {
     openSupplierBackend()
+    return
+  }
+  if (initialWorkspaceRequested && !hasInitialProcurementAccess) {
+    openProcurementAuthDialog(defaultTab)
+    syncMobileAlertDraftFromSelection()
     return
   }
   await restoreAuthSession()
@@ -8757,6 +8910,23 @@ onBeforeUnmount(() => {
   gap: 14px;
 }
 
+.market-auth-notice {
+  display: grid;
+  gap: 3px;
+}
+
+.market-auth-notice strong {
+  color: #0f172a;
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+.market-auth-notice span {
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
 .market-auth-mobile-layer {
   position: fixed;
   inset: 0;
@@ -8907,8 +9077,8 @@ onBeforeUnmount(() => {
 }
 
 .market-auth-actions button {
-  min-height: 38px;
-  padding: 0 14px;
+  min-height: 44px;
+  padding: 0 16px;
   border: 1px solid #dbe4ef;
   border-radius: 999px;
   background: #fff;
@@ -8918,8 +9088,8 @@ onBeforeUnmount(() => {
 }
 
 .market-auth-actions button.primary {
-  border-color: #1d4ed8;
-  background: #2563eb;
+  border-color: #1f8b68;
+  background: #1f8b68;
   color: #fff;
 }
 
@@ -10752,7 +10922,8 @@ onBeforeUnmount(() => {
 }
 
 .mobile-redesign-home {
-  padding: 8px 8px calc(78px + env(safe-area-inset-bottom, 0px));
+  min-height: 100dvh;
+  padding: 14px 14px calc(104px + env(safe-area-inset-bottom, 0px));
 }
 
 .mobile-redesign-hero-card,
@@ -10772,20 +10943,105 @@ onBeforeUnmount(() => {
 }
 
 .mobile-redesign-hero-card {
-  padding: 10px;
+  display: grid;
+  gap: 14px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .mobile-redesign-hero-card::before {
   display: none;
 }
 
-.mobile-redesign-brand > span {
-  width: 40px;
-  height: 40px;
+.mobile-redesign-brand-mark {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  grid-template-rows: 1fr 13px;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 7px 6px 6px;
+  overflow: hidden;
+  box-sizing: border-box;
   border-radius: 13px;
-  background: var(--phone-green);
+  background: linear-gradient(135deg, #1f8b68 0%, #2fa56d 58%, #f0b44c 100%);
   color: #ffffff;
   box-shadow: 0 8px 18px rgba(31, 139, 104, .18);
+}
+
+.mobile-redesign-brand-mark::after {
+  position: absolute;
+  right: 6px;
+  top: 6px;
+  width: 10px;
+  height: 7px;
+  border-radius: 10px 10px 2px 10px;
+  background: rgba(255, 255, 255, .84);
+  content: "";
+  transform: rotate(-24deg);
+}
+
+.mobile-redesign-brand-mark b {
+  position: relative;
+  z-index: 1;
+  display: block;
+  font-size: 14px;
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: 0;
+  text-shadow: 0 1px 5px rgba(19, 68, 48, .24);
+}
+
+.mobile-redesign-brand-mark .mobile-redesign-brand-cloud {
+  grid-column: 1 / -1;
+  min-width: 22px;
+  padding: 1px 6px 2px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .18);
+  font-size: 11px;
+}
+
+.mobile-redesign-topbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(78px, auto) 46px;
+  align-items: center;
+  gap: 10px 8px;
+}
+
+.mobile-redesign-brand {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  grid-column: 1;
+  grid-row: 1;
+  min-width: 0;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+
+.mobile-redesign-brand div {
+  min-width: 0;
+}
+
+.mobile-redesign-brand strong,
+.mobile-redesign-brand small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mobile-redesign-top-actions {
+  display: contents;
 }
 
 .mobile-redesign-brand strong,
@@ -10825,9 +11081,10 @@ onBeforeUnmount(() => {
 }
 
 .mobile-redesign-hero-copy h1 {
-  max-width: 280px;
-  font-size: 24px;
-  line-height: 1.18;
+  max-width: 100%;
+  margin: 4px 0 0;
+  font-size: 28px;
+  line-height: 1.12;
 }
 
 .mobile-redesign-location,
@@ -10841,6 +11098,86 @@ onBeforeUnmount(() => {
   border-radius: 12px;
   background: #ffffff;
   color: var(--phone-green);
+  min-width: 0;
+}
+
+.mobile-redesign-location,
+.mobile-redesign-login-button,
+.mobile-redesign-alert-dot {
+  min-height: 44px;
+}
+
+.mobile-redesign-location {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 7px;
+  width: 100%;
+  padding: 0 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mobile-redesign-login-button,
+.mobile-redesign-alert-dot {
+  padding: 0 10px;
+  font-weight: 800;
+}
+
+.mobile-redesign-login-button {
+  grid-column: 2;
+  grid-row: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  max-width: 126px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.mobile-redesign-login-button.is-authenticated {
+  justify-content: flex-start;
+  padding: 0 9px 0 8px;
+}
+
+.mobile-redesign-account-avatar {
+  display: grid;
+  place-items: center;
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .18);
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.mobile-redesign-account-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mobile-redesign-alert-dot {
+  grid-column: 3;
+  grid-row: 1;
+  display: grid;
+  place-items: center;
+}
+
+.mobile-redesign-alert-dot b {
+  display: grid;
+  place-items: center;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 6px;
+  border-radius: 999px;
+  line-height: 1;
 }
 
 .mobile-redesign-login-button,
@@ -10885,47 +11222,94 @@ onBeforeUnmount(() => {
 }
 
 .mobile-redesign-auth-panel {
-  grid-template-columns: minmax(0, 1fr) 108px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(174px, .95fr);
+  align-items: center;
+  gap: 10px;
   padding: 10px;
 }
 
 .mobile-redesign-auth-panel-copy strong {
+  display: block;
   color: var(--phone-ink);
+  font-size: 16px;
+  line-height: 1.25;
   letter-spacing: 0;
 }
 
 .mobile-redesign-auth-panel-copy span {
+  display: block;
+  margin-top: 3px;
   color: var(--phone-muted);
+  font-size: 13px;
+  line-height: 1.45;
 }
 
 .mobile-redesign-auth-panel-actions button {
-  min-height: 34px;
+  min-height: 44px;
   font-size: 13px;
 }
 
-.mobile-redesign-search {
-  padding: 4px;
+.mobile-redesign-auth-panel-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
 }
 
+.mobile-redesign-auth-panel-actions button:not(.primary) {
+  min-height: 44px;
+}
+
+.mobile-redesign-search {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  padding: 8px;
+}
+
+.mobile-redesign-search-input,
 .mobile-redesign-search :deep(.el-input__wrapper) {
-  min-height: 36px;
+  min-height: 44px;
   border-radius: 12px;
 }
 
+.mobile-redesign-search-input {
+  min-width: 0;
+  width: 100%;
+  padding: 0 12px;
+  border: 0;
+  background: transparent;
+  color: var(--phone-ink);
+  font: inherit;
+}
+
 .mobile-redesign-search button {
-  min-height: 38px;
+  min-height: 44px;
+  padding: 0 14px;
+  font-weight: 800;
+}
+
+.mobile-redesign-search-clear {
+  grid-column: 1 / -1;
 }
 
 .mobile-redesign-command-grid {
-  gap: 7px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
 }
 
 .mobile-redesign-command-grid button,
 .mobile-redesign-command-grid .alert,
 .mobile-redesign-command-grid .market,
 .mobile-redesign-command-grid .buy {
-  min-height: 56px;
+  display: grid;
+  gap: 3px;
+  min-height: 76px;
+  align-content: start;
+  padding: 9px;
   background: #ffffff;
+  text-align: left;
 }
 
 .mobile-redesign-command-grid span {
@@ -10937,23 +11321,51 @@ onBeforeUnmount(() => {
   letter-spacing: 0;
 }
 
+.mobile-redesign-command-grid small {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--phone-muted);
+  font-size: 11px;
+  line-height: 1.25;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
 .mobile-redesign-section {
-  padding: 10px;
+  padding: 14px;
+}
+
+.mobile-redesign-main {
+  display: grid;
+  gap: 12px;
+  padding: 12px 0 0;
+}
+
+.mobile-redesign-section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
 }
 
 .mobile-redesign-section-head h2 {
-  font-size: 18px;
+  font-size: 17px;
   line-height: 1.25;
 }
 
 .mobile-redesign-section-head button {
-  min-height: 34px;
+  min-height: 40px;
   padding: 0 12px;
 }
 
 .mobile-redesign-priority-card,
 .mobile-redesign-priority-card.is-main {
-  min-height: 86px;
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  min-height: 76px;
+  padding: 12px;
   border: 1px solid rgba(31, 139, 104, .22);
   border-radius: 16px;
   background: linear-gradient(180deg, #ffffff 0%, #eef8f2 100%);
@@ -10968,14 +11380,19 @@ onBeforeUnmount(() => {
 
 .mobile-redesign-priority-card strong,
 .mobile-redesign-priority-card.is-main strong {
+  display: block;
   color: var(--phone-ink);
-  font-size: 18px;
+  font-size: 17px;
+  line-height: 1.25;
   letter-spacing: 0;
 }
 
 .mobile-redesign-priority-card small,
 .mobile-redesign-priority-card.is-main small {
+  display: block;
   color: var(--phone-muted);
+  font-size: 12px;
+  line-height: 1.35;
 }
 
 .mobile-redesign-product-card footer {
@@ -10999,7 +11416,24 @@ onBeforeUnmount(() => {
 .mobile-redesign-source-grid button,
 .mobile-redesign-directory-card,
 .mobile-redesign-entry-grid button {
-  min-height: 76px;
+  min-height: 92px;
+  padding: 14px;
+  text-align: left;
+}
+
+.mobile-redesign-product-rail,
+.mobile-redesign-alert-list,
+.mobile-redesign-source-grid,
+.mobile-redesign-directory-grid,
+.mobile-redesign-entry-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.mobile-redesign-source-grid,
+.mobile-redesign-directory-grid,
+.mobile-redesign-entry-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .mobile-redesign-nav,
@@ -11011,13 +11445,25 @@ onBeforeUnmount(() => {
   backdrop-filter: blur(14px);
 }
 
+.market-mobile-home.mobile-redesign-home .mobile-redesign-nav {
+  left: 14px;
+  right: 14px;
+  bottom: max(12px, env(safe-area-inset-bottom, 0px));
+  padding: 10px;
+}
+
 .mobile-redesign-nav .market-mobile-bottom-item,
 .mobile-redesign-workspace .market-mobile-bottom-item {
-  min-height: 46px;
+  min-height: 50px;
   border-radius: 14px;
   color: var(--phone-muted);
   touch-action: manipulation;
   transition: background .16s ease, color .16s ease, transform .16s ease;
+}
+
+.market-mobile-home.mobile-redesign-home .mobile-redesign-nav .market-mobile-bottom-item {
+  min-height: 52px;
+  padding: 8px 4px;
 }
 
 .mobile-redesign-nav .market-mobile-bottom-item.active,
@@ -11054,10 +11500,10 @@ onBeforeUnmount(() => {
   border-bottom: 1px solid var(--phone-line);
   background: rgba(245, 251, 247, .94);
   backdrop-filter: blur(16px);
-  grid-template-columns: 38px minmax(0, 1fr) 40px 38px;
-  gap: 7px;
-  min-height: 56px;
-  padding: 8px 10px;
+  grid-template-columns: 44px minmax(0, 1fr) 48px 44px;
+  gap: 8px;
+  min-height: 64px;
+  padding: 9px 10px;
 }
 
 .mobile-redesign-workspace-head .market-mobile-shell-copy {
@@ -11083,9 +11529,9 @@ onBeforeUnmount(() => {
 .mobile-redesign-workspace .market-mobile-back-button,
 .mobile-redesign-workspace .market-mobile-message-button,
 .mobile-redesign-workspace .mobile-trend-shortcut.market-mobile-bottom-item {
-  width: 38px;
-  min-width: 38px;
-  min-height: 38px;
+  width: 44px;
+  min-width: 44px;
+  min-height: 44px;
   border-radius: 12px;
 }
 

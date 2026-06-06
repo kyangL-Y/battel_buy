@@ -86,6 +86,10 @@ export async function fetchCurrentUser(): Promise<AuthMeResponse> {
   return (await loadApiModule()).fetchCurrentUser()
 }
 
+export async function clearProcurementApiResponseCache() {
+  return (await loadApiModule()).clearProcurementApiResponseCache()
+}
+
 export async function fetchAuthUsers(
   params: { role?: string; status?: string; keyword?: string } = {},
 ): Promise<AuthUserListResponse> {

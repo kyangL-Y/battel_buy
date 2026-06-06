@@ -98,11 +98,21 @@ def _create_authenticated_client(
 
         return user
 
+    def _require_procurement_or_admin_user():
+
+        if role not in {"admin", "procurement"}:
+
+            raise HTTPException(status_code=403, detail="当前账号没有采购端权限")
+
+        return user
+
 
 
     monkeypatch.setattr(api_app_module, "require_authenticated_user", _require_authenticated_user)
 
     monkeypatch.setattr(api_app_module, "require_admin_user", _require_admin_user)
+
+    monkeypatch.setattr(api_app_module, "require_procurement_or_admin_user", _require_procurement_or_admin_user)
 
     if db is not None:
 
@@ -1196,6 +1206,32 @@ def test_ai_search_endpoint_returns_answer(monkeypatch):
 
 
 
+def test_ai_search_endpoint_requires_procurement_or_admin(monkeypatch):
+
+    monkeypatch.setattr(api_app_module, "get_runtime_settings", lambda: {"ai": {"enabled": True}})
+
+    monkeypatch.setattr(api_app_module, "run_search_query", lambda query, runtime_config=None: f"搜索结果: {query}")
+
+    unauthenticated_client = TestClient(create_app())
+    unauthenticated_response = unauthenticated_client.post("/api/ai/search", json={"query": "今天的新闻"})
+
+    supplier_client = _create_authenticated_client(monkeypatch, role="supplier", supplier_id=5)
+    supplier_response = supplier_client.post("/api/ai/search", json={"query": "今天的新闻"})
+
+    procurement_client = _create_authenticated_client(
+        monkeypatch,
+        role="procurement",
+        supplier_id=None,
+        procurement_supplier_ids=[5],
+    )
+    procurement_response = procurement_client.post("/api/ai/search", json={"query": "今天的新闻"})
+
+    assert unauthenticated_response.status_code == 401
+    assert supplier_response.status_code == 403
+    assert procurement_response.status_code == 200
+
+
+
 def test_product_endpoints_forward_city_and_province(monkeypatch):
 
     monkeypatch.setattr(api_app_module, "get_product_history_identity_df", lambda _: pd.DataFrame())
@@ -1275,7 +1311,6 @@ def test_market_summary_endpoint_limits_and_caches_payload(monkeypatch):
     api_app_module._clear_market_summary_disk_cache()
 
     calls = {"summary": 0}
-    calls = {"summary": 0}
 
     monkeypatch.setattr(api_app_module, "get_latest_df", lambda: pd.DataFrame({"product_name": ["白菜"]}))
 
@@ -1330,6 +1365,107 @@ def test_market_summary_endpoint_limits_and_caches_payload(monkeypatch):
     api_app_module._cached_market_summary_payload.cache_clear()
 
 
+
+
+
+def test_market_summary_endpoint_requires_procurement_or_admin(monkeypatch):
+
+    api_app_module._cached_market_summary_payload.cache_clear()
+
+    api_app_module._clear_market_summary_disk_cache()
+
+    monkeypatch.setattr(api_app_module, "get_latest_df", lambda: pd.DataFrame({"product_name": ["白菜"]}))
+
+    monkeypatch.setattr(
+        api_app_module,
+        "compute_cross_site_price_summary",
+        lambda *args, **kwargs: pd.DataFrame([{"product_name": "白菜", "lowest_price": 1.2}]),
+    )
+
+    unauthenticated_client = TestClient(create_app())
+    unauthenticated_response = unauthenticated_client.get("/api/market/summary")
+
+    supplier_client = _create_authenticated_client(monkeypatch, role="supplier", supplier_id=5)
+    supplier_response = supplier_client.get("/api/market/summary")
+
+    procurement_client = _create_authenticated_client(
+        monkeypatch,
+        role="procurement",
+        supplier_id=None,
+        procurement_supplier_ids=[5],
+    )
+    procurement_response = procurement_client.get("/api/market/summary")
+
+    admin_client = _create_authenticated_client(monkeypatch, role="admin", supplier_id=None)
+    admin_response = admin_client.get("/api/market/summary")
+
+    assert unauthenticated_response.status_code == 401
+    assert supplier_response.status_code == 403
+    assert procurement_response.status_code == 200
+    assert admin_response.status_code == 200
+
+    api_app_module._cached_market_summary_payload.cache_clear()
+
+
+def test_procurement_market_price_reads_only_include_bound_suppliers(monkeypatch):
+    api_app_module._cached_market_summary_payload.cache_clear()
+    api_app_module._clear_market_summary_disk_cache()
+    monkeypatch.setattr(api_app_module, "get_latest_df", lambda: pd.DataFrame())
+    monkeypatch.setattr(api_app_module, "get_product_history_identity_df", lambda _: pd.DataFrame())
+    monkeypatch.setattr(api_app_module, "get_identity_aliases", lambda identity_key: [identity_key])
+
+    class _FakeDb:
+        def get_latest_supplier_quotes(self, price_identity_keys=None):
+            return pd.DataFrame(
+                [
+                    {
+                        "record_id": 10,
+                        "supplier_id": 1,
+                        "supplier_name": "鲜蔬档口A",
+                        "price_identity_key": "白菜",
+                        "price_identity_label": "白菜",
+                        "product_name": "白菜",
+                        "market_category": "蔬菜类",
+                        "quote_price": 2.5,
+                        "quote_unit": "斤",
+                        "quoted_at": "2026-06-01T09:00:00",
+                    },
+                    {
+                        "record_id": 11,
+                        "supplier_id": 2,
+                        "supplier_name": "鲜蔬档口B",
+                        "price_identity_key": "白菜",
+                        "price_identity_label": "白菜",
+                        "product_name": "白菜",
+                        "market_category": "蔬菜类",
+                        "quote_price": 1.8,
+                        "quote_unit": "斤",
+                        "quoted_at": "2026-06-01T09:10:00",
+                    },
+                ]
+            )
+
+    monkeypatch.setattr(api_app_module, "get_db", lambda: _FakeDb())
+    monkeypatch.setattr(api_deps_module, "get_db", lambda: _FakeDb())
+    client = _create_authenticated_client(
+        monkeypatch,
+        role="procurement",
+        supplier_id=None,
+        procurement_supplier_ids=[1],
+    )
+
+    summary_response = client.get("/api/market/summary?keyword=白菜")
+    trend_response = client.get("/api/product/%E7%99%BD%E8%8F%9C/trend")
+    quotes_response = client.get("/api/product/%E7%99%BD%E8%8F%9C/supplier-quotes")
+
+    assert summary_response.status_code == 200
+    assert trend_response.status_code == 200
+    assert quotes_response.status_code == 200
+    assert summary_response.json()["items"][0]["source_names"] == "鲜蔬档口A"
+    assert {item["site_name"] for item in trend_response.json()["items"]} == {"鲜蔬档口A"}
+    assert [item["supplier_name"] for item in quotes_response.json()["items"]] == ["鲜蔬档口A"]
+
+    api_app_module._cached_market_summary_payload.cache_clear()
 
 
 

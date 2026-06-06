@@ -78,6 +78,27 @@ export {
 }
 export type { AuthSessionState }
 
+function shouldUseStaticSnapshot(error: unknown) {
+  const status = getApiErrorStatus(error)
+  return status !== 401 && status !== 403
+}
+
+export function clearProcurementApiResponseCache() {
+  productTrendRequests.clear()
+  productTrendResponseCache.clear()
+}
+
+function assertProcurementApiAccess() {
+  const sessions = [readAuthSession('procurement'), readAuthSession('admin')]
+  const canUseProcurementApi = sessions.some((session) => {
+    const role = session?.user?.role
+    return Boolean(session?.access_token && (role === 'admin' || role === 'procurement'))
+  })
+  if (!canUseProcurementApi) {
+    throw new Error('请先登录采购端账号')
+  }
+}
+
 export async function login(payload: AuthLoginPayload) {
   return requestWithState(async () => {
     const { data } = await api.post<AuthLoginResponse>('/auth/login', payload, { timeout: AUTH_REQUEST_TIMEOUT })
@@ -137,10 +158,11 @@ export async function deleteAuthUser(userId: number) {
 export async function fetchLocationOptions() {
   try {
     return await requestWithState(async () => {
-      const { data } = await api.get<LocationOptionsResponse>('/location/options')
+      const { data } = await publicApi.get<LocationOptionsResponse>('/location/options')
       return data
     })
   } catch (error) {
+    if (!shouldUseStaticSnapshot(error)) throw error
     const snapshot = await loadMarketSnapshot()
     if (snapshot?.location_options) {
       markStaticDataSource()
@@ -152,7 +174,7 @@ export async function fetchLocationOptions() {
 
 export async function fetchLocationSuggestion(latitude?: number, longitude?: number) {
   return requestWithState(async () => {
-    const { data } = await api.get<LocationSuggestionResponse>('/location/suggest', {
+    const { data } = await publicApi.get<LocationSuggestionResponse>('/location/suggest', {
       params: latitude != null && longitude != null ? { latitude, longitude } : undefined,
       timeout: 8000,
     })
@@ -161,12 +183,14 @@ export async function fetchLocationSuggestion(latitude?: number, longitude?: num
 }
 
 export async function fetchSourceCoverage() {
+  assertProcurementApiAccess()
   try {
     return await requestWithState(async () => {
       const { data } = await api.get('/source/coverage', { timeout: 45000 })
       return data
     }, { affectGlobalState: false })
   } catch (error) {
+    if (!shouldUseStaticSnapshot(error)) throw error
     const snapshot = await loadMarketSnapshot()
     if (snapshot?.source_coverage) {
       markStaticDataSource()
@@ -191,6 +215,7 @@ export async function updateSourceStrategy(payload: SourceStrategyUpdatePayload)
 }
 
 export async function fetchGlobalAlertRules() {
+  assertProcurementApiAccess()
   return requestWithState(async () => {
     const { data } = await api.get<{ items: GlobalAlertRuleItem[] }>('/settings/alerts')
     return data
@@ -205,6 +230,7 @@ export async function updateGlobalAlertRules(items: GlobalAlertRuleItem[]) {
 }
 
 export async function fetchCrawlStatus() {
+  assertProcurementApiAccess()
   return requestWithState(async () => {
     const { data } = await api.get('/crawl/status')
     return data
@@ -249,12 +275,14 @@ export async function fetchMarketSummary(params: {
   limit?: number
   offset?: number
 }) {
+  assertProcurementApiAccess()
   try {
     return await requestWithState(async () => {
       const { data } = await api.get('/market/summary', { params, timeout: 60000 })
       return data
     })
   } catch (error) {
+    if (!shouldUseStaticSnapshot(error)) throw error
     const snapshot = await loadMarketSnapshot()
     const snapshotRows = snapshot?.market_summary?.items
     const snapshotHasAnyImage = Array.isArray(snapshotRows)
@@ -283,12 +311,14 @@ export async function fetchProductOptions(params: {
   limit?: number
   offset?: number
 }) {
+  assertProcurementApiAccess()
   try {
     return await requestWithState(async () => {
       const { data } = await api.get('/product/options', { params, timeout: 45000 })
       return data
     }, { affectGlobalState: false })
   } catch (error) {
+    if (!shouldUseStaticSnapshot(error)) throw error
     const snapshot = await loadMarketSnapshot()
     if (snapshot?.product_options?.items || snapshot?.market_summary?.items) {
       markStaticDataSource()
@@ -314,6 +344,7 @@ export async function fetchProductSummary(identityKey: string, params?: {
   liancai_keyword?: string
   liancai_brand?: string
 }) {
+  assertProcurementApiAccess()
   const decodedIdentityKey = decodeURIComponent(identityKey)
   return requestWithState(async () => {
     const { data } = await api.get(`/product/${encodeURIComponent(identityKey)}/summary`, { params })
@@ -322,6 +353,7 @@ export async function fetchProductSummary(identityKey: string, params?: {
 }
 
 export async function fetchProductTrend(identityKey: string, params: ProductTrendParams) {
+  assertProcurementApiAccess()
   const requestKey = JSON.stringify({
     identityKey,
     mode: params.mode || '',
@@ -354,6 +386,7 @@ export async function fetchProductTrend(identityKey: string, params: ProductTren
     })
     return data
   }, { affectGlobalState: false }).catch(async (error) => {
+    if (!shouldUseStaticSnapshot(error)) throw error
     const snapshot = await loadMarketSnapshot()
     const snapshotTrendEntry = findSnapshotProductTrend(snapshot?.product_trends, decodeURIComponent(identityKey))
     if (!snapshotTrendEntry) throw error
@@ -392,12 +425,14 @@ export async function fetchProductTrend(identityKey: string, params: ProductTren
 }
 
 export async function fetchLiancaiCategorySummary(params?: { source_name?: string }) {
+  assertProcurementApiAccess()
   try {
     return await requestWithState(async () => {
       const { data } = await api.get<{ items: LiancaiCategorySummaryItem[] }>('/liancai/category-summary', { params })
       return data
     }, { affectGlobalState: false })
   } catch (error) {
+    if (!shouldUseStaticSnapshot(error)) throw error
     const snapshot = await loadMarketSnapshot()
     if (snapshot?.liancai_category_summary) {
       markStaticDataSource()
@@ -408,6 +443,7 @@ export async function fetchLiancaiCategorySummary(params?: { source_name?: strin
 }
 
 export async function fetchLiancaiFacets(params: { liancai_top_category?: string; liancai_subcategory?: string }) {
+  assertProcurementApiAccess()
   const facetKey = `${normalizeText(params.liancai_top_category)}\u0001${normalizeText(params.liancai_subcategory)}`
   try {
     return await requestWithState(async () => {
@@ -415,6 +451,7 @@ export async function fetchLiancaiFacets(params: { liancai_top_category?: string
       return data
     }, { affectGlobalState: false })
   } catch (error) {
+    if (!shouldUseStaticSnapshot(error)) throw error
     const snapshot = await loadMarketSnapshot()
     if (snapshot?.liancai_facets) {
       markStaticDataSource()
@@ -433,13 +470,15 @@ export async function generateMenuPlan(payload: {
   preferred_city?: string
   preferred_location?: string
 }) {
+  assertProcurementApiAccess()
   return requestWithState(async () => {
-    const { data } = await publicApi.post('/menu/plan', payload)
+    const { data } = await api.post('/menu/plan', payload)
     return data
   }, { affectGlobalState: false })
 }
 
 export async function fetchSignalsOverview(params: { province?: string; city?: string; focus?: string }) {
+  assertProcurementApiAccess()
   return requestWithState(async () => {
     const { data } = await api.get<SignalOverviewResponse>('/signals/overview', { params, timeout: 30000 })
     return data
@@ -447,6 +486,7 @@ export async function fetchSignalsOverview(params: { province?: string; city?: s
 }
 
 export async function fetchSignalDetail(identityKey: string, params?: { province?: string; city?: string }) {
+  assertProcurementApiAccess()
   return requestWithState(async () => {
     const { data } = await api.get<SignalInsightItem>(
       `/signals/${encodeURIComponent(identityKey)}`,
@@ -465,8 +505,9 @@ export async function fetchProcurementRecommendation(payload: {
   preferred_city?: string
   preferred_location?: string
 }) {
+  assertProcurementApiAccess()
   return requestWithState(async () => {
-    const { data } = await publicApi.post<ProcurementRecommendationResponse>(
+    const { data } = await api.post<ProcurementRecommendationResponse>(
       '/procurement/recommend',
       payload,
       { timeout: 30000 },
@@ -477,7 +518,7 @@ export async function fetchProcurementRecommendation(payload: {
 
 export async function fetchSalesDecisionContent(scene?: string) {
   return requestWithState(async () => {
-    const { data } = await api.get<SalesDemoContentResponse>('/sales/decision-content', { params: { scene } })
+    const { data } = await publicApi.get<SalesDemoContentResponse>('/sales/decision-content', { params: { scene } })
     return data
   }, { affectGlobalState: false })
 }
@@ -486,7 +527,7 @@ export const fetchSalesDemoContent = fetchSalesDecisionContent
 
 export async function fetchPricingPackages() {
   return requestWithState(async () => {
-    const { data } = await api.get<PricingPackagesResponse>('/pricing/packages')
+    const { data } = await publicApi.get<PricingPackagesResponse>('/pricing/packages')
     return data
   }, { affectGlobalState: false })
 }

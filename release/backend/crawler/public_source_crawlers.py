@@ -1,28 +1,36 @@
 from __future__ import annotations
 
 import json
+import base64
+import hashlib
 import math
 import os
+import random
 import re
 import shutil
 import subprocess
 import threading
 import time
+import uuid
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime, timedelta
 from functools import lru_cache
+from io import BytesIO
+from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import parse_qs, urljoin, urlparse
 
 import requests
 from bs4 import BeautifulSoup
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from requests.adapters import HTTPAdapter
 from requests.exceptions import ReadTimeout
 
 from crawler.http_utils import without_proxy_env
 from crawler.liancai_h5 import LiancaiH5Client
 from parsers.normalizer import normalize_price
+from services.meicai_category_mapping import suggest_meicai_internal_category
 from utils.logger import setup_logger
 
 
@@ -77,6 +85,30 @@ HENAN_FGW_PRICE_URL = "https://page.henan.gov.cn/api/fgw-product-price"
 ZZNY_CLZ_DEFAULT_MAX_PAGES = 24
 CNNHB_DEFAULT_MAX_PAGES = 500
 LIANCAI_DEFAULT_MAX_PAGES = 20
+MEICAI_DEFAULT_MAX_PAGES = 5
+MEICAI_DEFAULT_PAGE_SIZE = 20
+MEICAI_H5_TYPE3_SECRET_SUFFIX = "MEICAIMALL2026"
+KUAILV_H5_DEFAULT_BASE_URL = "https://klmall.meituan.com/wxmall"
+KUAILV_H5_DEFAULT_CITY_ID = "320100"
+KUAILV_H5_DEFAULT_PAGE_SIZE = 20
+KUAILV_H5_DEFAULT_MAX_PAGES = 5
+KUAILV_H5_UA_WEB = 44500
+NANJING_ZHONGCAI_DEFAULT_BASE_URL = "https://www.njnfwl.com"
+NANJING_ZHONGCAI_DEFAULT_MAX_ARTICLES = 1
+NANJING_ZHONGCAI_CATEGORY_PATHS = {
+    "蔬菜": "/list-eqpn3l3g/shucaijiage/1/10",
+    "蔬菜价格": "/list-eqpn3l3g/shucaijiage/1/10",
+    "水果": "/list-izmfed08/shuiguojiage/1/10",
+    "水果价格": "/list-izmfed08/shuiguojiage/1/10",
+    "水产": "/list-fxskc779/shuichanjiage/1/10",
+    "水产价格": "/list-fxskc779/shuichanjiage/1/10",
+    "副食": "/list-vqr9lav7/fushijiage/1/10",
+    "副食价格": "/list-vqr9lav7/fushijiage/1/10",
+}
+
+
+class NanjingZhongcaiNoNewArticle(RuntimeError):
+    pass
 
 
 class LiancaiAppGatewayClient:
@@ -132,6 +164,545 @@ class LiancaiAppGatewayClient:
             timeout=self.timeout,
         )
         return response.json()
+
+
+class KuailvH5Client:
+    def __init__(
+        self,
+        *,
+        base_url: str = KUAILV_H5_DEFAULT_BASE_URL,
+        timeout: int = 20,
+        request_headers: dict[str, str] | None = None,
+        cookies: dict[str, str] | None = None,
+        address_context: dict[str, Any] | None = None,
+        city_id: str = KUAILV_H5_DEFAULT_CITY_ID,
+    ) -> None:
+        self.base_url = base_url.rstrip("/")
+        self.timeout = timeout
+        self.address_context = dict(address_context or {})
+        self.city_id = city_id
+        self.session = requests.Session()
+        self.session.headers.update(
+            {
+                "User-Agent": (
+                    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) "
+                    "AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Safari/604.1"
+                ),
+                "Accept": "application/json, text/plain, */*",
+                "Accept-Language": "zh-CN,zh;q=0.9",
+                "Content-Type": "application/json;charset=UTF-8",
+                "Origin": "https://klmall.meituan.com",
+                "Referer": "https://klmall.meituan.com/m/category",
+            }
+        )
+        if request_headers:
+            self.session.headers.update(request_headers)
+        for cookie_name, cookie_value in (cookies or {}).items():
+            self.session.cookies.set(str(cookie_name), str(cookie_value), domain=".meituan.com")
+
+    def common_params(self) -> dict[str, Any]:
+        selected_poi_address_id = str(
+            self.address_context.get("selectedPoiAddressId")
+            or self.address_context.get("poiAddressId")
+            or self.address_context.get("selected_poi_address_id")
+            or ""
+        ).strip()
+        selected_sales_grid_id = str(
+            self.address_context.get("selectedSalesGridId")
+            or self.address_context.get("salesGridId")
+            or ""
+        ).strip()
+        request_uuid = str(self.address_context.get("uuid") or uuid.uuid4().hex).strip()
+
+        params: dict[str, Any] = {
+            "gtCityId": self.city_id,
+            "uaWeb": KUAILV_H5_UA_WEB,
+            "uaEnv": str(self.address_context.get("uaEnv") or "other"),
+            "loginAcctType": str(self.address_context.get("loginAcctType") or "99"),
+            "uuid": request_uuid,
+            "riskLevel": 71,
+            "optimusCode": 10,
+            "_": int(time.time() * 1000),
+        }
+        if selected_poi_address_id:
+            params["selectedPoiAddressId"] = selected_poi_address_id
+        if selected_sales_grid_id:
+            params["selectedSalesGridId"] = selected_sales_grid_id
+        return params
+
+    def fetch_first_categories(self) -> dict[str, Any]:
+        response = self.session.get(
+            f"{self.base_url}/api/goods/category/first/list",
+            params=self.common_params(),
+            timeout=self.timeout,
+        )
+        return response.json()
+
+    def fetch_second_categories(self, cat1_id: str) -> dict[str, Any]:
+        response = self.session.get(
+            f"{self.base_url}/api/goods/category/second/list",
+            params={**self.common_params(), "cat1Id": cat1_id},
+            timeout=self.timeout,
+        )
+        return response.json()
+
+    def fetch_goods_page(
+        self,
+        *,
+        cat1_id: str,
+        cat2_id: str,
+        page_size: int,
+        taken: str | None,
+    ) -> dict[str, Any]:
+        common_params = self.common_params()
+        body_payload = {
+            "cat1Id": cat1_id,
+            "cat2Id": cat2_id,
+            "foodTagIds": None,
+            "sortIds": None,
+            "pageSize": page_size,
+            "data": {
+                "common": {
+                    "uuid": str(common_params.get("uuid") or ""),
+                    "timestamp": int(time.time() * 1000),
+                },
+                "context": {
+                    "recent_click_goods": [],
+                    "recent_add_cart_goods": [],
+                },
+            },
+            "taken": taken,
+        }
+        response = self.session.post(
+            f"{self.base_url}/api/goods/list",
+            params=common_params,
+            json=body_payload,
+            timeout=self.timeout,
+        )
+        return response.json()
+
+
+class MeicaiAppGatewayClient:
+    def __init__(
+        self,
+        *,
+        base_url: str = "https://mall-entrance.yunshanmeicai.com",
+        timeout: int = 20,
+        request_headers: dict[str, str] | None = None,
+        common_body: dict[str, Any] | None = None,
+    ) -> None:
+        self.base_url = base_url.rstrip("/")
+        self.timeout = timeout
+        self.common_body = dict(common_body or {})
+        self.session = requests.Session()
+        self.session.headers.update(
+            {
+                "content-type": "application/json; charset=UTF-8",
+                "accept": "application/json",
+                "user-agent": "okhttp/4.12.0",
+            }
+        )
+        if request_headers:
+            self.session.headers.update(request_headers)
+
+    def xb_feed(
+        self,
+        *,
+        page: int,
+        page_size: int = MEICAI_DEFAULT_PAGE_SIZE,
+        module_key: str = "700",
+        class1_id: str = "-1",
+        class2_id: str = "",
+        city_id: str = "17",
+        area_id: str = "4402",
+    ) -> dict[str, Any]:
+        body_payload = {
+            **self.common_body,
+            "class1Id": class1_id,
+            "class2Id": class2_id,
+            "count": 0,
+            "moduleKey": module_key,
+            "page": page,
+            "showType": 0,
+            "size": page_size,
+            "city_id": city_id,
+            "area_id": area_id,
+        }
+        response = self.session.post(
+            f"{self.base_url}/entrance/recommend/xbFeed",
+            json=body_payload,
+            timeout=self.timeout,
+        )
+        return response.json()
+
+    def change_address(self, body_payload: dict[str, Any]) -> dict[str, Any]:
+        response = self.session.post(
+            f"{self.base_url}/api/auth/changeaddress",
+            json=body_payload,
+            timeout=self.timeout,
+        )
+        return response.json()
+
+    def sale_class(
+        self,
+        *,
+        parent_id: str = "0",
+        city_id: str = "17",
+        area_id: str = "4402",
+    ) -> dict[str, Any]:
+        body_payload = {
+            **self.common_body,
+            "parent_id": parent_id,
+            "city_id": city_id,
+            "area_id": area_id,
+        }
+        response = self.session.post(
+            f"{self.base_url}/entrance/dishes/saleClass",
+            json=body_payload,
+            timeout=self.timeout,
+        )
+        return response.json()
+
+    def class_products(
+        self,
+        *,
+        page: int,
+        page_size: int = MEICAI_DEFAULT_PAGE_SIZE,
+        sale_c1_id: str,
+        sale_c2_id: str = "",
+        city_id: str = "17",
+        area_id: str = "4402",
+    ) -> dict[str, Any]:
+        body_payload = {
+            **self.common_body,
+            "page": page,
+            "sale_c1_id": sale_c1_id,
+            "sale_c2_id": sale_c2_id,
+            "size": page_size,
+            "city_id": city_id,
+            "area_id": area_id,
+        }
+        response = self.session.post(
+            f"{self.base_url}/entrance/dishes/getSpusByClass",
+            json=body_payload,
+            timeout=self.timeout,
+        )
+        return response.json()
+
+    def goods_info_location(
+        self,
+        *,
+        page: int,
+        page_size: int = MEICAI_DEFAULT_PAGE_SIZE,
+        module_key: str = "700",
+        class1_id: str = "-1",
+        class2_id: str = "",
+        city_id: str = "17",
+        area_id: str = "4402",
+    ) -> dict[str, Any]:
+        body_payload = {
+            **self.common_body,
+            "moduleKey": module_key,
+            "class1Id": class1_id,
+            "class2Id": class2_id,
+            "page": page,
+            "size": page_size,
+            "city_id": city_id,
+            "area_id": area_id,
+        }
+        response = self.session.post(
+            f"{self.base_url}/entrance/recommend/goodsInfoLocation",
+            json=body_payload,
+            timeout=self.timeout,
+        )
+        return response.json()
+
+    def smart_list_good_list(
+        self,
+        *,
+        page: int,
+        page_size: int = MEICAI_DEFAULT_PAGE_SIZE,
+        city_id: str = "17",
+        area_id: str = "4402",
+        class1_id: str = "-1",
+        class2_id: str = "",
+    ) -> dict[str, Any]:
+        body_payload = {
+            **self.common_body,
+            "page": page,
+            "size": page_size,
+            "city_id": city_id,
+            "area_id": area_id,
+            "class1Id": class1_id,
+            "class2Id": class2_id,
+            "class1_id": class1_id,
+            "class2_id": class2_id,
+        }
+        response = self.session.post(
+            f"{self.base_url}/entrance/smartList/getGoodList",
+            json=body_payload,
+            timeout=self.timeout,
+        )
+        return response.json()
+
+    def recommend_feed(
+        self,
+        *,
+        page: int,
+        page_size: int = MEICAI_DEFAULT_PAGE_SIZE,
+        city_id: str = "17",
+        area_id: str = "4402",
+        module_key: str = "700",
+        class1_id: str = "-1",
+        class2_id: str = "",
+    ) -> dict[str, Any]:
+        body_payload = {
+            **self.common_body,
+            "class1Id": class1_id,
+            "class2Id": class2_id,
+            "moduleKey": module_key,
+            "page": page,
+            "size": page_size,
+            "city_id": city_id,
+            "area_id": area_id,
+        }
+        response = self.session.post(
+            f"{self.base_url}/recommend/feed",
+            json=body_payload,
+            timeout=self.timeout,
+        )
+        return response.json()
+
+    def goods_info_stream(
+        self,
+        *,
+        page: int,
+        page_size: int = MEICAI_DEFAULT_PAGE_SIZE,
+        city_id: str = "17",
+        area_id: str = "4402",
+        module_key: str = "700",
+        class1_id: str = "-1",
+        class2_id: str = "",
+    ) -> dict[str, Any]:
+        body_payload = {
+            **self.common_body,
+            "class1Id": class1_id,
+            "class2Id": class2_id,
+            "moduleKey": module_key,
+            "page": page,
+            "size": page_size,
+            "city_id": city_id,
+            "area_id": area_id,
+        }
+        response = self.session.post(
+            f"{self.base_url}/entrance/recommend/goodsInfoStream",
+            json=body_payload,
+            timeout=self.timeout,
+        )
+        return response.json()
+
+    def activity_polymerize_product(
+        self,
+        *,
+        page: int,
+        page_size: int = MEICAI_DEFAULT_PAGE_SIZE,
+        city_id: str = "17",
+        area_id: str = "4402",
+        class1_id: str = "-1",
+        class2_id: str = "",
+        keyword: str = "",
+    ) -> dict[str, Any]:
+        body_payload = {
+            **self.common_body,
+            "class1Id": class1_id,
+            "class2Id": class2_id,
+            "class1_id": class1_id,
+            "class2_id": class2_id,
+            "sale_c1_id": class1_id,
+            "page": page,
+            "size": page_size,
+            "city_id": city_id,
+            "area_id": area_id,
+            "keyword": keyword,
+        }
+        response = self.session.post(
+            f"{self.base_url}/entrance/activity/polymerizeProduct",
+            json=body_payload,
+            timeout=self.timeout,
+        )
+        return response.json()
+
+    def commodity_goods_rank(
+        self,
+        *,
+        page: int,
+        page_size: int = MEICAI_DEFAULT_PAGE_SIZE,
+        city_id: str = "17",
+        area_id: str = "4402",
+        class1_id: str = "-1",
+        class2_id: str = "",
+    ) -> dict[str, Any]:
+        body_payload = {
+            **self.common_body,
+            "class1Id": class1_id,
+            "class2Id": class2_id,
+            "page": page,
+            "size": page_size,
+            "city_id": city_id,
+            "area_id": area_id,
+        }
+        response = self.session.post(
+            f"{self.base_url}/entrance/commodity/goodsRank",
+            json=body_payload,
+            timeout=self.timeout,
+        )
+        return response.json()
+
+    def search_goods_list_by_data_id(
+        self,
+        *,
+        page: int,
+        page_size: int = MEICAI_DEFAULT_PAGE_SIZE,
+        city_id: str = "17",
+        area_id: str = "4402",
+        class1_id: str = "-1",
+        class2_id: str = "",
+        data_id: str = "",
+        keyword: str = "",
+    ) -> dict[str, Any]:
+        body_payload = {
+            **self.common_body,
+            "class1Id": class1_id,
+            "class2Id": class2_id,
+            "dataId": data_id,
+            "data_id": data_id,
+            "keyword": keyword,
+            "page": page,
+            "size": page_size,
+            "city_id": city_id,
+            "area_id": area_id,
+        }
+        response = self.session.post(
+            f"{self.base_url}/search/getgoodslistbydataid",
+            json=body_payload,
+            timeout=self.timeout,
+        )
+        return response.json()
+
+
+class MeicaiH5DecryptingGatewayClient(MeicaiAppGatewayClient):
+    def __init__(
+        self,
+        *,
+        h5_salts_payload: dict[str, Any],
+        request_source: str = "android",
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(**kwargs)
+        self.h5_salts_payload = h5_salts_payload
+        self.request_source = request_source
+
+    def class_products(
+        self,
+        *,
+        page: int,
+        page_size: int = MEICAI_DEFAULT_PAGE_SIZE,
+        sale_c1_id: str,
+        sale_c2_id: str = "",
+        city_id: str = "17",
+        area_id: str = "4402",
+    ) -> dict[str, Any]:
+        body_payload = self._build_signed_body(
+            {
+                "page": page,
+                "sale_c1_id": sale_c1_id,
+                "sale_c2_id": sale_c2_id,
+                "size": page_size,
+                "city_id": city_id,
+                "area_id": area_id,
+            }
+        )
+        response = self.session.post(
+            f"{self.base_url}/entrance/dishes/getSpusByClass",
+            json=body_payload,
+            timeout=self.timeout,
+        )
+        return self._decrypt_payload(response.json())
+
+    def _build_signed_body(self, endpoint_body: dict[str, Any]) -> dict[str, Any]:
+        body_payload = {
+            key: value
+            for key, value in self.common_body.items()
+            if key not in {"mallSaltSign", "salt_index", "salt_sign", "time_stamp"}
+        }
+        body_payload.update(endpoint_body)
+        env_payload = dict(body_payload.get("_ENV_") if isinstance(body_payload.get("_ENV_"), dict) else {})
+        env_payload["source"] = self.request_source
+        env_payload["isH5"] = 1
+        env_payload["latestH5"] = 2
+        body_payload["_ENV_"] = env_payload
+        request_millis = int(time.time() * 1000)
+        body_payload["mallSaltSign"] = self._calculate_type3_salt_sign(request_millis)
+        body_payload["salt_sign"] = self._calculate_type1_salt_sign(body_payload, request_millis)
+        return body_payload
+
+    def _calculate_type3_salt_sign(self, request_millis: int) -> str:
+        type3_salts = str(self.h5_salts_payload["saltsType3"])
+        salt_limit = min(len(type3_salts), 127)
+        salt_start = random.randint(0, max(0, salt_limit - 3))
+        salt_min_end = salt_start + 3
+        salt_max_end = min(salt_start + 16, salt_limit)
+        salt_end = random.randint(salt_min_end, salt_max_end)
+        salt_slice = type3_salts[salt_start:salt_end]
+        device_token = self._find_session_header("Device-Token")
+        digest_text = hashlib.sha256(
+            f"{salt_slice}{self.request_source}{MEICAI_H5_TYPE3_SECRET_SUFFIX}{request_millis}{device_token}".encode()
+        ).hexdigest()[6:]
+        salt_index = (salt_start << 7) | salt_end
+        return f"{digest_text},3,{salt_index},{request_millis}"
+
+    def _calculate_type1_salt_sign(self, body_payload: dict[str, Any], request_millis: int) -> str:
+        online_salts = self.h5_salts_payload["salts"]["online"]
+        salt_index = random.randint(0, len(online_salts) - 1)
+        signed_payload = {**body_payload, "salt_index": salt_index, "time_stamp": request_millis}
+        serialized_payload = json.dumps(signed_payload, ensure_ascii=False, separators=(",", ":"))
+        digest_text = hashlib.sha256(f"{serialized_payload}{online_salts[salt_index]}".encode()).hexdigest().upper()
+        return f"{digest_text},{salt_index},{request_millis}"
+
+    def _decrypt_payload(self, payload: dict[str, Any]) -> dict[str, Any]:
+        if not PublicSourceCrawler._meicai_payload_is_encrypted(payload):
+            return payload
+        encryption_metadata = payload.get("encryption") if isinstance(payload, dict) else None
+        encrypted_data = payload.get("data") if isinstance(payload, dict) else None
+        if not isinstance(encryption_metadata, dict) or not isinstance(encrypted_data, str):
+            return payload
+        encryption_type = int(encryption_metadata.get("type") or 0)
+        if encryption_type != 3:
+            raise RuntimeError(f"美菜H5暂只支持 type=3 解密，当前 type={encryption_type}")
+        salt_index = int(encryption_metadata.get("salt_index") or 0)
+        salt_start = (salt_index >> 7) & 127
+        salt_end = salt_index & 127
+        salt_slice = str(self.h5_salts_payload["saltsType3"])[salt_start:salt_end]
+        key_text = hashlib.sha256(
+            f"{salt_slice}{self.request_source}{MEICAI_H5_TYPE3_SECRET_SUFFIX}".encode()
+        ).hexdigest()[:16]
+        decryptor = Cipher(algorithms.AES(key_text.encode()), modes.ECB()).decryptor()
+        padded_plaintext = decryptor.update(base64.b64decode(encrypted_data)) + decryptor.finalize()
+        padding_size = padded_plaintext[-1]
+        if padding_size < 1 or padding_size > 16:
+            raise RuntimeError("美菜H5 type=3 解密 padding 异常")
+        decoded_text = padded_plaintext[:-padding_size].decode("utf-8")
+        try:
+            decoded_data = json.loads(decoded_text)
+        except json.JSONDecodeError as exc:
+            raise RuntimeError("美菜H5 type=3 解密后不是 JSON") from exc
+        return {**payload, "data": decoded_data, "encryption": {"type": 1, "decoded_from": encryption_type}}
+
+    def _find_session_header(self, header_name: str) -> str:
+        for current_name, header_value in self.session.headers.items():
+            if str(current_name).lower() == header_name.lower():
+                return str(header_value)
+        return ""
 NON_PRODUCT_PUBLIC_SUBJECT_PATTERN = re.compile(
     r"存栏|出栏|产量|销量|销售量|成交量|进口量|出口量|库存|指数|指标"
     r"|均价|平均价|监测情况|价格监测|市场价格|价格表现|走势分析"
@@ -279,6 +850,13 @@ class PublicSourceCrawler:
         except (TypeError, ValueError):
             return default
         return parsed if parsed > 0 else default
+
+    @staticmethod
+    def _to_float(value: Any, default: float) -> float:
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return default
 
     @staticmethod
     def normalize_public_product_name(name: str) -> str:
@@ -2070,6 +2648,404 @@ process.stdout.write(JSON.stringify({
                 return text
         return text
 
+    def fetch_nanjing_zhongcai_public(
+        self,
+        product: dict[str, Any],
+        site_rule: dict | None = None,
+    ) -> list[dict[str, Any]]:
+        site_rule = site_rule or {}
+        base_url = str(site_rule.get("base_url") or NANJING_ZHONGCAI_DEFAULT_BASE_URL).rstrip("/")
+        category_name = str(product.get("category") or site_rule.get("zhongcai_category") or "蔬菜").strip()
+        configured_url = str(product.get("url") or site_rule.get("list_url") or "").strip()
+        list_url = configured_url or urljoin(
+            base_url,
+            NANJING_ZHONGCAI_CATEGORY_PATHS.get(category_name, NANJING_ZHONGCAI_CATEGORY_PATHS["蔬菜"]),
+        )
+        max_pages = self._to_positive_int(site_rule.get("max_pages"), 1)
+        max_articles = self._to_positive_int(site_rule.get("max_articles"), NANJING_ZHONGCAI_DEFAULT_MAX_ARTICLES)
+        min_ocr_rows = self._to_positive_int(site_rule.get("min_ocr_rows"), 20)
+        retry_count = self._to_positive_int(site_rule.get("retry_count"), 1)
+        request_delay_seconds = float(site_rule.get("request_delay_seconds") or 0)
+        ocr_cache_path = Path(str(site_rule.get("ocr_cache_path") or "tmp/nanjing_zhongcai_ocr_cache.json").strip())
+        processed_article_state_path = self._resolve_nanjing_zhongcai_processed_article_state_path(site_rule)
+        processed_article_state = self._load_nanjing_zhongcai_processed_article_state(processed_article_state_path)
+        headers = dict(PUBLIC_REQUEST_HEADERS)
+        headers["Referer"] = base_url + "/"
+
+        articles: list[dict[str, Any]] = []
+        for page_no in range(1, max_pages + 1):
+            if len(articles) >= max_articles:
+                break
+            page_url = self._build_nanjing_zhongcai_page_url(list_url, page_no)
+            html = self._request_with_retry(
+                "GET",
+                page_url,
+                headers=headers,
+                retry_count=retry_count,
+                request_delay_seconds=request_delay_seconds,
+            ).text
+            for article in self.extract_nanjing_zhongcai_articles(html, base_url=base_url):
+                if len(articles) >= max_articles:
+                    break
+                articles.append(article)
+
+        rows: list[dict[str, Any]] = []
+        found_price_sheet = False
+        injected_ocr_text = str(site_rule.get("ocr_text") or "").strip()
+        skipped_articles = 0
+        processed_article_updates: list[dict[str, Any]] = []
+        for article_index, article in enumerate(articles, start=1):
+            article_key = self._build_nanjing_zhongcai_processed_article_key(article)
+            if processed_article_state_path is not None and article_key in processed_article_state:
+                skipped_articles += 1
+                continue
+            if request_delay_seconds > 0 and article_index > 1:
+                time.sleep(request_delay_seconds)
+            article_html = self._request_with_retry(
+                "GET",
+                str(article["article_url"]),
+                headers={**headers, "Referer": list_url},
+                retry_count=retry_count,
+                request_delay_seconds=request_delay_seconds,
+            ).text
+            image_urls = self.extract_nanjing_zhongcai_price_images(article_html, base_url=base_url)
+            if image_urls:
+                found_price_sheet = True
+            row_count_before_article = len(rows)
+            for image_url in image_urls:
+                ocr_text = injected_ocr_text or self.read_nanjing_zhongcai_price_image(
+                    image_url,
+                    headers=headers,
+                    cache_path=ocr_cache_path,
+                )
+                rows.extend(
+                    self.build_nanjing_zhongcai_rows(
+                        ocr_text,
+                        article=article,
+                        image_url=image_url,
+                    )
+                )
+            if len(rows) > row_count_before_article:
+                processed_article_updates.append(
+                    {
+                        "article_key": article_key,
+                        "article_url": article.get("article_url"),
+                        "title": article.get("title"),
+                        "publish_date": article.get("publish_date"),
+                        "image_urls": image_urls,
+                        "row_count": len(rows) - row_count_before_article,
+                    }
+                )
+            self._report_progress(
+                0.12 + 0.60 * (article_index / max(1, len(articles))),
+                f"南京众彩价格表 {article_index}/{len(articles)}",
+            )
+
+        if articles and skipped_articles == len(articles) and not rows:
+            raise NanjingZhongcaiNoNewArticle(f"南京众彩没有新价格文章，已跳过 {skipped_articles} 篇历史文章")
+        if found_price_sheet and len(rows) < min_ocr_rows:
+            raise RuntimeError(
+                f"已抓到南京众彩价格图片，但 OCR 只解析出 {len(rows)} 条价格行，低于质量门槛 {min_ocr_rows} 条"
+            )
+        if processed_article_updates and processed_article_state_path is not None:
+            self._write_nanjing_zhongcai_processed_article_state(
+                processed_article_state_path,
+                processed_article_state,
+                processed_article_updates,
+            )
+        return rows
+
+    @staticmethod
+    def _build_nanjing_zhongcai_page_url(list_url: str, page_no: int) -> str:
+        if page_no <= 1:
+            return list_url
+        if re.search(r"/\d+/10/?$", list_url):
+            return re.sub(r"/\d+/10/?$", f"/{page_no}/10", list_url)
+        return list_url
+
+    @staticmethod
+    def _resolve_nanjing_zhongcai_processed_article_state_path(site_rule: dict[str, Any]) -> Path | None:
+        configured_path = str(site_rule.get("processed_article_state_path") or "").strip()
+        return Path(configured_path) if configured_path else None
+
+    @staticmethod
+    def _build_nanjing_zhongcai_processed_article_key(article: dict[str, Any]) -> str:
+        article_url = str(article.get("article_url") or "").strip()
+        return article_url or str(article.get("title") or "").strip()
+
+    @staticmethod
+    def _load_nanjing_zhongcai_processed_article_state(state_path: Path | None) -> dict[str, Any]:
+        if state_path is None or not state_path.exists():
+            return {}
+        try:
+            state_payload = json.loads(state_path.read_text(encoding="utf-8-sig"))
+        except json.JSONDecodeError:
+            return {}
+        articles = state_payload.get("articles") if isinstance(state_payload, dict) else None
+        return articles if isinstance(articles, dict) else {}
+
+    @staticmethod
+    def _write_nanjing_zhongcai_processed_article_state(
+        state_path: Path,
+        processed_article_state: dict[str, Any],
+        article_updates: list[dict[str, Any]],
+    ) -> None:
+        captured_at = datetime.now().isoformat(timespec="seconds")
+        next_state = dict(processed_article_state)
+        for article_update in article_updates:
+            article_key = str(article_update.get("article_key") or "").strip()
+            if not article_key:
+                continue
+            next_state[article_key] = {
+                "article_url": article_update.get("article_url"),
+                "title": article_update.get("title"),
+                "publish_date": article_update.get("publish_date"),
+                "image_urls": article_update.get("image_urls") or [],
+                "row_count": article_update.get("row_count"),
+                "processed_at": captured_at,
+            }
+        state_path.parent.mkdir(parents=True, exist_ok=True)
+        state_path.write_text(
+            json.dumps({"articles": next_state}, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+
+    @staticmethod
+    def extract_nanjing_zhongcai_articles(html: str, *, base_url: str) -> list[dict[str, Any]]:
+        soup = BeautifulSoup(html or "", "html.parser")
+        articles: list[dict[str, Any]] = []
+        seen_urls: set[str] = set()
+        for anchor in soup.select("a[href*='/article/']"):
+            title = str(anchor.get("title") or anchor.get_text(" ", strip=True) or "").strip()
+            if "价格参考表" not in title:
+                continue
+            article_url = urljoin(base_url, str(anchor.get("href") or "").strip())
+            if not article_url or article_url in seen_urls:
+                continue
+            seen_urls.add(article_url)
+            publish_date = PublicSourceCrawler._find_nearby_zhongcai_publish_date(anchor)
+            category_match = re.search(r"\d+年\d+月\d+日(.+?)价格参考表", title)
+            category_name = category_match.group(1).strip() if category_match else "南京众彩"
+            articles.append(
+                {
+                    "title": title,
+                    "article_url": article_url,
+                    "publish_date": publish_date,
+                    "category": category_name,
+                }
+            )
+        return articles
+
+    @staticmethod
+    def _find_nearby_zhongcai_publish_date(anchor: Any) -> str | None:
+        node = anchor
+        for _ in range(5):
+            node = getattr(node, "parent", None)
+            if node is None:
+                break
+            text = node.get_text(" ", strip=True)
+            matched = re.search(r"时间[:：]\s*(\d{4}-\d{2}-\d{2})", text)
+            if matched:
+                return matched.group(1)
+        return None
+
+    @staticmethod
+    def extract_nanjing_zhongcai_price_images(html: str, *, base_url: str) -> list[str]:
+        soup = BeautifulSoup(html or "", "html.parser")
+        container = soup.select_one(".articleCon") or soup
+        image_urls: list[str] = []
+        for image in container.select("img[src]"):
+            image_url = urljoin(base_url, str(image.get("src") or "").strip())
+            if image_url and image_url not in image_urls:
+                image_urls.append(image_url)
+        return image_urls
+
+    def read_nanjing_zhongcai_price_image(
+        self,
+        image_url: str,
+        *,
+        headers: dict[str, str],
+        cache_path: Path | None = None,
+    ) -> str:
+        cached_ocr_text = self._read_nanjing_zhongcai_cached_ocr_text(image_url, cache_path=cache_path)
+        if cached_ocr_text is not None:
+            return cached_ocr_text
+
+        tesseract_command = self._resolve_tesseract_command()
+        tessdata_dir = self._resolve_tessdata_dir()
+        try:
+            from PIL import Image
+            import pytesseract
+        except ImportError as exc:
+            raise RuntimeError("当前环境缺少 Pillow/pytesseract OCR 依赖") from exc
+
+        pytesseract.pytesseract.tesseract_cmd = tesseract_command
+        config = f"--tessdata-dir {tessdata_dir}" if tessdata_dir else ""
+        response = self._request("GET", image_url, headers=headers)
+        image_content = response.content
+        with Image.open(BytesIO(image_content)) as image:
+            ocr_text = pytesseract.image_to_string(image, lang="chi_sim+eng", config=config)
+        self._write_nanjing_zhongcai_cached_ocr_text(
+            image_url,
+            ocr_text,
+            cache_path=cache_path,
+            image_content=image_content,
+        )
+        return ocr_text
+
+    @classmethod
+    def _read_nanjing_zhongcai_cached_ocr_text(cls, image_url: str, *, cache_path: Path | None) -> str | None:
+        if cache_path is None or not cache_path.exists():
+            return None
+        cache_payload = cls._load_nanjing_zhongcai_ocr_cache(cache_path)
+        cache_key = cls._build_nanjing_zhongcai_ocr_cache_key(image_url)
+        cached_entry = cache_payload.get(cache_key)
+        if not isinstance(cached_entry, dict):
+            return None
+        cached_text = cached_entry.get("ocr_text")
+        return str(cached_text) if isinstance(cached_text, str) and cached_text.strip() else None
+
+    @classmethod
+    def _write_nanjing_zhongcai_cached_ocr_text(
+        cls,
+        image_url: str,
+        ocr_text: str,
+        *,
+        cache_path: Path | None,
+        image_content: bytes,
+    ) -> None:
+        if cache_path is None or not str(ocr_text or "").strip():
+            return
+        cache_payload = cls._load_nanjing_zhongcai_ocr_cache(cache_path)
+        cache_key = cls._build_nanjing_zhongcai_ocr_cache_key(image_url)
+        cache_payload[cache_key] = {
+            "image_url": image_url,
+            "image_sha256": hashlib.sha256(image_content).hexdigest(),
+            "ocr_text": ocr_text,
+            "cached_at": datetime.now().isoformat(timespec="seconds"),
+        }
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        cache_path.write_text(json.dumps(cache_payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+    @staticmethod
+    def _load_nanjing_zhongcai_ocr_cache(cache_path: Path) -> dict[str, Any]:
+        if not cache_path.exists():
+            return {}
+        try:
+            cache_payload = json.loads(cache_path.read_text(encoding="utf-8-sig"))
+        except json.JSONDecodeError:
+            return {}
+        return cache_payload if isinstance(cache_payload, dict) else {}
+
+    @staticmethod
+    def _build_nanjing_zhongcai_ocr_cache_key(image_url: str) -> str:
+        normalized_url = str(image_url or "").strip()
+        return hashlib.sha256(normalized_url.encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def _resolve_tesseract_command() -> str:
+        candidates = [
+            shutil.which("tesseract"),
+            r"C:\Program Files\Tesseract-OCR\tesseract.exe",
+            r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
+        ]
+        for candidate in candidates:
+            if candidate and os.path.exists(candidate):
+                return candidate
+        raise RuntimeError("当前环境缺少 tesseract OCR 可执行文件")
+
+    @staticmethod
+    def _resolve_tessdata_dir() -> str | None:
+        local_tessdata = os.path.join(os.environ.get("LOCALAPPDATA") or "", "Tesseract-OCR", "tessdata")
+        candidates = [
+            os.environ.get("TESSDATA_PREFIX"),
+            local_tessdata,
+            r"C:\Program Files\Tesseract-OCR\tessdata",
+            r"C:\Program Files (x86)\Tesseract-OCR\tessdata",
+        ]
+        for candidate in candidates:
+            if not candidate or not os.path.isdir(candidate):
+                continue
+            has_english = os.path.exists(os.path.join(candidate, "eng.traineddata"))
+            has_chinese = os.path.exists(os.path.join(candidate, "chi_sim.traineddata"))
+            if has_english and has_chinese:
+                return candidate
+        raise RuntimeError("当前环境缺少 Tesseract 中文/英文语言包 chi_sim.traineddata / eng.traineddata")
+
+    @staticmethod
+    def build_nanjing_zhongcai_rows(
+        ocr_text: str,
+        *,
+        article: dict[str, Any],
+        image_url: str,
+    ) -> list[dict[str, Any]]:
+        rows: list[dict[str, Any]] = []
+        for line in str(ocr_text or "").splitlines():
+            normalized_line = re.sub(r"\s+", " ", line).strip()
+            if not normalized_line:
+                continue
+            if any(keyword in normalized_line for keyword in ("价格参考", "仅供参考", "品名", "最高", "最低", "均价")):
+                continue
+            numbers = re.findall(r"(?<!\d)(\d+(?:\.\d+)?)(?!\d)", normalized_line)
+            if len(numbers) < 2:
+                continue
+            first_price_index = normalized_line.find(numbers[0])
+            product_name = re.sub(
+                r"[^\u4e00-\u9fa5A-Za-z0-9（）()·\-/]+",
+                " ",
+                normalized_line[:first_price_index],
+            ).strip()
+            product_name = PublicSourceCrawler.normalize_public_product_name(product_name)
+            if not PublicSourceCrawler._is_usable_zhongcai_product_name(product_name):
+                continue
+            current_price = normalize_price(numbers[-1])
+            if current_price is None:
+                continue
+            rows.append(
+                {
+                    "site_name": f"南京众彩 | {article.get('category') or '价格参考表'}",
+                    "product_name": product_name,
+                    "current_price": current_price,
+                    "original_price": normalize_price(numbers[0]),
+                    "promotion_text": " | ".join(
+                        part
+                        for part in [
+                            str(article.get("title") or "").strip(),
+                            str(article.get("publish_date") or "").strip(),
+                            "图片OCR",
+                        ]
+                        if part
+                    ),
+                    "currency": "CNY",
+                    "matched_rule": "南京众彩价格参考表OCR",
+                    "raw_extract": {},
+                    "extra_fields": {
+                        "group_name": "南京众彩",
+                        "category": article.get("category") or "价格参考表",
+                        "spec_text": "价格参考表",
+                        "compare_key": product_name,
+                        "market_name": "南京农副产品物流中心",
+                        "region_label": "南京市",
+                        "province": "江苏省",
+                        "city": "南京市",
+                        "source_article_url": article.get("article_url"),
+                        "source_image_url": image_url,
+                        "publish_date": article.get("publish_date"),
+                    },
+                }
+            )
+        return rows
+
+    @staticmethod
+    def _is_usable_zhongcai_product_name(product_name: str) -> bool:
+        text = str(product_name or "").strip()
+        if len(text) < 2:
+            return False
+        if re.search(r"[A-Za-z]", text):
+            return False
+        chinese_chars = re.findall(r"[\u4e00-\u9fa5]", text)
+        return len(chinese_chars) >= 2
+
     def get_moa_wholesale_markets(self) -> list[dict[str, Any]]:
         if self._moa_wholesale_market_cache is not None:
             return self._moa_wholesale_market_cache
@@ -2174,6 +3150,1120 @@ process.stdout.write(JSON.stringify({
 
         self._report_progress(0.72, f"莲菜网App {selected_category.get('name') or category_name} 共 {len(rows)} 条")
         return self._deduplicate_liancai_rows(rows)
+
+    def fetch_kuailv_h5(self, product: dict[str, Any], site_rule: dict | None = None) -> list[dict[str, Any]]:
+        site_rule = site_rule or {}
+        self._load_env_file_if_configured(str(site_rule.get("secret_env_file_env") or "KUAILV_SECRET_ENV_FILE").strip())
+        request_headers = self._load_json_env_object(
+            str(site_rule.get("request_headers_env") or "KUAILV_REQUEST_HEADERS").strip()
+        )
+        cookies = self._load_json_env_object(str(site_rule.get("cookies_env") or "KUAILV_COOKIES").strip())
+        address_context = self._load_json_env_object(
+            str(site_rule.get("address_context_env") or "KUAILV_ADDRESS_CONTEXT").strip()
+        )
+        if not cookies and not request_headers:
+            raise RuntimeError("缺少快驴H5登录态，请先从授权 HAR 生成 KUAILV_COOKIES / KUAILV_REQUEST_HEADERS")
+
+        base_url = str(site_rule.get("gateway_base_url") or KUAILV_H5_DEFAULT_BASE_URL).strip()
+        timeout = self._to_positive_int(site_rule.get("timeout_seconds"), self.timeout)
+        city_id = str(
+            site_rule.get("city_id")
+            or product.get("city_id")
+            or os.environ.get("KUAILV_CITY_ID")
+            or address_context.get("gtCityId")
+            or KUAILV_H5_DEFAULT_CITY_ID
+        ).strip()
+        client = KuailvH5Client(
+            base_url=base_url,
+            timeout=timeout,
+            request_headers={str(key): str(value) for key, value in request_headers.items()},
+            cookies={str(key): str(value) for key, value in cookies.items()},
+            address_context=address_context,
+            city_id=city_id,
+        )
+
+        category_filters = self._build_kuailv_category_filters(client, product, site_rule, address_context)
+        if not category_filters:
+            raise RuntimeError("快驴H5未解析到可请求的 cat1Id/cat2Id，请重新抓取分类页或商品页 HAR")
+
+        page_size = self._to_positive_int(site_rule.get("page_size"), KUAILV_H5_DEFAULT_PAGE_SIZE)
+        max_pages = self._to_positive_int(site_rule.get("max_pages"), KUAILV_H5_DEFAULT_MAX_PAGES)
+        request_delay_seconds = max(0.0, self._to_float(site_rule.get("request_delay_seconds"), 0.0))
+        parsed_rows: list[dict[str, Any]] = []
+        request_count = 0
+        for category_index, category_filter in enumerate(category_filters, start=1):
+            if category_index > 1 and request_delay_seconds > 0:
+                time.sleep(request_delay_seconds)
+            category_rows, page_requests = self._collect_kuailv_goods_rows(
+                client,
+                product,
+                category_filter,
+                page_size=page_size,
+                max_pages=max_pages,
+                request_delay_seconds=request_delay_seconds,
+            )
+            request_count += page_requests
+            parsed_rows.extend(category_rows)
+            self._report_progress(
+                0.15 + 0.55 * (category_index / max(1, len(category_filters))),
+                f"快驴H5 分类 {category_index}/{len(category_filters)}",
+            )
+        self._report_progress(0.72, f"快驴H5 共 {len(parsed_rows)} 条，请求 {request_count} 次")
+        return self._deduplicate_kuailv_rows(parsed_rows)
+
+    def _build_kuailv_category_filters(
+        self,
+        client: KuailvH5Client,
+        product: dict[str, Any],
+        site_rule: dict[str, Any],
+        address_context: dict[str, Any],
+    ) -> list[dict[str, str]]:
+        configured_filters = site_rule.get("category_filters")
+        if isinstance(configured_filters, list) and configured_filters:
+            normalized_filters: list[dict[str, str]] = []
+            for category_filter in configured_filters:
+                if not isinstance(category_filter, dict):
+                    continue
+                normalized_filter = self._normalize_kuailv_category_filter(category_filter)
+                if normalized_filter.get("cat1_id") and normalized_filter.get("cat2_id"):
+                    normalized_filters.append(normalized_filter)
+            return normalized_filters
+
+        env_cat1_id = str(
+            product.get("cat1_id") or address_context.get("cat1_id") or os.environ.get("KUAILV_CAT1_ID") or ""
+        ).strip()
+        env_cat2_id = str(
+            product.get("cat2_id") or address_context.get("cat2_id") or os.environ.get("KUAILV_CAT2_ID") or ""
+        ).strip()
+        if env_cat1_id and env_cat2_id:
+            return [
+                {
+                    "cat1_id": env_cat1_id,
+                    "cat2_id": env_cat2_id,
+                    "cat1_name": str(product.get("category") or "快驴分类").strip(),
+                    "cat2_name": str(product.get("subcategory") or "").strip(),
+                }
+            ]
+
+        first_payload = client.fetch_first_categories()
+        self._raise_kuailv_payload_error(first_payload, "category_first")
+        first_categories = self._extract_kuailv_category_records(first_payload)
+        category_name = str(product.get("category") or "").strip()
+        if category_name:
+            first_categories = [
+                category_record
+                for category_record in first_categories
+                if str(category_record.get("name") or "").strip() == category_name
+            ]
+        max_category_filters = self._to_positive_int(site_rule.get("max_category_filters"), 50)
+        category_filters: list[dict[str, str]] = []
+        for first_category in first_categories:
+            cat1_id = self._kuailv_category_id(first_category)
+            if not cat1_id:
+                continue
+            second_payload = client.fetch_second_categories(cat1_id)
+            self._raise_kuailv_payload_error(second_payload, f"category_second:{cat1_id}")
+            second_categories = self._extract_kuailv_category_records(second_payload)
+            for second_category in second_categories:
+                cat2_id = self._kuailv_category_id(second_category)
+                if not cat2_id:
+                    continue
+                category_filters.append(
+                    {
+                        "cat1_id": cat1_id,
+                        "cat2_id": cat2_id,
+                        "cat1_name": str(first_category.get("name") or cat1_id).strip(),
+                        "cat2_name": str(second_category.get("name") or cat2_id).strip(),
+                    }
+                )
+                if len(category_filters) >= max_category_filters:
+                    return category_filters
+        return category_filters
+
+    @staticmethod
+    def _normalize_kuailv_category_filter(category_filter: dict[str, Any]) -> dict[str, str]:
+        return {
+            "cat1_id": str(category_filter.get("cat1_id") or category_filter.get("cat1Id") or "").strip(),
+            "cat2_id": str(category_filter.get("cat2_id") or category_filter.get("cat2Id") or "").strip(),
+            "cat1_name": str(category_filter.get("cat1_name") or category_filter.get("cat1Name") or "").strip(),
+            "cat2_name": str(category_filter.get("cat2_name") or category_filter.get("cat2Name") or "").strip(),
+        }
+
+    @staticmethod
+    def _raise_kuailv_payload_error(payload: dict[str, Any], stage: str) -> None:
+        status_value = payload.get("status") if isinstance(payload, dict) else None
+        success_value = payload.get("success") if isinstance(payload, dict) else None
+        code_value = payload.get("code") if isinstance(payload, dict) else None
+        if status_value == 1 or success_value is True or code_value == 200:
+            return
+        message = payload.get("message") or payload.get("msg") if isinstance(payload, dict) else ""
+        raise RuntimeError(f"快驴H5 {stage} 返回异常: code={code_value} status={status_value} message={message}")
+
+    @classmethod
+    def _extract_kuailv_category_records(cls, payload: dict[str, Any]) -> list[dict[str, Any]]:
+        payload_data = payload.get("data") if isinstance(payload, dict) else None
+        if isinstance(payload_data, list):
+            return [category_record for category_record in payload_data if isinstance(category_record, dict)]
+        if not isinstance(payload_data, dict):
+            return []
+        for category_key in ("categoryList", "list", "rows", "categories"):
+            category_records = payload_data.get(category_key)
+            if isinstance(category_records, list):
+                return [category_record for category_record in category_records if isinstance(category_record, dict)]
+        return []
+
+    @staticmethod
+    def _kuailv_category_id(category_record: dict[str, Any]) -> str:
+        return str(
+            category_record.get("id")
+            or category_record.get("catId")
+            or category_record.get("cat1Id")
+            or category_record.get("cat2Id")
+            or category_record.get("categoryId")
+            or ""
+        ).strip()
+
+    def _collect_kuailv_goods_rows(
+        self,
+        client: KuailvH5Client,
+        product: dict[str, Any],
+        category_filter: dict[str, str],
+        *,
+        page_size: int,
+        max_pages: int,
+        request_delay_seconds: float,
+    ) -> tuple[list[dict[str, Any]], int]:
+        rows: list[dict[str, Any]] = []
+        taken: str | None = None
+        last_first_id: str | None = None
+        requested_pages = 0
+        for page in range(1, max_pages + 1):
+            if page > 1 and request_delay_seconds > 0:
+                time.sleep(request_delay_seconds)
+            payload = client.fetch_goods_page(
+                cat1_id=category_filter["cat1_id"],
+                cat2_id=category_filter["cat2_id"],
+                page_size=page_size,
+                taken=taken,
+            )
+            requested_pages += 1
+            self._raise_kuailv_payload_error(payload, f"goods_list:{category_filter['cat1_id']}/{category_filter['cat2_id']}")
+            payload_data = payload.get("data") if isinstance(payload, dict) else None
+            if isinstance(payload_data, dict) and "goodsList" not in payload_data:
+                raise RuntimeError("快驴H5 goodsList 缺失，请用真实商品请求样本更新字段映射")
+            goods_records = payload_data.get("goodsList") if isinstance(payload_data, dict) else []
+            if not isinstance(goods_records, list) or not goods_records:
+                break
+            first_goods_id = self._kuailv_goods_identity(goods_records[0]) if isinstance(goods_records[0], dict) else ""
+            if page > 1 and first_goods_id and first_goods_id == last_first_id:
+                break
+            last_first_id = first_goods_id
+            rows.extend(self.build_kuailv_h5_rows(goods_records, product, category_filter, page=page))
+            page_record = payload_data.get("page") if isinstance(payload_data, dict) else {}
+            page_info = page_record if isinstance(page_record, dict) else {}
+            next_taken = str(page_info.get("taken") or "").strip()
+            has_next_page = page_info.get("hasNextPage")
+            taken = next_taken or None
+            if has_next_page is False:
+                break
+            if has_next_page is None and len(goods_records) < page_size:
+                break
+            if has_next_page is True and not taken:
+                break
+        return rows, requested_pages
+
+    def build_kuailv_h5_rows(
+        self,
+        goods_records: list[Any],
+        product: dict[str, Any],
+        category_filter: dict[str, str],
+        *,
+        page: int,
+    ) -> list[dict[str, Any]]:
+        rows: list[dict[str, Any]] = []
+        for goods_record in goods_records:
+            if not isinstance(goods_record, dict):
+                continue
+            product_name = self.normalize_public_product_name(self._extract_kuailv_goods_name(goods_record))
+            if not product_name:
+                continue
+            current_price = self._extract_kuailv_price(goods_record)
+            if current_price is None:
+                continue
+            cat1_name = str(category_filter.get("cat1_name") or product.get("category") or "快驴分类").strip()
+            cat2_name = str(category_filter.get("cat2_name") or "").strip()
+            unit_text = self._extract_kuailv_unit_text(goods_record)
+            goods_id = self._kuailv_goods_identity(goods_record)
+            rows.append(
+                {
+                    "site_name": f"快驴商城H5 | {cat1_name}",
+                    "product_name": product_name,
+                    "current_price": current_price,
+                    "original_price": self._extract_kuailv_original_price(goods_record),
+                    "promotion_text": " | ".join(
+                        part
+                        for part in [
+                            "快驴商城H5",
+                            f"分类:{cat1_name}",
+                            f"子类:{cat2_name}" if cat2_name else "",
+                            f"页码:{page}",
+                        ]
+                        if part
+                    ),
+                    "currency": "CNY",
+                    "matched_rule": "快驴H5分类商品流",
+                    "raw_extract": {},
+                    "extra_fields": {
+                        "group_name": "快驴商城",
+                        "category": cat2_name or cat1_name,
+                        "spec_text": unit_text or None,
+                        "compare_key": product_name,
+                        "market_name": "南京快驴商城",
+                        "region_label": "南京市",
+                        "province": "江苏省",
+                        "city": "南京市",
+                        "product_series": goods_id or None,
+                        "brand": self._extract_kuailv_brand(goods_record),
+                        "cover": self._extract_kuailv_image_url(goods_record),
+                        "kuailv_goods_id": goods_id or None,
+                        "kuailv_cat1_id": category_filter.get("cat1_id"),
+                        "kuailv_cat2_id": category_filter.get("cat2_id"),
+                        "kuailv_cat1_name": cat1_name,
+                        "kuailv_cat2_name": cat2_name or None,
+                    },
+                }
+            )
+        return rows
+
+    @staticmethod
+    def _extract_kuailv_goods_name(goods_record: dict[str, Any]) -> str:
+        nested_candidates = (
+            goods_record,
+            goods_record.get("goodsBase") if isinstance(goods_record.get("goodsBase"), dict) else {},
+            goods_record.get("goodsInfo") if isinstance(goods_record.get("goodsInfo"), dict) else {},
+            goods_record.get("skuBase") if isinstance(goods_record.get("skuBase"), dict) else {},
+        )
+        for nested_record in nested_candidates:
+            for name_key in ("goodsName", "skuName", "spuName", "productName", "name", "title"):
+                name_text = str(nested_record.get(name_key) or "").strip()
+                if name_text:
+                    return name_text
+        return ""
+
+    @classmethod
+    def _extract_kuailv_price(cls, goods_record: dict[str, Any]) -> float | None:
+        for price_record in cls._kuailv_price_sources(goods_record):
+            for price_key in ("salePrice", "price", "currentPrice", "unitPrice", "minPrice", "promotionPrice"):
+                parsed_price = normalize_price(price_record.get(price_key))
+                if parsed_price is not None:
+                    return parsed_price
+        return None
+
+    @classmethod
+    def _extract_kuailv_original_price(cls, goods_record: dict[str, Any]) -> float | None:
+        for price_record in cls._kuailv_price_sources(goods_record):
+            for price_key in ("marketPrice", "originPrice", "originalPrice", "linePrice"):
+                parsed_price = normalize_price(price_record.get(price_key))
+                if parsed_price is not None:
+                    return parsed_price
+        return None
+
+    @staticmethod
+    def _kuailv_price_sources(goods_record: dict[str, Any]) -> list[dict[str, Any]]:
+        price_sources = [goods_record]
+        for nested_key in ("priceInfo", "skuPrice", "goodsPrice", "selectedSku"):
+            nested_record = goods_record.get(nested_key)
+            if isinstance(nested_record, dict):
+                price_sources.append(nested_record)
+        return price_sources
+
+    @staticmethod
+    def _kuailv_goods_identity(goods_record: dict[str, Any]) -> str:
+        nested_base = goods_record.get("goodsBase") if isinstance(goods_record.get("goodsBase"), dict) else {}
+        for goods_key in ("goodsId", "skuId", "spuId", "id", "wmProductId"):
+            identity = str(goods_record.get(goods_key) or nested_base.get(goods_key) or "").strip()
+            if identity:
+                return identity
+        return ""
+
+    @staticmethod
+    def _extract_kuailv_unit_text(goods_record: dict[str, Any]) -> str:
+        for spec_key in ("specText", "spec", "saleUnit", "unit", "unitName", "packageSpec", "skuSpec"):
+            spec_text = str(goods_record.get(spec_key) or "").strip()
+            if spec_text:
+                return spec_text
+        nested_base = goods_record.get("goodsBase") if isinstance(goods_record.get("goodsBase"), dict) else {}
+        for spec_key in ("specText", "spec", "saleUnit", "unit", "unitName", "packageSpec", "skuSpec"):
+            spec_text = str(nested_base.get(spec_key) or "").strip()
+            if spec_text:
+                return spec_text
+        return ""
+
+    @staticmethod
+    def _extract_kuailv_brand(goods_record: dict[str, Any]) -> str | None:
+        for brand_key in ("brandName", "brand", "brand_name"):
+            brand_name = str(goods_record.get(brand_key) or "").strip()
+            if brand_name:
+                return brand_name
+        nested_base = goods_record.get("goodsBase") if isinstance(goods_record.get("goodsBase"), dict) else {}
+        brand_name = str(nested_base.get("brandName") or nested_base.get("brand") or "").strip()
+        return brand_name or None
+
+    @staticmethod
+    def _extract_kuailv_image_url(goods_record: dict[str, Any]) -> str | None:
+        for image_key in ("imageUrl", "imgUrl", "picture", "picUrl", "cover"):
+            image_url = str(goods_record.get(image_key) or "").strip()
+            if image_url:
+                return image_url
+        nested_image = goods_record.get("image") if isinstance(goods_record.get("image"), dict) else {}
+        image_url = str(nested_image.get("url") or nested_image.get("imgUrl") or "").strip()
+        return image_url or None
+
+    @staticmethod
+    def _deduplicate_kuailv_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        deduplicated_rows: list[dict[str, Any]] = []
+        seen_keys: set[tuple[str, str, str, str]] = set()
+        for row in rows:
+            extra_fields = row.get("extra_fields") or {}
+            row_key = (
+                str(row.get("site_name") or "").strip(),
+                str(row.get("product_name") or "").strip(),
+                str(extra_fields.get("kuailv_goods_id") or "").strip(),
+                str(extra_fields.get("spec_text") or "").strip(),
+            )
+            if row_key in seen_keys:
+                continue
+            seen_keys.add(row_key)
+            deduplicated_rows.append(row)
+        return deduplicated_rows
+
+    def fetch_meicai_app_gateway(self, product: dict[str, Any], site_rule: dict | None = None) -> list[dict[str, Any]]:
+        site_rule = site_rule or {}
+        base_url = str(site_rule.get("gateway_base_url") or "https://mall-entrance.yunshanmeicai.com").strip()
+        timeout = self._to_positive_int(site_rule.get("timeout_seconds"), self.timeout)
+        self._load_env_file_if_configured(str(site_rule.get("secret_env_file_env") or "MEICAI_SECRET_ENV_FILE").strip())
+        request_headers = self._load_json_env_object(
+            str(site_rule.get("request_headers_env") or "MEICAI_REQUEST_HEADERS").strip()
+        )
+        common_body = self._load_json_env_object(
+            str(site_rule.get("common_body_env") or "MEICAI_COMMON_BODY").strip()
+        )
+        address_context = self._load_json_env_object(
+            str(site_rule.get("address_context_env") or "MEICAI_ADDRESS_CONTEXT").strip()
+        )
+        client = MeicaiAppGatewayClient(
+            base_url=base_url,
+            timeout=timeout,
+            request_headers={str(key): str(value) for key, value in request_headers.items()},
+            common_body=common_body,
+        )
+
+        endpoint_name = str(site_rule.get("endpoint") or "xb_feed").strip().lower()
+        page_size = self._to_positive_int(site_rule.get("page_size"), MEICAI_DEFAULT_PAGE_SIZE)
+        max_pages = self._to_positive_int(site_rule.get("max_pages"), MEICAI_DEFAULT_MAX_PAGES)
+        request_delay_seconds = max(0.0, self._to_float(site_rule.get("request_delay_seconds"), 0.0))
+        city_id = str(site_rule.get("city_id") or product.get("city_id") or "17").strip()
+        area_id = str(site_rule.get("area_id") or product.get("area_id") or "4402").strip()
+        module_key = str(site_rule.get("module_key") or product.get("module_key") or "700").strip()
+        class1_id = str(site_rule.get("class1_id") or product.get("class1_id") or "-1").strip()
+        class2_id = str(site_rule.get("class2_id") or product.get("class2_id") or "").strip()
+        configured_category_filters = site_rule.get("category_filters")
+        sale_class_tree_path = str(site_rule.get("sale_class_tree_path") or "").strip()
+        if sale_class_tree_path:
+            category_filters = self.load_meicai_category_filters_from_sale_class_tree(Path(sale_class_tree_path))
+        elif isinstance(configured_category_filters, list) and configured_category_filters:
+            category_filters = [
+                item for item in configured_category_filters if isinstance(item, dict)
+            ]
+        else:
+            category_filters = [
+                {
+                    "category": product.get("category"),
+                    "class1_id": class1_id,
+                    "class2_id": class2_id,
+                }
+            ]
+
+        if address_context:
+            configured_address_body = address_context.get("request_body")
+            if isinstance(configured_address_body, dict):
+                address_body = dict(configured_address_body)
+                city_id = str(address_body.get("city_id") or city_id).strip()
+                area_id = str(address_body.get("area_id") or area_id).strip()
+            else:
+                location_to = str(address_context.get("locationTo") or address_context.get("location_to") or "").strip()
+                if not location_to:
+                    raise RuntimeError("MEICAI_ADDRESS_CONTEXT 必须包含 request_body 或 locationTo")
+                city_id = str(address_context.get("city_id") or city_id).strip()
+                area_id = str(address_context.get("area_id") or area_id).strip()
+                address_body = {**common_body, "locationTo": location_to, "city_id": city_id, "area_id": area_id}
+            address_payload = client.change_address(address_body)
+            if int(address_payload.get("ret") or address_payload.get("code") or 0) != 1:
+                raise RuntimeError("美菜地址切换失败，请刷新 MEICAI_ADDRESS_CONTEXT 或登录态")
+
+        rows: list[dict[str, Any]] = []
+        request_count = 0
+        for category_filter in category_filters:
+            filter_class1_id = str(category_filter.get("class1_id") or class1_id).strip()
+            filter_class2_id = str(category_filter.get("class2_id") or class2_id).strip()
+            filter_sale_c1_id = str(category_filter.get("sale_c1_id") or filter_class1_id).strip()
+            filter_sale_c2_id = str(category_filter.get("sale_c2_id") or filter_class2_id).strip()
+            filtered_product = dict(product)
+            category_name = str(category_filter.get("category") or product.get("category") or "").strip()
+            if category_name:
+                filtered_product["category"] = category_name
+            last_first_id = None
+            for page in range(1, max_pages + 1):
+                if request_count > 0 and request_delay_seconds > 0:
+                    time.sleep(request_delay_seconds)
+                request_count += 1
+                if endpoint_name in {"class_products", "get_spus_by_class"}:
+                    payload = client.class_products(
+                        page=page,
+                        page_size=page_size,
+                        sale_c1_id=filter_sale_c1_id,
+                        sale_c2_id=filter_sale_c2_id,
+                        city_id=city_id,
+                        area_id=area_id,
+                    )
+                elif endpoint_name == "goods_info_location":
+                    payload = client.goods_info_location(
+                        page=page,
+                        page_size=page_size,
+                        module_key=module_key,
+                        class1_id=filter_class1_id,
+                        class2_id=filter_class2_id,
+                        city_id=city_id,
+                        area_id=area_id,
+                    )
+                else:
+                    payload = client.xb_feed(
+                        page=page,
+                        page_size=page_size,
+                        module_key=module_key,
+                        class1_id=filter_class1_id,
+                        class2_id=filter_class2_id,
+                        city_id=city_id,
+                        area_id=area_id,
+                    )
+                if self._meicai_payload_is_encrypted(payload):
+                    raise RuntimeError(f"美菜接口返回加密 data，endpoint={endpoint_name}，按约定不转 OCR")
+                goods_rows = self.extract_meicai_goods_rows(payload)
+                if not goods_rows:
+                    break
+                first_id = self._meicai_goods_identity(goods_rows[0])
+                if page > 1 and first_id and first_id == last_first_id:
+                    break
+                last_first_id = first_id
+                rows.extend(
+                    self.build_meicai_app_gateway_rows(
+                        goods_rows,
+                        filtered_product,
+                        page=page,
+                        endpoint_name=endpoint_name,
+                        city_id=city_id,
+                        area_id=area_id,
+                    )
+                )
+                self._report_progress(
+                    0.15 + 0.55 * (page / max_pages),
+                    f"美菜App网关 {endpoint_name} 第 {page}/{max_pages} 页",
+                )
+                last_page_marker = self._meicai_payload_last_page_marker(payload)
+                if last_page_marker is True or (last_page_marker is None and len(goods_rows) < page_size):
+                    break
+        self._report_progress(0.72, f"美菜App网关 {endpoint_name} 共 {len(rows)} 条")
+        return self._deduplicate_meicai_rows(rows)
+
+    def fetch_meicai_h5_decrypt(self, product: dict[str, Any], site_rule: dict | None = None) -> list[dict[str, Any]]:
+        site_rule = site_rule or {}
+        base_url = str(site_rule.get("gateway_base_url") or "https://mall-entrance.yunshanmeicai.com").strip()
+        timeout = self._to_positive_int(site_rule.get("timeout_seconds"), self.timeout)
+        self._load_env_file_if_configured(str(site_rule.get("secret_env_file_env") or "MEICAI_SECRET_ENV_FILE").strip())
+        request_headers = self._load_json_env_object(
+            str(site_rule.get("request_headers_env") or "MEICAI_REQUEST_HEADERS").strip()
+        )
+        common_body = self._load_json_env_object(
+            str(site_rule.get("common_body_env") or "MEICAI_COMMON_BODY").strip()
+        )
+        file_address_context = self._load_meicai_address_context_file(site_rule.get("current_address_context_path"))
+        address_context = file_address_context or self._load_json_env_object(
+            str(site_rule.get("address_context_env") or "MEICAI_ADDRESS_CONTEXT").strip()
+        )
+        h5_salts_path = Path(str(site_rule.get("h5_salts_path") or "tmp/meicai_h5_salts.json").strip())
+        if not h5_salts_path.exists():
+            raise RuntimeError(f"美菜H5 salts 文件不存在: {h5_salts_path}")
+        h5_salts_payload = json.loads(h5_salts_path.read_text(encoding="utf-8-sig"))
+        request_source = str(site_rule.get("request_source") or "android").strip() or "android"
+        crawl_audit_path = str(site_rule.get("crawl_audit_path") or "").strip()
+        page_size = self._to_positive_int(site_rule.get("page_size"), MEICAI_DEFAULT_PAGE_SIZE)
+        max_pages = self._to_positive_int(site_rule.get("max_pages"), MEICAI_DEFAULT_MAX_PAGES)
+        request_delay_seconds = max(0.0, self._to_float(site_rule.get("request_delay_seconds"), 0.0))
+        city_id = str(site_rule.get("city_id") or product.get("city_id") or "17").strip()
+        area_id = str(site_rule.get("area_id") or product.get("area_id") or "4402").strip()
+        configured_category_filters = site_rule.get("category_filters")
+        sale_class_tree_path = str(site_rule.get("sale_class_tree_path") or "").strip()
+        if sale_class_tree_path:
+            category_filters = self.load_meicai_category_filters_from_sale_class_tree(Path(sale_class_tree_path))
+        elif isinstance(configured_category_filters, list) and configured_category_filters:
+            category_filters = [item for item in configured_category_filters if isinstance(item, dict)]
+        else:
+            category_filters = [
+                {
+                    "category": product.get("category"),
+                    "class1_id": str(site_rule.get("class1_id") or product.get("class1_id") or "-1").strip(),
+                    "class2_id": str(site_rule.get("class2_id") or product.get("class2_id") or "").strip(),
+                }
+            ]
+
+        if address_context:
+            configured_address_body = address_context.get("request_body")
+            if isinstance(configured_address_body, dict):
+                address_body = dict(configured_address_body)
+                city_id = str(address_body.get("city_id") or city_id).strip()
+                area_id = str(address_body.get("area_id") or area_id).strip()
+                address_client = MeicaiH5DecryptingGatewayClient(
+                    base_url=base_url,
+                    timeout=timeout,
+                    request_headers={str(key): str(value) for key, value in request_headers.items()},
+                    common_body=common_body,
+                    h5_salts_payload=h5_salts_payload,
+                    request_source=request_source,
+                )
+                address_payload = address_client.change_address(address_body)
+                if int(address_payload.get("ret") or address_payload.get("code") or 0) != 1:
+                    raise RuntimeError("美菜地址切换失败，请刷新 MEICAI_ADDRESS_CONTEXT 或登录态")
+            else:
+                location_to = str(address_context.get("locationTo") or address_context.get("location_to") or "").strip()
+                if not location_to:
+                    raise RuntimeError("MEICAI_ADDRESS_CONTEXT 必须包含 request_body 或 locationTo")
+                city_id = str(address_context.get("city_id") or city_id).strip()
+                area_id = str(address_context.get("area_id") or area_id).strip()
+                common_body = self._apply_meicai_location_context(
+                    common_body,
+                    location_to=location_to,
+                    city_id=city_id,
+                    area_id=area_id,
+                )
+                request_headers = self._apply_meicai_city_area_headers(
+                    request_headers,
+                    city_id=city_id,
+                    area_id=area_id,
+                )
+        region_fields = self._infer_meicai_region_fields(address_context)
+
+        client = MeicaiH5DecryptingGatewayClient(
+            base_url=base_url,
+            timeout=timeout,
+            request_headers={str(key): str(value) for key, value in request_headers.items()},
+            common_body=common_body,
+            h5_salts_payload=h5_salts_payload,
+            request_source=request_source,
+        )
+
+        rows: list[dict[str, Any]] = []
+        category_reports: list[dict[str, Any]] = []
+        request_count = 0
+        started_at = time.perf_counter()
+        for category_filter in category_filters:
+            filter_sale_c1_id = str(category_filter.get("sale_c1_id") or category_filter.get("class1_id") or "-1").strip()
+            filter_sale_c2_id = str(category_filter.get("sale_c2_id") or category_filter.get("class2_id") or "").strip()
+            filtered_product = dict(product)
+            category_name = str(category_filter.get("category") or product.get("category") or "").strip()
+            if category_name:
+                filtered_product["category"] = category_name
+            last_first_id = None
+            category_report = {
+                "category": category_name,
+                "sale_c1_id": filter_sale_c1_id,
+                "sale_c2_id": filter_sale_c2_id,
+                "pages_requested": 0,
+                "rows_collected": 0,
+                "stop_reason": "",
+                "page_reports": [],
+            }
+            for page in range(1, max_pages + 1):
+                if request_count > 0 and request_delay_seconds > 0:
+                    time.sleep(request_delay_seconds)
+                request_count += 1
+                payload = client.class_products(
+                    page=page,
+                    page_size=page_size,
+                    sale_c1_id=filter_sale_c1_id,
+                    sale_c2_id=filter_sale_c2_id,
+                    city_id=city_id,
+                    area_id=area_id,
+                )
+                if self._meicai_payload_is_encrypted(payload):
+                    raise RuntimeError("美菜H5 type=3 解密失败，按约定不转 OCR")
+                goods_rows = self.extract_meicai_goods_rows(payload)
+                last_page_marker = self._meicai_payload_last_page_marker(payload)
+                category_report["pages_requested"] = int(category_report["pages_requested"]) + 1
+                category_report["rows_collected"] = int(category_report["rows_collected"]) + len(goods_rows)
+                category_report["page_reports"].append(
+                    {
+                        "page": page,
+                        "row_count": len(goods_rows),
+                        "last_page_marker": last_page_marker,
+                    }
+                )
+                if not goods_rows:
+                    category_report["stop_reason"] = "empty_page"
+                    break
+                first_id = self._meicai_goods_identity(goods_rows[0])
+                if page > 1 and first_id and first_id == last_first_id:
+                    category_report["stop_reason"] = "repeated_first_item"
+                    break
+                last_first_id = first_id
+                rows.extend(
+                    self.build_meicai_app_gateway_rows(
+                        goods_rows,
+                        filtered_product,
+                        page=page,
+                        endpoint_name="h5_class_products",
+                        city_id=city_id,
+                        area_id=area_id,
+                        source_label="美菜网H5",
+                        **region_fields,
+                    )
+                )
+                self._report_progress(
+                    0.15 + 0.55 * (page / max_pages),
+                    f"美菜H5解密 第 {page}/{max_pages} 页",
+                )
+                if last_page_marker is True:
+                    category_report["stop_reason"] = "last_page_marker"
+                    break
+                if last_page_marker is None and len(goods_rows) < page_size:
+                    category_report["stop_reason"] = "short_page_without_marker"
+                    break
+            if not category_report["stop_reason"]:
+                category_report["stop_reason"] = "max_pages"
+            category_report["hit_max_pages"] = category_report["stop_reason"] == "max_pages"
+            category_reports.append(category_report)
+        self._report_progress(0.72, f"美菜H5解密共 {len(rows)} 条")
+        deduplicated_rows = self._deduplicate_meicai_rows(rows)
+        if crawl_audit_path:
+            self._write_meicai_crawl_audit(
+                Path(crawl_audit_path),
+                {
+                    "strategy": "meicai_h5_decrypt_batch",
+                    "page_size": page_size,
+                    "max_pages": max_pages,
+                    "request_delay_seconds": request_delay_seconds,
+                    "category_count": len(category_reports),
+                    "request_count": request_count,
+                    "raw_row_count": len(rows),
+                    "deduplicated_row_count": len(deduplicated_rows),
+                    "elapsed_seconds": round(time.perf_counter() - started_at, 2),
+                    "hit_max_pages_count": sum(1 for report in category_reports if report.get("hit_max_pages")),
+                    "category_reports": category_reports,
+                },
+            )
+        return deduplicated_rows
+
+    @staticmethod
+    def load_meicai_category_filters_from_sale_class_tree(tree_path: Path) -> list[dict[str, str]]:
+        if not tree_path.exists():
+            raise RuntimeError(f"美菜 saleClass 树文件不存在: {tree_path}")
+        payload = json.loads(tree_path.read_text(encoding="utf-8-sig"))
+        flat_rows = payload.get("flat") if isinstance(payload, dict) else None
+        if not isinstance(flat_rows, list):
+            raise RuntimeError("美菜 saleClass 树文件缺少 flat 数组")
+        category_filters: list[dict[str, str]] = []
+        for row in flat_rows:
+            if not isinstance(row, dict):
+                continue
+            class1_id = str(row.get("saleC1Id") or "").strip()
+            class2_id = str(row.get("saleC2Id") or "").strip()
+            if not class1_id:
+                continue
+            class1_name = str(row.get("saleC1Name") or "").strip()
+            class2_name = str(row.get("saleC2Name") or "").strip()
+            category_filters.append(
+                {
+                    "category": " / ".join(part for part in (class1_name, class2_name) if part) or class1_id,
+                    "class1_id": class1_id,
+                    "class2_id": class2_id,
+                }
+            )
+        return category_filters
+
+    @staticmethod
+    def _load_json_env_object(env_name: str) -> dict[str, Any]:
+        if not env_name:
+            return {}
+        raw_value = str(os.environ.get(env_name) or "").strip()
+        if not raw_value:
+            return {}
+        parsed = json.loads(raw_value)
+        if not isinstance(parsed, dict):
+            raise RuntimeError(f"{env_name} 必须是 JSON object")
+        return parsed
+
+    @staticmethod
+    def _load_meicai_address_context_file(path_value: Any) -> dict[str, Any]:
+        path_text = str(path_value or "").strip()
+        if not path_text:
+            return {}
+        address_context_path = Path(path_text).expanduser()
+        if not address_context_path.exists():
+            return {}
+        parsed = json.loads(address_context_path.read_text(encoding="utf-8-sig"))
+        if not isinstance(parsed, dict):
+            raise RuntimeError(f"{address_context_path} 必须是 JSON object")
+        return parsed
+
+    @staticmethod
+    def _apply_meicai_location_context(
+        common_body: dict[str, Any],
+        *,
+        location_to: str,
+        city_id: str,
+        area_id: str,
+    ) -> dict[str, Any]:
+        adjusted_common_body = dict(common_body)
+        env_payload = dict(
+            adjusted_common_body.get("_ENV_") if isinstance(adjusted_common_body.get("_ENV_"), dict) else {}
+        )
+        env_payload["location"] = location_to
+        env_payload["city_id"] = city_id
+        env_payload["area_id"] = area_id
+        adjusted_common_body["_ENV_"] = env_payload
+        return adjusted_common_body
+
+    @classmethod
+    def _apply_meicai_city_area_headers(
+        cls,
+        request_headers: dict[str, Any],
+        *,
+        city_id: str,
+        area_id: str,
+    ) -> dict[str, Any]:
+        adjusted_headers = dict(request_headers)
+        adjusted_headers["x-mc-city"] = city_id
+        adjusted_headers["x-mc-area"] = area_id
+        gray_header = str(adjusted_headers.get("mc-gray") or "")
+        if gray_header:
+            gray_header = cls._replace_meicai_gray_value(gray_header, "cityId", city_id)
+            gray_header = cls._replace_meicai_gray_value(gray_header, "saleArea", area_id)
+            adjusted_headers["mc-gray"] = gray_header
+        return adjusted_headers
+
+    @staticmethod
+    def _replace_meicai_gray_value(gray_header: str, key_name: str, value_text: str) -> str:
+        return "_".join(
+            f"{key_name}={value_text}" if part.startswith(f"{key_name}=") else part
+            for part in gray_header.split("_")
+        )
+
+    @staticmethod
+    def _infer_meicai_region_fields(address_context: dict[str, Any]) -> dict[str, str]:
+        address_text = " ".join(
+            str(address_context.get(field_name) or "")
+            for field_name in ("poi_address", "address_detail", "address")
+        )
+        if "上海" in address_text or "浦东" in address_text:
+            return {
+                "market_name": "上海美菜网",
+                "region_label": "上海市",
+                "province": "上海市",
+                "city": "上海市",
+            }
+        if "郑州" in address_text or "金水" in address_text or "中牟" in address_text or "万邦" in address_text:
+            return {
+                "market_name": "郑州美菜网",
+                "region_label": "郑州市",
+                "province": "河南省",
+                "city": "郑州市",
+            }
+        return {
+            "market_name": "南京美菜网",
+            "region_label": "南京市",
+            "province": "江苏省",
+            "city": "南京市",
+        }
+
+    @staticmethod
+    def _load_env_file_if_configured(path_env_name: str) -> None:
+        if not path_env_name:
+            return
+        configured_path = str(os.environ.get(path_env_name) or "").strip()
+        if not configured_path:
+            return
+        secret_path = os.path.expanduser(configured_path)
+        if not os.path.exists(secret_path):
+            raise RuntimeError(f"{path_env_name} 指向的登录态文件不存在: {configured_path}")
+        with open(secret_path, encoding="utf-8") as secret_file:
+            for raw_line in secret_file:
+                line = raw_line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, value = line.split("=", 1)
+                key = key.strip()
+                value = value.strip().strip('"').strip("'")
+                if key and key not in os.environ:
+                    os.environ[key] = value
+
+    @staticmethod
+    def _meicai_payload_is_encrypted(payload: dict[str, Any]) -> bool:
+        encryption = payload.get("encryption") if isinstance(payload, dict) else None
+        if not isinstance(encryption, dict):
+            return False
+        data = payload.get("data")
+        return isinstance(data, str) and str(data).strip() and int(encryption.get("type") or 0) > 1
+
+    @staticmethod
+    def _meicai_payload_last_page_marker(payload: dict[str, Any]) -> bool | None:
+        data = payload.get("data") if isinstance(payload, dict) else None
+        if not isinstance(data, dict) or "is_last_page" not in data:
+            return None
+        marker = data.get("is_last_page")
+        if isinstance(marker, bool):
+            return marker
+        if isinstance(marker, int):
+            return marker == 1
+        if isinstance(marker, str):
+            normalized_marker = marker.strip().lower()
+            if normalized_marker in {"1", "true", "yes"}:
+                return True
+            if normalized_marker in {"0", "false", "no"}:
+                return False
+        return None
+
+    @staticmethod
+    def _write_meicai_crawl_audit(audit_path: Path, audit_payload: dict[str, Any]) -> None:
+        audit_path.parent.mkdir(parents=True, exist_ok=True)
+        audit_path.write_text(json.dumps(audit_payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+    @classmethod
+    def extract_meicai_goods_rows(cls, payload: dict[str, Any]) -> list[dict[str, Any]]:
+        data = payload.get("data") if isinstance(payload, dict) else None
+        if isinstance(data, list):
+            return cls._flatten_meicai_goods_rows(data)
+        if not isinstance(data, dict):
+            return []
+        for path in (
+            ("rows",),
+            ("list",),
+            ("skuList",),
+            ("skus",),
+            ("spus",),
+            ("refeactorSkus",),
+            ("goodsRows",),
+            ("pageData", "rows"),
+            ("pageData", "list"),
+            ("pageData", "skuList"),
+            ("data", "refeactorSkus"),
+            ("data", "skus"),
+            ("data", "skuList"),
+        ):
+            current_value: Any = data
+            for path_part in path:
+                current_value = current_value.get(path_part) if isinstance(current_value, dict) else None
+            if isinstance(current_value, list):
+                return cls._flatten_meicai_goods_rows(current_value)
+        return []
+
+    @classmethod
+    def _flatten_meicai_goods_rows(cls, raw_rows: list[Any]) -> list[dict[str, Any]]:
+        goods_rows: list[dict[str, Any]] = []
+        for raw_row in raw_rows:
+            if not isinstance(raw_row, dict):
+                continue
+            nested_goods = raw_row.get("goodsRows")
+            if isinstance(nested_goods, list):
+                goods_rows.extend(item for item in nested_goods if isinstance(item, dict))
+                continue
+            if isinstance(nested_goods, dict):
+                goods_rows.append(nested_goods)
+                continue
+            nested_skus = raw_row.get("skus")
+            if isinstance(nested_skus, list):
+                goods_rows.extend(item for item in nested_skus if isinstance(item, dict))
+                continue
+            goods_rows.append(raw_row)
+        return goods_rows
+
+    def build_meicai_app_gateway_rows(
+        self,
+        goods_rows: list[dict[str, Any]],
+        product: dict[str, Any],
+        *,
+        page: int,
+        endpoint_name: str,
+        city_id: str,
+        area_id: str,
+        source_label: str = "美菜网App",
+        market_name: str = "南京美菜网",
+        region_label: str = "南京市",
+        province: str = "江苏省",
+        city: str = "南京市",
+    ) -> list[dict[str, Any]]:
+        rows: list[dict[str, Any]] = []
+        for goods_row in goods_rows:
+            sku_base = goods_row.get("skuBase") if isinstance(goods_row.get("skuBase"), dict) else {}
+            sku_price = goods_row.get("skuPrice") if isinstance(goods_row.get("skuPrice"), dict) else {}
+            sku_image = goods_row.get("skuImg") if isinstance(goods_row.get("skuImg"), dict) else {}
+            sku_formats = goods_row.get("skuFormats") if isinstance(goods_row.get("skuFormats"), dict) else {}
+            selected_ssu = goods_row.get("selectedSsu") if isinstance(goods_row.get("selectedSsu"), dict) else {}
+            selected_ssu_price = selected_ssu.get("ssuPrice") if isinstance(selected_ssu.get("ssuPrice"), dict) else {}
+            product_name = self.normalize_public_product_name(
+                str(
+                    sku_base.get("skuName")
+                    or sku_base.get("spuName")
+                    or goods_row.get("skuName")
+                    or goods_row.get("name")
+                    or ""
+                ).strip()
+            )
+            if not product_name:
+                continue
+            current_price = self._extract_meicai_price(goods_row, sku_price)
+            if current_price is None:
+                continue
+            unit_text = str(
+                sku_price.get("priceUnit")
+                or sku_price.get("unit")
+                or sku_formats.get("skuAllFormat")
+                or selected_ssu.get("ssuFormat")
+                or selected_ssu.get("formatText")
+                or selected_ssu_price.get("priceUnit")
+                or goods_row.get("priceUnit")
+                or ""
+            ).strip()
+            sku_id = str(sku_base.get("skuId") or goods_row.get("skuId") or "").strip()
+            spu_id = str(sku_base.get("spuId") or goods_row.get("spuId") or "").strip()
+            sale_c1_id = str(sku_base.get("saleC1Id") or goods_row.get("saleC1Id") or "").strip()
+            sale_c2_id = str(sku_base.get("saleC2Id") or goods_row.get("saleC2Id") or "").strip()
+            sale_c1_name = str(sku_base.get("saleC1Name") or goods_row.get("saleC1Name") or "").strip()
+            sale_c2_name = str(sku_base.get("saleC2Name") or goods_row.get("saleC2Name") or "").strip()
+            bi_name = str(sku_base.get("biName") or goods_row.get("biName") or "").strip()
+            bi_alias_name = str(sku_base.get("biAliasName") or goods_row.get("biAliasName") or "").strip()
+            config_category = str(product.get("category") or "推荐商品").strip() or "推荐商品"
+            interface_category = sale_c2_name or sale_c1_name or bi_name
+            internal_category = suggest_meicai_internal_category(
+                {
+                    "saleC1Id": sale_c1_id,
+                    "saleC2Id": sale_c2_id,
+                    "saleC1Name": sale_c1_name,
+                    "saleC2Name": sale_c2_name,
+                    "biName": bi_name,
+                    "sampleSkuNames": [product_name],
+                }
+            )
+            rows.append(
+                {
+                    "site_name": f"{source_label} | 推荐商品",
+                    "product_name": product_name,
+                    "current_price": current_price,
+                    "original_price": normalize_price(sku_price.get("marketPrice") or sku_price.get("originPrice")),
+                    "promotion_text": " | ".join(
+                        part
+                        for part in [
+                            source_label,
+                            f"接口:{endpoint_name}",
+                            f"页码:{page}",
+                            f"城市:{city_id}",
+                            f"区域:{area_id}",
+                        ]
+                        if part
+                    ),
+                    "currency": "CNY",
+                    "matched_rule": f"{source_label}网关商品流",
+                    "raw_extract": {},
+                    "extra_fields": {
+                        "group_name": "美菜网",
+                        "category": interface_category or config_category,
+                        "spec_text": unit_text or None,
+                        "compare_key": product_name,
+                        "market_name": market_name,
+                        "region_label": region_label,
+                        "province": province,
+                        "city": city,
+                        "product_series": sku_id or spu_id or None,
+                        "brand": str(sku_base.get("brandName") or goods_row.get("brandName") or "").strip() or None,
+                        "cover": str(sku_image.get("imgUrl") or sku_image.get("url") or goods_row.get("imgUrl") or "").strip() or None,
+                        "meicai_mapping_source": f"meicai_app_gateway_{endpoint_name}",
+                        "meicai_sku_id": sku_id or None,
+                        "meicai_spu_id": spu_id or None,
+                        "meicai_sale_c1_id": sale_c1_id or None,
+                        "meicai_sale_c2_id": sale_c2_id or None,
+                        "meicai_sale_c1_name": sale_c1_name or None,
+                        "meicai_sale_c2_name": sale_c2_name or None,
+                        "meicai_bi_name": bi_name or None,
+                        "meicai_bi_alias_name": bi_alias_name or None,
+                        "meicai_config_category": config_category,
+                        "liancai_top_category": internal_category.liancai_top_category,
+                        "liancai_subcategory": internal_category.liancai_subcategory,
+                        "liancai_mapping_source": internal_category.source,
+                        "meicai_internal_category": internal_category.category,
+                        "meicai_internal_market_category": internal_category.market_category,
+                        "meicai_internal_mapping_source": internal_category.source,
+                        "meicai_internal_mapping_confidence": internal_category.confidence,
+                    },
+                }
+            )
+        return rows
+
+    @staticmethod
+    def _extract_meicai_price(goods_row: dict[str, Any], sku_price: dict[str, Any]) -> float | None:
+        for candidate in (
+            sku_price.get("minPrice"),
+            sku_price.get("unitPrice"),
+            sku_price.get("price"),
+            goods_row.get("minPrice"),
+            goods_row.get("price"),
+        ):
+            parsed_price = normalize_price(candidate)
+            if parsed_price is not None:
+                return parsed_price
+        selected_ssu = goods_row.get("selectedSsu") if isinstance(goods_row.get("selectedSsu"), dict) else {}
+        selected_ssu_price = selected_ssu.get("ssuPrice") if isinstance(selected_ssu.get("ssuPrice"), dict) else {}
+        for candidate in (
+            selected_ssu_price.get("unitPrice"),
+            selected_ssu_price.get("price"),
+            selected_ssu_price.get("preFormat"),
+            selected_ssu.get("price"),
+        ):
+            parsed_price = normalize_price(candidate)
+            if parsed_price is not None:
+                return parsed_price
+        ssu_list = goods_row.get("ssuList")
+        if not isinstance(ssu_list, list):
+            return None
+        for ssu_item in ssu_list:
+            if not isinstance(ssu_item, dict):
+                continue
+            ssu_price = ssu_item.get("ssuPrice") if isinstance(ssu_item.get("ssuPrice"), dict) else {}
+            for candidate in (ssu_price.get("unitPrice"), ssu_price.get("preFormat"), ssu_item.get("price")):
+                parsed_price = normalize_price(candidate)
+                if parsed_price is not None:
+                    return parsed_price
+        return None
+
+    @staticmethod
+    def _meicai_goods_identity(goods_row: dict[str, Any]) -> str:
+        sku_base = goods_row.get("skuBase") if isinstance(goods_row.get("skuBase"), dict) else {}
+        return str(sku_base.get("skuId") or sku_base.get("spuId") or goods_row.get("skuId") or goods_row.get("spuId") or "").strip()
+
+    @staticmethod
+    def _deduplicate_meicai_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        deduped: list[dict[str, Any]] = []
+        seen: set[tuple[str, str, str, str]] = set()
+        for row in rows:
+            extra = row.get("extra_fields") or {}
+            key = (
+                str(row.get("site_name") or "").strip(),
+                str(row.get("product_name") or "").strip(),
+                str(extra.get("meicai_sku_id") or "").strip(),
+                str(extra.get("spec_text") or "").strip(),
+            )
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(row)
+        return deduped
 
     @staticmethod
     def _match_liancai_app_category(category_name: str, categories: list[dict[str, Any]]) -> dict[str, Any] | None:

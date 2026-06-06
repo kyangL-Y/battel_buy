@@ -51,7 +51,7 @@ def test_database_nested_connect_reuses_active_transaction(tmp_path: Path):
     assert result.iloc[0]["product_key"] == "nested-1"
 
 
-def test_get_latest_records_exposes_only_liancai_image_url(tmp_path: Path):
+def test_get_latest_records_exposes_only_supported_source_image_url(tmp_path: Path):
     db = Database(tmp_path / "test_price_tracker.db")
     db.init_db()
     liancai_product_id = db.upsert_product(
@@ -62,6 +62,15 @@ def test_get_latest_records_exposes_only_liancai_image_url(tmp_path: Path):
         site_name="莲菜网App | 干调类",
         category="干调类",
         image_url="https://cdnlcw.liancaiwang.cn/uploads/baiko.jpg",
+    )
+    meicai_product_id = db.upsert_product(
+        product_key="meicai-image-1",
+        group_name="美菜网",
+        product_name="青菜",
+        source_url="https://mall-entrance.yunshanmeicai.com",
+        site_name="美菜网App | 推荐商品",
+        category="蔬菜类",
+        image_url="https://img-oss.yunshanmeicai.com/uploads/greens.jpg",
     )
     other_product_id = db.upsert_product(
         product_key="other-image-1",
@@ -83,6 +92,16 @@ def test_get_latest_records_exposes_only_liancai_image_url(tmp_path: Path):
         raw_payload={"source": "liancai"},
     )
     db.insert_price_record(
+        product_id=meicai_product_id,
+        captured_at="2026-04-15T10:00:00",
+        current_price=3.0,
+        original_price=None,
+        promotion_text=None,
+        currency="CNY",
+        availability=None,
+        raw_payload={"source": "meicai"},
+    )
+    db.insert_price_record(
         product_id=other_product_id,
         captured_at="2026-04-15T10:00:00",
         current_price=2.0,
@@ -96,7 +115,82 @@ def test_get_latest_records_exposes_only_liancai_image_url(tmp_path: Path):
     latest = db.get_latest_records().set_index("product_key")
 
     assert latest.loc["liancai-image-1", "image_url"] == "https://cdnlcw.liancaiwang.cn/uploads/baiko.jpg"
+    assert latest.loc["meicai-image-1", "image_url"] == "https://img-oss.yunshanmeicai.com/uploads/greens.jpg"
     assert latest.loc["other-image-1", "image_url"] is None
+
+
+def test_backfill_meicai_product_image_urls_uses_only_meicai_payloads(tmp_path: Path):
+    db = Database(tmp_path / "test_price_tracker.db")
+    db.init_db()
+    meicai_product_id = db.upsert_product(
+        product_key="meicai-backfill-1",
+        group_name="美菜网",
+        product_name="韭菜",
+        source_url="https://mall-entrance.yunshanmeicai.com",
+        site_name="美菜网App | 推荐商品",
+        category="蔬菜类",
+    )
+    liancai_product_id = db.upsert_product(
+        product_key="liancai-backfill-1",
+        group_name="莲菜网",
+        product_name="韭菜",
+        source_url="https://lcwgetway.liancaiwang.cn/app/product",
+        site_name="莲菜网App | 蔬菜类",
+        category="蔬菜类",
+    )
+    db.insert_price_record(
+        product_id=meicai_product_id,
+        captured_at="2026-04-15T10:00:00",
+        current_price=3.0,
+        original_price=None,
+        promotion_text=None,
+        currency="CNY",
+        availability=None,
+        raw_payload={
+            "site_name": "美菜网App | 推荐商品",
+            "parsed": {
+                "extra_fields": {
+                    "cover": "https://img-oss.yunshanmeicai.com/runtime-chive.jpg",
+                },
+            },
+        },
+    )
+    db.insert_price_record(
+        product_id=meicai_product_id,
+        captured_at="2026-04-16T10:00:00",
+        current_price=3.1,
+        original_price=None,
+        promotion_text=None,
+        currency="CNY",
+        availability=None,
+        raw_payload={
+            "site_name": "美菜网App | 推荐商品",
+            "parsed": {"extra_fields": {}},
+        },
+    )
+    db.insert_price_record(
+        product_id=liancai_product_id,
+        captured_at="2026-04-15T10:00:00",
+        current_price=3.2,
+        original_price=None,
+        promotion_text=None,
+        currency="CNY",
+        availability=None,
+        raw_payload={
+            "site_name": "莲菜网App | 蔬菜类",
+            "parsed": {
+                "extra_fields": {
+                    "cover": "https://img-oss.yunshanmeicai.com/should-not-leak.jpg",
+                },
+            },
+        },
+    )
+
+    assert db.backfill_meicai_product_image_urls() == 1
+    latest = db.get_latest_records().set_index("product_key")
+
+    assert latest.loc["meicai-backfill-1", "image_url"] == "https://img-oss.yunshanmeicai.com/runtime-chive.jpg"
+    assert latest.loc["liancai-backfill-1", "image_url"] is None
 
 
 def test_bulk_upsert_products_and_insert_price_records(tmp_path: Path):

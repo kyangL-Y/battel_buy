@@ -86,6 +86,52 @@ def test_product_selector_keeps_liancai_image_url_from_site_name():
     assert selector_df.iloc[0]["image_url"] == "https://cdnlcw.liancaiwang.cn/white-cardamom.jpg"
 
 
+def test_product_selector_keeps_meicai_image_url_from_site_name():
+    df = pd.DataFrame(
+        [
+            {
+                "group_name": "美菜网",
+                "product_name": "青菜 约500g",
+                "product_key": "meicai-greens",
+                "site_name": "美菜网App | 推荐商品",
+                "source_url": "https://mall-entrance.yunshanmeicai.com",
+                "spec_text": "500g",
+                "current_price": 2.8,
+                "captured_at": "2026-04-10T08:00:00",
+                "image_url": "https://img-oss.yunshanmeicai.com/greens.jpg",
+            }
+        ]
+    )
+
+    selector_df = build_single_product_selector_options(df)
+
+    assert selector_df.iloc[0]["source_name"] == "美菜网"
+    assert selector_df.iloc[0]["image_url"] == "https://img-oss.yunshanmeicai.com/greens.jpg"
+
+
+def test_product_selector_does_not_borrow_meicai_image_for_public_source():
+    df = pd.DataFrame(
+        [
+            {
+                "group_name": "公开价格源",
+                "product_name": "青菜",
+                "product_key": "pfsc-greens",
+                "site_name": "PFSC | 北京新发地",
+                "source_url": "https://pfsc.agri.cn/api/priceQuotationController/pageList",
+                "spec_text": "500g",
+                "current_price": 2.5,
+                "captured_at": "2026-04-10T08:00:00",
+                "image_url": "https://example.com/should-not-leak.jpg",
+            }
+        ]
+    )
+
+    selector_df = build_single_product_selector_options(df)
+
+    assert selector_df.iloc[0]["source_name"] == "PFSC"
+    assert selector_df.iloc[0]["image_url"] is None
+
+
 def test_market_summary_filters_statistical_indicators_from_product_rows():
     df = pd.DataFrame(
         [
@@ -475,6 +521,43 @@ def test_compute_cross_site_price_summary_collapses_liancai_app_and_h5_into_sing
     assert row["lowest_price"] == 12.5
     assert row["highest_price"] == 12.5
     assert row["average_price"] == 12.5
+
+
+def test_compute_cross_site_price_summary_does_not_borrow_meicai_image_for_liancai_source():
+    df = pd.DataFrame(
+        [
+            {
+                "group_name": "莲菜网",
+                "product_name": "青菜",
+                "product_key": "liancai-greens",
+                "site_name": "莲菜网App | 蔬菜类",
+                "source_url": "https://lcwgetway.liancaiwang.cn",
+                "spec_text": "500g",
+                "current_price": 2.7,
+                "captured_at": "2026-04-06T10:00:00",
+                "image_url": "",
+            },
+            {
+                "group_name": "美菜网",
+                "product_name": "青菜",
+                "product_key": "meicai-greens",
+                "site_name": "美菜网App | 推荐商品",
+                "source_url": "https://mall-entrance.yunshanmeicai.com",
+                "spec_text": "500g",
+                "current_price": 2.8,
+                "captured_at": "2026-04-06T10:00:00",
+                "image_url": "https://img-oss.yunshanmeicai.com/greens.jpg",
+            },
+        ]
+    )
+
+    result = compute_cross_site_price_summary(df)
+
+    assert len(result) == 1
+    row = result.iloc[0]
+    assert row["source_names"] == "美菜网、莲菜网"
+    assert row["source_name"] == "莲菜网"
+    assert row["image_url"] is None or row["image_url"] == ""
 
 
 def test_compute_cross_site_price_summary_keeps_single_source_products_and_merges_market_rows():
@@ -1531,6 +1614,43 @@ def test_location_priority_prefers_selected_city_in_summary_and_trend_helpers():
     assert trend_df.iloc[0]["city"] == "北京市"
 
 
+def test_cross_site_summary_filters_to_selected_municipality_market():
+    df = pd.DataFrame(
+        [
+            {
+                "group_name": "青菜",
+                "product_name": "青菜",
+                "product_key": "sh-greens",
+                "site_name": "PFSC | 上海江桥",
+                "market_name": "上海江桥",
+                "province": "上海市",
+                "city": "上海市",
+                "spec_text": "公斤",
+                "current_price": 3.8,
+                "captured_at": "2026-04-10T10:00:00",
+            },
+            {
+                "group_name": "青菜",
+                "product_name": "青菜",
+                "product_key": "bj-greens",
+                "site_name": "PFSC | 北京新发地",
+                "market_name": "北京新发地",
+                "province": "北京市",
+                "city": "北京市",
+                "spec_text": "公斤",
+                "current_price": 2.6,
+                "captured_at": "2026-04-10T10:00:00",
+            },
+        ]
+    )
+
+    summary_df = compute_cross_site_price_summary(df, selected_province="上海市", selected_city="上海市")
+
+    assert summary_df.iloc[0]["lowest_price_site"] == "PFSC | 青菜 | 上海江桥"
+    assert summary_df.iloc[0]["highest_price_site"] == "PFSC | 青菜 | 上海江桥"
+    assert summary_df.iloc[0]["market_count"] == 1
+
+
 def test_cross_site_summary_identity_key_matches_trend_history_from_multiple_sources_with_category_mismatch():
     df = pd.DataFrame(
         [
@@ -1910,7 +2030,7 @@ def test_compute_cross_site_price_summary_includes_supplier_quotes_as_source_row
                 "captured_at": "2026-05-16T08:00:00",
             },
             {
-                "group_name": "供应平台",
+                "group_name": "鲜蔬直采A",
                 "product_name": "百利番茄沙司10g*300袋",
                 "product_key": "ketchup-300",
                 "site_name": "鲜蔬直采A",
@@ -1932,4 +2052,4 @@ def test_compute_cross_site_price_summary_includes_supplier_quotes_as_source_row
     row = summary_df.iloc[0]
     assert row["site_count"] == 2
     assert row["market_count"] == 2
-    assert row["source_names"] == "供应平台、莲菜网"
+    assert row["source_names"] == "莲菜网、鲜蔬直采A"

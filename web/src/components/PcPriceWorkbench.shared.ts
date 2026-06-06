@@ -4,6 +4,7 @@ export type SectionId =
   | 'alerts'
   | 'market'
   | 'suppliers'
+  | 'accounts'
   | 'purchase'
   | 'quotes'
   | 'plan'
@@ -41,6 +42,7 @@ export const WORKBENCH_SECTION_IDS: readonly SectionId[] = [
   'alerts',
   'market',
   'suppliers',
+  'accounts',
   'purchase',
   'quotes',
   'plan',
@@ -51,6 +53,7 @@ export const WORKBENCH_SECTION_IDS: readonly SectionId[] = [
 export const GENERATED_MODULE_SECTIONS: readonly SectionId[] = [
   'market',
   'suppliers',
+  'accounts',
   'purchase',
   'quotes',
   'plan',
@@ -61,6 +64,7 @@ export const GENERATED_MODULE_SECTIONS: readonly SectionId[] = [
 const MODULE_LAYOUT_BY_SECTION: Partial<Record<SectionId, ModuleLayout>> = {
   market: 'coverage',
   suppliers: 'network',
+  accounts: 'network',
   purchase: 'workflow',
   plan: 'workflow',
   quotes: 'ledger',

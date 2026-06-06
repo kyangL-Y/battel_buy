@@ -277,11 +277,12 @@ import type { AuthLoginResponse, AuthUserRole, SupplierItem, SupplierOverviewRes
 
 const props = defineProps<{
   authRole?: AuthUserRole | null
+  initialView?: 'archive' | 'accounts'
 }>()
 
 const ACCOUNT_USERNAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.@-]{2,63}$/
 const MIN_ACCOUNT_PASSWORD_LENGTH = 8
-const currentView = ref<'archive' | 'accounts'>('archive')
+const currentView = ref<'archive' | 'accounts'>(props.initialView || 'archive')
 const loading = ref(false)
 const saving = ref(false)
 const authSubmitting = ref(false)
@@ -528,6 +529,10 @@ watch(effectiveAuthRole, async (role, previousRole) => {
     overview.value = null
     selectedSupplierId.value = null
   }
+})
+
+watch(() => props.initialView, (view) => {
+  if (view) currentView.value = view
 })
 
 onMounted(async () => {

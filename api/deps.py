@@ -338,6 +338,13 @@ def require_admin_user(current_user: dict = Depends(require_authenticated_user))
     return current_user
 
 
+def require_procurement_or_admin_user(current_user: dict = Depends(require_authenticated_user)) -> dict:
+    role = str(current_user.get("role") or "")
+    if role not in {"admin", "procurement"}:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="当前账号没有采购端权限")
+    return current_user
+
+
 def is_admin_user(current_user: dict) -> bool:
     return str(current_user.get("role") or "") == "admin"
 

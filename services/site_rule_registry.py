@@ -95,6 +95,7 @@ def normalize_site_rule(rule: dict) -> dict:
         "gateway_base_url",
         "request_headers_env",
         "common_body_env",
+        "current_address_context_path",
         "address_context_env",
         "secret_env_file_env",
         "endpoint",

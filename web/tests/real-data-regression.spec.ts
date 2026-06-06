@@ -31,8 +31,9 @@ function buildTrendRequestKey(identityKey: string) {
   return JSON.stringify({ identityKey, mode: 'cross_market', siteKey: '' })
 }
 
-async function openTrendPage(page: Page, request: APIRequestContext, productKeyword: string) {
+async function openTrendPage(page: Page, request: APIRequestContext, authHeaders: Record<string, string>, productKeyword: string) {
   const productOptions = await request.get(`${API_BASE_URL}/api/product/options`, {
+    headers: authHeaders,
     params: { keyword: productKeyword, limit: 20 },
     timeout: 70_000,
   })
@@ -47,8 +48,12 @@ async function openTrendPage(page: Page, request: APIRequestContext, productKeyw
   const productLabel = targetProduct.price_identity_label as string
   const identityKey = targetProduct.price_identity_key as string
   const [summaryResponse, trendResponse] = await Promise.all([
-    request.get(`${API_BASE_URL}/api/product/${encodeURIComponent(identityKey)}/summary`, { timeout: 70_000 }),
+    request.get(`${API_BASE_URL}/api/product/${encodeURIComponent(identityKey)}/summary`, {
+      headers: authHeaders,
+      timeout: 70_000,
+    }),
     request.get(`${API_BASE_URL}/api/product/${encodeURIComponent(identityKey)}/trend`, {
+      headers: authHeaders,
       params: { mode: 'cross_market' },
       timeout: 70_000,
     }),
@@ -96,11 +101,17 @@ async function openTrendPage(page: Page, request: APIRequestContext, productKeyw
 }
 
 test.describe('真实数据页面回归', () => {
+  let authHeaders: Record<string, string>
+
   test.beforeEach(async ({ page, request }) => {
-    const productOptions = await request.get(`${API_BASE_URL}/api/product/options`, { timeout: 70_000 })
+    const authSession = await loginAsAdmin(request)
+    authHeaders = { Authorization: `Bearer ${authSession.access_token}` }
+    const productOptions = await request.get(`${API_BASE_URL}/api/product/options`, {
+      headers: authHeaders,
+      timeout: 70_000,
+    })
     expect(productOptions.ok()).toBeTruthy()
     const productOptionPayload = await productOptions.json()
-    const authSession = await loginAsAdmin(request)
     await page.addInitScript(
       ([authStorageKey, session, productOptionsStorageKey, contextKey, options]) => {
         window.localStorage.setItem(authStorageKey, JSON.stringify(session))
@@ -117,14 +128,14 @@ test.describe('真实数据页面回归', () => {
   })
 
   test('三黄鸡趋势页展示当前 MySQL 真实莲菜网规格走势', async ({ page, request }) => {
-    await openTrendPage(page, request, '三黄鸡')
+    await openTrendPage(page, request, authHeaders, '三黄鸡')
 
     await expect(page.locator('.pcw-market-compare')).toContainText('莲菜网')
     await expect(page.locator('.pcw-market-compare')).toContainText('本地市场源')
   })
 
   test('大豆油新版趋势页显示当前 MySQL 真实本地报价与去重后的来源摘要', async ({ page, request }) => {
-    await openTrendPage(page, request, '大豆油')
+    await openTrendPage(page, request, authHeaders, '大豆油')
 
     const marketCompare = page.locator('.pcw-market-compare')
     await expect(marketCompare).toContainText('莲菜网')

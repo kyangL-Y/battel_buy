@@ -26,6 +26,8 @@ export interface MarketSummaryItem {
   region_label?: string | null
   source_names?: string | null
   source_display_names?: string | null
+  source_tier?: string | null
+  source_url?: string | null
   latest_captured_at?: string | null
   captured_dates?: string | null
   image_url?: string | null
@@ -117,6 +119,7 @@ export interface ProductTrendRow {
   site_name?: string | null
   source_name?: string | null
   source_tier?: string | null
+  source_url?: string | null
   liancai_top_category?: string | null
   liancai_subcategory?: string | null
   liancai_keyword?: string | null

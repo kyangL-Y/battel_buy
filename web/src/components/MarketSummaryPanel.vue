@@ -1875,21 +1875,22 @@ watch(sourceTierFilterOptions, (options) => {
 
 .market-mobile-feed-skeleton-card {
   display: grid;
-  gap: 8px;
+  gap: 10px;
   min-height: 126px;
-  padding: 12px;
-  border: 1px solid #dbe4ef;
+  align-content: center;
+  padding: 14px;
+  border: 1px solid #cfe1d7;
   border-radius: 16px;
-  background: #ffffff;
-  box-shadow: 0 14px 34px rgba(15, 23, 42, .04);
+  background: rgba(255, 255, 255, .86);
+  box-shadow: 0 10px 24px rgba(31, 139, 104, .07);
 }
 
 .market-mobile-feed-skeleton-card .skeleton-line {
   display: block;
   width: 100%;
-  height: 14px;
+  height: 16px;
   border-radius: 999px;
-  background: linear-gradient(90deg, #eef2f7 0%, #f8fafc 50%, #eef2f7 100%);
+  background: linear-gradient(90deg, #dcebe3 0%, #eef8f2 50%, #dcebe3 100%);
   background-size: 200% 100%;
   animation: market-mobile-skeleton-shimmer 1.2s ease-in-out infinite;
 }

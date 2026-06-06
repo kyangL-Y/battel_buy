@@ -312,6 +312,11 @@ class Database:
             return MYSQL_TYPE_MAP.get(value, value)
         return value
 
+    @staticmethod
+    def _is_meicai_image_url(value: Any) -> bool:
+        image_url = str(value or "").strip().lower()
+        return image_url.startswith(("http://", "https://")) and "yunshanmeicai.com" in image_url
+
     def init_db(self) -> None:
         with self.connect() as conn:
             if self.backend == "mysql":
@@ -1827,6 +1832,11 @@ class Database:
                     p.source_url,
                     CASE
                         WHEN (p.site_name LIKE '莲菜网%' OR p.source_url LIKE '%liancaiwang.cn%') THEN p.image_url
+                        WHEN (
+                            p.site_name LIKE '美菜网%'
+                            OR p.source_url LIKE '%yunshanmeicai.com%'
+                            OR p.source_url LIKE '%meicai.cn%'
+                        ) THEN p.image_url
                         ELSE NULL
                     END AS image_url,
                     r.current_price,
@@ -1878,6 +1888,11 @@ class Database:
                 p.source_url,
                 CASE
                     WHEN (p.site_name LIKE '莲菜网%' OR p.source_url LIKE '%liancaiwang.cn%') THEN p.image_url
+                    WHEN (
+                        p.site_name LIKE '美菜网%'
+                        OR p.source_url LIKE '%yunshanmeicai.com%'
+                        OR p.source_url LIKE '%meicai.cn%'
+                    ) THEN p.image_url
                     ELSE NULL
                 END AS image_url,
                 r.current_price,
@@ -1946,6 +1961,145 @@ class Database:
                 )
             )
             return int(result.rowcount or 0)
+
+    def backfill_meicai_product_image_urls(self) -> int:
+        if self.backend == "mysql":
+            return self._backfill_meicai_product_image_urls_mysql()
+        return self._backfill_meicai_product_image_urls_sqlite()
+
+    def _backfill_meicai_product_image_urls_mysql(self) -> int:
+        with self.connect() as conn:
+            backfill_result = conn.execute(
+                text(
+                    """
+                    UPDATE products p
+                    JOIN (
+                        SELECT
+                            mp.id AS product_id,
+                            COALESCE(
+                                NULLIF(JSON_UNQUOTE(JSON_EXTRACT(r.raw_payload, '$.parsed.extra_fields.cover')), ''),
+                                NULLIF(JSON_UNQUOTE(JSON_EXTRACT(r.raw_payload, '$.parsed.extra_fields.image_url')), ''),
+                                NULLIF(JSON_UNQUOTE(JSON_EXTRACT(r.raw_payload, '$.parsed.image_url')), ''),
+                                NULLIF(JSON_UNQUOTE(JSON_EXTRACT(r.raw_payload, '$.cover')), ''),
+                                NULLIF(JSON_UNQUOTE(JSON_EXTRACT(r.raw_payload, '$.image_url')), '')
+                            ) AS image_url
+                        FROM products mp
+                        JOIN price_records r ON r.id = (
+                            SELECT pr2.id
+                            FROM price_records pr2
+                            WHERE pr2.product_id = mp.id
+                                AND pr2.raw_payload IS NOT NULL
+                                AND JSON_VALID(pr2.raw_payload)
+                                AND COALESCE(
+                                    NULLIF(JSON_UNQUOTE(JSON_EXTRACT(pr2.raw_payload, '$.parsed.extra_fields.cover')), ''),
+                                    NULLIF(JSON_UNQUOTE(JSON_EXTRACT(pr2.raw_payload, '$.parsed.extra_fields.image_url')), ''),
+                                    NULLIF(JSON_UNQUOTE(JSON_EXTRACT(pr2.raw_payload, '$.parsed.image_url')), ''),
+                                    NULLIF(JSON_UNQUOTE(JSON_EXTRACT(pr2.raw_payload, '$.cover')), ''),
+                                    NULLIF(JSON_UNQUOTE(JSON_EXTRACT(pr2.raw_payload, '$.image_url')), '')
+                                ) LIKE 'http%'
+                                AND COALESCE(
+                                    NULLIF(JSON_UNQUOTE(JSON_EXTRACT(pr2.raw_payload, '$.parsed.extra_fields.cover')), ''),
+                                    NULLIF(JSON_UNQUOTE(JSON_EXTRACT(pr2.raw_payload, '$.parsed.extra_fields.image_url')), ''),
+                                    NULLIF(JSON_UNQUOTE(JSON_EXTRACT(pr2.raw_payload, '$.parsed.image_url')), ''),
+                                    NULLIF(JSON_UNQUOTE(JSON_EXTRACT(pr2.raw_payload, '$.cover')), ''),
+                                    NULLIF(JSON_UNQUOTE(JSON_EXTRACT(pr2.raw_payload, '$.image_url')), '')
+                                ) LIKE '%yunshanmeicai.com%'
+                            ORDER BY pr2.id DESC
+                            LIMIT 1
+                        )
+                        WHERE (
+                                mp.site_name LIKE '美菜网%'
+                                OR mp.source_url LIKE '%yunshanmeicai.com%'
+                                OR mp.source_url LIKE '%meicai.cn%'
+                            )
+                    ) latest_image ON latest_image.product_id = p.id
+                    SET p.image_url = latest_image.image_url
+                    WHERE (
+                            p.site_name LIKE '美菜网%'
+                            OR p.source_url LIKE '%yunshanmeicai.com%'
+                            OR p.source_url LIKE '%meicai.cn%'
+                        )
+                        AND (p.image_url IS NULL OR p.image_url = '')
+                        AND latest_image.image_url IS NOT NULL
+                        AND latest_image.image_url != ''
+                        AND latest_image.image_url LIKE 'http%'
+                        AND latest_image.image_url LIKE '%yunshanmeicai.com%'
+                    """
+                )
+            )
+            return int(backfill_result.rowcount or 0)
+
+    def _backfill_meicai_product_image_urls_sqlite(self) -> int:
+        with self.connect() as conn:
+            rows = conn.execute(
+                text(
+                    """
+                    SELECT
+                        p.id AS product_id,
+                        r.raw_payload AS raw_payload
+                    FROM products p
+                    JOIN price_records r ON r.product_id = p.id
+                    WHERE (
+                            p.site_name LIKE '美菜网%'
+                            OR p.source_url LIKE '%yunshanmeicai.com%'
+                            OR p.source_url LIKE '%meicai.cn%'
+                        )
+                        AND (p.image_url IS NULL OR p.image_url = '')
+                        AND r.raw_payload IS NOT NULL
+                    ORDER BY p.id ASC, r.id DESC
+                    """
+                )
+            ).mappings().all()
+            updated_count = 0
+            seen_product_ids: set[int] = set()
+            for row in rows:
+                product_id = int(row["product_id"])
+                if product_id in seen_product_ids:
+                    continue
+                image_url = self._extract_meicai_image_url_from_raw_payload(row.get("raw_payload"))
+                if not image_url:
+                    continue
+                update_result = conn.execute(
+                    text(
+                        """
+                        UPDATE products
+                        SET image_url = :image_url
+                        WHERE id = :product_id
+                          AND (image_url IS NULL OR image_url = '')
+                        """
+                    ),
+                    {"product_id": product_id, "image_url": image_url},
+                )
+                updated_count += int(update_result.rowcount or 0)
+                seen_product_ids.add(product_id)
+            return updated_count
+
+    @classmethod
+    def _extract_meicai_image_url_from_raw_payload(cls, raw_payload: Any) -> str | None:
+        if isinstance(raw_payload, str):
+            try:
+                payload = json.loads(raw_payload)
+            except json.JSONDecodeError:
+                return None
+        elif isinstance(raw_payload, dict):
+            payload = raw_payload
+        else:
+            return None
+
+        parsed = payload.get("parsed") if isinstance(payload.get("parsed"), dict) else {}
+        extra_fields = parsed.get("extra_fields") if isinstance(parsed.get("extra_fields"), dict) else {}
+        candidates = [
+            extra_fields.get("cover"),
+            extra_fields.get("image_url"),
+            parsed.get("image_url"),
+            payload.get("cover"),
+            payload.get("image_url"),
+        ]
+        for candidate in candidates:
+            image_url = str(candidate or "").strip()
+            if cls._is_meicai_image_url(image_url):
+                return image_url
+        return None
 
     def get_liancai_category_summary(self, source_name: str | None = None) -> pd.DataFrame:
         where_clauses: list[str] = []
