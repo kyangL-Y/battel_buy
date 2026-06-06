@@ -5289,6 +5289,16 @@ async function loadWorkspaceTabAssets(tabKey: (typeof tabs)[number]['key']) {
 
   if (tabKey === 'trend') {
     await ensureProductOptionsLoaded()
+    const target = resolveInitialTrendTarget()
+    if (target.identityKey) {
+      if (!selectedIdentityKey.value) {
+        setTrendSelection(target.identityKey, target.label)
+      }
+      syncWorkspaceTrendUrl(target.identityKey, target.label)
+      await reloadTrend(target.identityKey)
+    } else {
+      trendLoading.value = false
+    }
     return
   }
 

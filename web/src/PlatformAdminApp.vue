@@ -400,6 +400,7 @@ const statusLoading = ref(false)
 const coverageLoading = ref(false)
 const crawlActionLoading = ref(false)
 const scheduleActionLoading = ref(false)
+const adminDataLoadError = ref('')
 const sourceKeyword = ref('')
 const sourceHealthFilter = ref<'all' | 'healthy' | 'warning'>('all')
 const selectedSourceKey = ref('')
@@ -477,7 +478,7 @@ const crawlLastFinishedLabel = computed(() => formatDateTime(crawlStatus.value?.
 const crawlNextRunLabel = computed(() => formatDateTime(crawlStatus.value?.next_run_at, '未安排'))
 
 const overviewCards = computed(() => [
-  { label: '最近结果', value: crawlResultLabel.value, detail: crawlProgressLabel.value },
+  { label: '最近结果', value: crawlResultLabel.value, detail: adminDataLoadError.value || crawlProgressLabel.value },
   { label: '最近完成', value: crawlLastFinishedLabel.value, detail: '平台后台统一查看运行结果' },
   {
     label: '下次计划',
@@ -538,8 +539,8 @@ const platformOperationalNotes = computed(() => [
   },
   {
     label: '异常处理',
-    value: crawlStatus.value?.last_error ? '需要复核' : '未返回阻断',
-    detail: crawlStatus.value?.last_error || '最近状态未返回阻断性失败',
+    value: adminDataLoadError.value || crawlStatus.value?.last_error ? '需要复核' : '未返回阻断',
+    detail: adminDataLoadError.value || crawlStatus.value?.last_error || '最近状态未返回阻断性失败',
   },
 ])
 
@@ -732,7 +733,7 @@ async function reloadCrawlStatus() {
     crawlStatus.value = data.item ?? null
     dailyScheduleEnabled.value = Boolean(data.item?.schedule_enabled)
   } catch {
-    ElMessage.warning('抓取状态读取失败，请检查后端服务或稍后重试')
+    adminDataLoadError.value = '抓取状态读取失败，请检查后端服务或稍后重试'
   } finally {
     statusLoading.value = false
   }
@@ -744,13 +745,14 @@ async function reloadSourceCoverage() {
     const data = await fetchSourceCoverage()
     sourceCoverageRows.value = data.items ?? []
   } catch {
-    ElMessage.warning('来源覆盖读取失败，请检查后端服务或稍后重试')
+    adminDataLoadError.value = '来源覆盖读取失败，请检查后端服务或稍后重试'
   } finally {
     coverageLoading.value = false
   }
 }
 
 async function reloadAdminData() {
+  adminDataLoadError.value = ''
   await Promise.all([reloadCrawlStatus(), reloadSourceCoverage()])
   if (crawlStatus.value?.is_running) startCrawlPolling()
 }

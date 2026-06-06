@@ -50,6 +50,7 @@ test('capture desktop landing and workbench screens', async ({ page, request }) 
 
   await page.locator('[data-section-id="trend"]').click()
   await expect(page.locator('.pcw-trend-page')).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByText('正在加载价格走势')).toHaveCount(0, { timeout: 60_000 })
   await page.screenshot({ path: 'test-results/desktop-workbench-trend.png', fullPage: true })
 
   await page.locator('[data-section-id="alerts"]').click()
