@@ -88,7 +88,30 @@ test('capture platform admin and supplier backend screens', async ({ page }) => 
   await page.getByRole('button', { name: '登录' }).click()
   await loginResponse
   await expect(page.getByTestId('supplier-admin-panel')).toBeVisible({ timeout: 30_000 })
-  await page.screenshot({ path: 'test-results/desktop-supplier-backend-panel.png', fullPage: true })
+  await expect(page.getByRole('button', { name: /海鲜供应站B/ })).toBeVisible({ timeout: 30_000 })
+  await page.screenshot({ path: 'test-results/desktop-supplier-backend-suppliers.png', fullPage: true })
+
+  await page.getByRole('button', { name: /账号管理 ACC/ }).click()
+  await expect(page.getByTestId('account-admin-panel')).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByTestId('account-admin-panel').getByText('demo-sea-b')).toBeVisible({ timeout: 30_000 })
+  await page.screenshot({ path: 'test-results/desktop-supplier-backend-accounts.png', fullPage: true })
+
+  await page.getByRole('button', { name: /报价管理 QTE/ }).click()
+  await expect(page.getByTestId('supplier-admin-panel')).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByText('报价工作台').first()).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByText('海鲜供应站B').first()).toBeVisible({ timeout: 30_000 })
+  await page.screenshot({ path: 'test-results/desktop-supplier-backend-quote.png', fullPage: true })
+
+  await page.getByRole('button', { name: /结算台账 SET/ }).click()
+  await expect(page.getByText('供应商结算台账')).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByTestId('settlement-selected-quotes-guide')).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByText('海鲜供应站B').first()).toBeVisible({ timeout: 30_000 })
+  await page.screenshot({ path: 'test-results/desktop-supplier-backend-settlement.png', fullPage: true })
+
+  await page.getByRole('button', { name: /操作日志 LOG|操作日志/ }).click()
+  await expect(page.getByText('最近操作日志')).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByText('海鲜供应站B').first()).toBeVisible({ timeout: 30_000 })
+  await page.screenshot({ path: 'test-results/desktop-supplier-backend-logs.png', fullPage: true })
 })
 
 test('capture mobile landing and workflow screens', async ({ page, request }) => {

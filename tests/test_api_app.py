@@ -470,6 +470,7 @@ def test_auth_user_management_endpoints_cover_create_update_and_self_guard(tmp_p
     assert list_response.status_code == 200
 
     assert list_response.json()["items"][0]["username"] == "admin"
+    assert list_response.json()["items"][0]["supplier_id"] is None
 
     assert "password_hash" not in list_response.json()["items"][0]
 

@@ -21123,7 +21123,7 @@ function handleTableAction(action: string, row: Array<string | number | null | u
 
 
 
-    actionFeedback.value = `已打开供应平台：${subject}`
+    actionFeedback.value = `已打开供应商后台：${subject}`
 
 
 
@@ -21139,7 +21139,7 @@ function handleTableAction(action: string, row: Array<string | number | null | u
 
 
 
-      if (actionFeedback.value === `已打开供应平台：${subject}`) actionFeedback.value = ''
+      if (actionFeedback.value === `已打开供应商后台：${subject}`) actionFeedback.value = ''
 
 
 

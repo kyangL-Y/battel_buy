@@ -2,7 +2,7 @@
   <section class="panel supplier-admin-panel content-shell-panel" :class="[{ mobile, embedded: isEmbeddedBackendMode, 'procurement-mode': isProcurementSupplierManagement }, embeddedLayoutClass]" data-testid="supplier-admin-panel">
     <div v-if="!isEmbeddedBackendMode" class="panel-header content-panel-header">
       <div>
-        <p class="panel-kicker">供应平台</p>
+        <p class="panel-kicker">供应商后台</p>
         <h2>{{ panelHeaderTitle }}</h2>
         <p class="panel-hint">
           {{ panelHeaderHint }}
@@ -126,7 +126,7 @@
       <article class="supplier-admin-metric">
         <span>累计报价</span>
         <strong>{{ totalQuoteCount }}</strong>
-        <small>供应平台已沉淀的报价记录</small>
+        <small>供应商后台已沉淀的报价记录</small>
       </article>
     </div>
 
@@ -164,7 +164,7 @@
           <strong>{{ item.value }}</strong>
         </article>
       </div>
-      <div class="supplier-command-actions" aria-label="供应平台快捷动作">
+      <div class="supplier-command-actions" aria-label="供应商后台快捷动作">
         <template v-if="isSupplierWorkspace">
           <el-button v-if="isAdminSession" size="small" type="primary" @click="openSupplierCreateFromCommand">新建供应商</el-button>
           <el-button size="small" plain @click="openQuoteFromCommand">去录报价</el-button>
@@ -327,7 +327,7 @@
               </div>
               <div class="supplier-my-settlement-row-footer">
                 <span>{{ getSettlementFollowUpLabel(item) }}</span>
-                <span>{{ item.created_by || '平台创建' }}</span>
+                <span>{{ getSettlementCreatorLabel(item) }}</span>
               </div>
             </button>
           </section>
@@ -402,7 +402,7 @@
                 </article>
                 <article>
                   <span>创建人</span>
-                  <strong>{{ focusedSettlement.created_by || '平台' }}</strong>
+                  <strong>{{ getSettlementCreatorLabel(focusedSettlement) }}</strong>
                 </article>
               </div>
               <div class="supplier-my-settlement-detail-note">
@@ -730,13 +730,13 @@
                 type="primary"
                 @click="$emit('navigate-section', 'suppliers')"
               >
-                去供应平台创建供应商
+                去供应商档案创建供应商
               </el-button>
               <el-button v-if="!selectedProductKey" size="small" plain @click="$emit('navigate-section', 'quote')">
                 先同步商品目录
               </el-button>
               <el-button v-if="selectedSupplier && !selectedSupplier.is_active" size="small" plain @click="$emit('navigate-section', 'suppliers')">
-                去供应平台启用
+                去供应商档案启用
               </el-button>
             </div>
           </div>
@@ -1221,7 +1221,7 @@
                 </div>
                 <div class="supplier-my-settlement-row-footer">
                   <span>{{ getSettlementFollowUpLabel(item) }}</span>
-                  <span>{{ item.created_by || '平台创建' }}</span>
+                  <span>{{ getSettlementCreatorLabel(item) }}</span>
                 </div>
               </button>
             </section>
@@ -1299,7 +1299,7 @@
                   </article>
                   <article>
                     <span>创建人</span>
-                    <strong>{{ focusedSettlement.created_by || '平台' }}</strong>
+                    <strong>{{ getSettlementCreatorLabel(focusedSettlement) }}</strong>
                   </article>
                 </div>
 
@@ -1598,7 +1598,7 @@
               </div>
               <div class="supplier-quote-row-meta">
                 <span>{{ item.product_name || item.price_identity_label || item.price_identity_key || '供应商历史报价' }}</span>
-                <span>{{ item.operator_name || '供应平台' }}</span>
+                <span>{{ getQuoteActionOperatorLabel(item) }}</span>
               </div>
               <div class="supplier-quote-row-foot">
                 <small>{{ item.action_reason || getQuoteActionDescription(item) }}</small>
@@ -1910,7 +1910,7 @@
       <div v-if="activeQuoteActionDetail" class="supplier-action-detail-shell">
         <div class="supplier-action-detail-meta">
           <span>{{ formatTime(activeQuoteActionDetail.created_at) }}</span>
-          <span>{{ activeQuoteActionDetail.operator_name || '供应平台' }}</span>
+          <span>{{ getQuoteActionOperatorLabel(activeQuoteActionDetail) }}</span>
           <span>{{ getQuoteActionDescription(activeQuoteActionDetail) }}</span>
         </div>
         <div v-if="activeQuoteActionDetailTags.length" class="supplier-action-log-tags">
@@ -1992,7 +1992,7 @@
           </div>
           <div class="supplier-action-log-detail-item">
             <span>创建人</span>
-            <strong>{{ activeSettlementDetail.item.created_by || '供应平台' }}</strong>
+            <strong>{{ getSettlementCreatorLabel(activeSettlementDetail.item) }}</strong>
           </div>
         </div>
         <div v-if="activeSettlementDetail.item.remarks" class="supplier-action-log-failure-list">
@@ -2557,7 +2557,7 @@ const supplierListStats = computed(() => [
   {
     label: '筛选结果',
     value: `${filteredSuppliers.value.length} 家`,
-    detail: keyword.value.trim() ? '结果会跟随搜索和分类筛选变化' : '当前列表按供应平台默认视图展示',
+    detail: keyword.value.trim() ? '结果会跟随搜索和分类筛选变化' : '当前列表按供应商档案默认视图展示',
   },
   {
     label: '启用供应商',
@@ -2912,7 +2912,7 @@ const quoteReadinessDescription = computed(() => {
   return '当前供应商不可报价，请先检查启用状态。'
 })
 const resolvedOperatorName = computed(
-  () => props.authDisplayName?.trim() || operatorName.value.trim() || selectedSupplier.value?.contact_name || '供应平台',
+  () => props.authDisplayName?.trim() || operatorName.value.trim() || selectedSupplier.value?.contact_name || selectedSupplier.value?.supplier_name || '供应商后台',
 )
 const quotePageLabel = computed(() => {
   if (!quoteTotal.value) return '第 0 页'
@@ -3093,7 +3093,7 @@ const mobileSupplierTaskTitle = computed(() => {
 })
 const showSupplierBindingEmptyState = computed(() => isSupplierSession.value && !selectedSupplier.value)
 const supplierBindingEmptyTitle = computed(() => (
-  currentSupplierScopeId.value ? '绑定的供应商暂未同步到供应平台列表' : '当前账号还没有绑定供应商'
+  currentSupplierScopeId.value ? '绑定的供应商暂未同步到供应商档案列表' : '当前账号还没有绑定供应商'
 ))
 const supplierBindingEmptyDescription = computed(() => (
   currentSupplierScopeId.value
@@ -3108,7 +3108,7 @@ const supplierQuoteEmptyDescription = computed(() => (
 const supplierListEmptyDescription = computed(() => (
   isProcurementSupplierManagement.value
     ? '先新建供应商并分配账号，供应端提交报价后这里会汇总覆盖情况和待办。'
-    : (props.mobile ? '先新建供应商，或进入供应平台完成创建后再回来录价。' : '先在右侧新建一个供应商，创建完成后再开始录价。')
+    : (props.mobile ? '先新建供应商，或进入供应商档案完成创建后再回来录价。' : '先在右侧新建一个供应商，创建完成后再开始录价。')
 ))
 const categoryEmptyDescription = computed(() => (
   isProcurementSupplierManagement.value
@@ -3123,7 +3123,7 @@ const recentQuoteEmptyDescription = computed(() => (
 const mobileSupplierTaskDescription = computed(() => {
   if (showSupplierBindingEmptyState.value) {
     return currentSupplierScopeId.value
-      ? '当前账号已带有供应商标识，但该供应商暂未在供应平台列表中加载出来。'
+      ? '当前账号已带有供应商标识，但该供应商暂未在供应商档案列表中加载出来。'
       : '当前账号还没有绑定供应商，因此暂时无法录价和查看历史。'
   }
   if (mobileSupplierTask.value === 'suppliers') {
@@ -3768,7 +3768,15 @@ function getQuoteActionDescription(item: SupplierQuoteActionItem) {
   if (actionType === 'update_settlement') return '已更新结算单付款进度'
   if (actionType === 'cancel_settlement') return '已作废供应商结算单'
   if (actionType === 'build_settlement_from_quotes') return '已从已选历史报价生成结算单'
-  return '已执行供应平台操作'
+  return '已执行供应商后台操作'
+}
+
+function getQuoteActionOperatorLabel(item: SupplierQuoteActionItem) {
+  return String(item.operator_name || item.supplier_name || selectedSupplier.value?.supplier_name || '供应商后台').trim()
+}
+
+function getSettlementCreatorLabel(item: SupplierSettlementItem) {
+  return String(item.created_by || item.supplier_name || selectedSupplier.value?.supplier_name || '供应商后台').trim()
 }
 
 function getSettlementStatusLabel(status?: SupplierSettlementStatus | string | null) {

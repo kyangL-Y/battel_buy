@@ -2000,12 +2000,12 @@ const homeSuiteCards = computed<Array<{
   },
   {
     key: 'supplier',
-    kicker: '供应平台',
+    kicker: '供应商后台',
     code: 'SUPPLIER',
     title: '我是供应',
     detail: '维护供应商档案、商品报价、批量导入、历史和结算。',
     features: ['供应商档案', '报价录入', '结算对账'],
-    action: '进入供应平台',
+    action: '进入供应商后台',
     tone: 'suite-backend',
   },
 ])

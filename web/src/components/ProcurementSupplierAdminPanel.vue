@@ -4,7 +4,7 @@
       <div>
         <p class="panel-kicker">采购端</p>
         <h2>供应商管理</h2>
-        <p>这里只维护正式供应商和账号状态，不承载报价导入、历史、结算等供应平台工作区。</p>
+        <p>这里只维护正式供应商和账号状态，不承载报价导入、历史、结算等供应商工作区。</p>
       </div>
       <div class="procurement-head-actions">
         <el-button plain :loading="loading" @click="loadAll">刷新数据</el-button>
@@ -81,7 +81,7 @@
       type="warning"
       :closable="false"
       title="当前账号无权进入采购端供应商管理"
-      description="供应商账号只能进入供应平台录价、查看报价历史和结算；采购端供应商管理需要采购或管理员账号。"
+      description="供应商账号只能进入供应商后台录价、查看报价历史和结算；采购端供应商管理需要采购或管理员账号。"
       show-icon
     />
 

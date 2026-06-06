@@ -165,7 +165,7 @@ def _sanitize_dataframe(df: pd.DataFrame) -> list[dict]:
     for column in result.columns:
         if pd.api.types.is_datetime64_any_dtype(result[column]):
             result[column] = result[column].dt.strftime("%Y-%m-%d %H:%M:%S")
-    return result.where(pd.notna(result), None).to_dict(orient="records")
+    return result.astype(object).where(pd.notna(result), None).to_dict(orient="records")
 
 
 def _fetch_location_hint_json(endpoint_url: str) -> dict | None:
