@@ -913,6 +913,15 @@ const ingredientTableHeight = computed(() => calculatePanelTableHeight(props.ing
     box-shadow: 0 12px 28px rgba(15, 23, 42, 0.05);
   }
 
+  .menu-command-panel.content-shell-panel {
+    padding: 14px;
+  }
+
+  .menu-command-panel .content-panel-header {
+    padding-bottom: 10px;
+    border-bottom: 1px solid rgba(226, 232, 240, 0.72);
+  }
+
   .menu-grid {
     grid-template-columns: 1fr;
     gap: 0;
@@ -924,7 +933,7 @@ const ingredientTableHeight = computed(() => calculatePanelTableHeight(props.ing
   }
 
   .menu-form :deep(.el-textarea__inner) {
-    min-height: 112px !important;
+    min-height: 92px !important;
     padding: 14px 15px;
     border-radius: 18px;
     font-size: 14px;
@@ -933,9 +942,11 @@ const ingredientTableHeight = computed(() => calculatePanelTableHeight(props.ing
 
   .menu-actions {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 12px;
-    padding: 10px;
-    border-radius: 18px;
+    gap: 10px;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
   }
 
   .menu-location-field {
@@ -945,8 +956,9 @@ const ingredientTableHeight = computed(() => calculatePanelTableHeight(props.ing
   .menu-action-field {
     display: grid;
     gap: 8px;
-    padding: 8px 10px 10px;
-    border-radius: 14px;
+    padding: 10px;
+    border-radius: 16px;
+    background: #ffffff;
   }
 
   .menu-action-label {
@@ -975,6 +987,11 @@ const ingredientTableHeight = computed(() => calculatePanelTableHeight(props.ing
   .menu-action-field :deep(.el-select__wrapper) {
     min-height: 44px;
     border-radius: 14px;
+  }
+
+  .menu-action-field :deep(.el-input-number__decrease),
+  .menu-action-field :deep(.el-input-number__increase) {
+    width: 38px;
   }
 
   .menu-submit-bar {

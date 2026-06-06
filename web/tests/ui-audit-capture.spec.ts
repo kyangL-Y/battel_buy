@@ -5,15 +5,6 @@ const loginAccount = process.env.BATTEL_E2E_ACCOUNT || 'admin'
 const loginPassword = process.env.BATTEL_E2E_PASSWORD || 'admin123'
 const API_BASE_URL = process.env.PLAYWRIGHT_BACKEND_URL || 'http://127.0.0.1:8001'
 
-const procurementUser = {
-  id: 1,
-  username: 'capture-buyer',
-  display_name: '截图采购',
-  role: 'procurement',
-  supplier_id: null,
-  is_active: true,
-}
-
 async function loginAsAdmin(request: APIRequestContext) {
   const response = await request.post(`${API_BASE_URL}/api/auth/login`, {
     data: {
@@ -32,21 +23,15 @@ async function seedAdminSession(page: import('@playwright/test').Page, request: 
   }, ['battel.auth.session.procurement', session] as const)
 }
 
-async function seedProcurementSession(page: import('@playwright/test').Page) {
-  await page.addInitScript((user) => {
-    window.localStorage.setItem('battel.auth.session.procurement', JSON.stringify({
-      access_token: 'capture-procurement-token',
-      token_type: 'Bearer',
-      expires_in: 3600,
-      user,
-    }))
-  }, procurementUser)
-  await page.route('**/api/auth/me', async (route) => {
-    await route.fulfill({
-      contentType: 'application/json',
-      body: JSON.stringify({ user: procurementUser }),
-    })
-  })
+async function seedProcurementSession(page: import('@playwright/test').Page, request: APIRequestContext) {
+  const session = await loginAsAdmin(request)
+  await page.addInitScript(([storageKey, authSession]) => {
+    window.localStorage.setItem(storageKey, JSON.stringify(authSession))
+  }, ['battel.auth.session.procurement', session] as const)
+}
+
+async function waitForMobileRouteReady(page: import('@playwright/test').Page) {
+  await expect(page.locator('.market-mobile-route-progress')).toHaveCount(0, { timeout: 10_000 })
 }
 
 test.setTimeout(180_000)
@@ -72,7 +57,8 @@ test('capture desktop landing and workbench screens', async ({ page, request }) 
   await page.screenshot({ path: 'test-results/desktop-workbench-alerts.png', fullPage: true })
 
   await page.locator('[data-section-id="plan"]').click()
-  await expect(page.getByRole('heading', { name: '采购计划' }).first()).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByTestId('pcw-menu-workspace')).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByLabel('菜单文本输入')).toBeVisible({ timeout: 30_000 })
   await page.screenshot({ path: 'test-results/desktop-workbench-plan.png', fullPage: true })
 
   await page.locator('[data-section-id="settings"]').click()
@@ -104,7 +90,7 @@ test('capture platform admin and supplier backend screens', async ({ page }) => 
   await page.screenshot({ path: 'test-results/desktop-supplier-backend-panel.png', fullPage: true })
 })
 
-test('capture mobile landing and workflow screens', async ({ page }) => {
+test('capture mobile landing and workflow screens', async ({ page, request }) => {
   await page.setViewportSize({ width: 390, height: 844 })
 
   await page.goto('/', { waitUntil: 'domcontentloaded' })
@@ -116,17 +102,20 @@ test('capture mobile landing and workflow screens', async ({ page }) => {
   await page.screenshot({ path: 'test-results/mobile-procurement-login-sheet.png', fullPage: false })
 
   await page.keyboard.press('Escape')
-  await seedProcurementSession(page)
+  await seedProcurementSession(page, request)
   await page.goto('/?mode=workspace&tab=summary', { waitUntil: 'domcontentloaded' })
   await expect(page.getByTestId('market-mobile-list')).toBeVisible()
+  await waitForMobileRouteReady(page)
   await page.screenshot({ path: 'test-results/mobile-market-summary-workspace.png', fullPage: false })
 
   await page.locator('.market-mobile-bottom-item').filter({ hasText: '提醒' }).click()
   await expect(page.getByText('价格提醒').first()).toBeVisible()
+  await waitForMobileRouteReady(page)
   await page.screenshot({ path: 'test-results/mobile-alerts-workspace.png', fullPage: false })
 
   await page.locator('.market-mobile-bottom-item').filter({ hasText: '采购' }).click()
   await expect(page.getByLabel('菜单文本输入')).toBeVisible()
+  await waitForMobileRouteReady(page)
   await page.screenshot({ path: 'test-results/mobile-menu-workspace.png', fullPage: false })
 })
 
