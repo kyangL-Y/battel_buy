@@ -1412,11 +1412,10 @@ const mobileLandingHeroTitle = computed(() => (
 ))
 const mobileLandingHeroSubtitle = computed(() => {
   const accountRoleLabel = procurementAccountRoleLabel.value
-  return [
-    accountRoleLabel || selectedLocationLabel.value,
-    selectedLocationLabel.value,
-    latestSyncLabel.value,
-  ].filter(Boolean).join(' · ')
+  if (accountRoleLabel) {
+    return [accountRoleLabel, selectedLocationLabel.value, latestSyncLabel.value].filter(Boolean).join(' · ')
+  }
+  return [selectedLocationLabel.value, latestSyncLabel.value].filter(Boolean).join(' · ')
 })
 const mobileLocationFallbackOptions = ['河南本地市场', '郑州市', '河南省', '北京', '上海市', '全国']
 const directControlledMunicipalities = new Set(['北京市', '上海市', '天津市', '重庆市'])
