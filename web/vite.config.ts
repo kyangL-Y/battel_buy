@@ -37,7 +37,7 @@ const uiSharedPackages = new Set([
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
-  const devApiTarget = env.VITE_DEV_API_TARGET || 'http://127.0.0.1:8000'
+  const devApiTarget = env.VITE_DEV_API_TARGET || 'http://127.0.0.1:8001'
 
   return {
     plugins: [vue()],

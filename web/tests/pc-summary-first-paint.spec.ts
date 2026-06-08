@@ -1,7 +1,43 @@
 import { expect, test } from '@playwright/test'
+import type { Page } from '@playwright/test'
+
+import { PROCUREMENT_AUTH_STORAGE_KEY } from './helpers/authSessionStorage'
+
+const summaryFirstPaintProcurementUser = {
+  id: 31,
+  username: 'summary-first-paint-buyer',
+  display_name: '首屏采购',
+  role: 'procurement',
+  market_scope: '南京市场',
+  default_province: '江苏省',
+  default_city: '南京',
+  supplier_id: null,
+  procurement_supplier_ids: [1],
+  is_active: true,
+  created_at: '2026-05-01T00:00:00',
+  updated_at: '2026-05-01T00:00:00',
+}
+
+async function seedSummaryFirstPaintProcurementSession(page: Page) {
+  await page.addInitScript(([storageKey, authSession]) => {
+    window.localStorage.setItem(storageKey, JSON.stringify(authSession))
+  }, [PROCUREMENT_AUTH_STORAGE_KEY, {
+    access_token: 'summary-first-paint-token',
+    token_type: 'Bearer',
+    expires_in: 3600,
+    user: summaryFirstPaintProcurementUser,
+  }] as const)
+  await page.route('**/api/auth/me', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({ user: summaryFirstPaintProcurementUser }),
+    })
+  })
+}
 
 test('PC 汇总行情首屏在 market summary 慢时也显示商品选项数据', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
+  await seedSummaryFirstPaintProcurementSession(page)
   const requests: string[] = []
   await page.route('**/api/market/summary**', async (route) => {
     requests.push(route.request().url())
@@ -46,6 +82,7 @@ test('PC 汇总行情首屏在 market summary 慢时也显示商品选项数据'
 
 test('PC 汇总行情切换莲菜分类时不等待慢 summary，先用商品选项展示', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
+  await seedSummaryFirstPaintProcurementSession(page)
   const requests: string[] = []
 
   await page.route('**/api/liancai/category-summary**', async (route) => {
@@ -70,26 +107,23 @@ test('PC 汇总行情切换莲菜分类时不等待慢 summary，先用商品选
   })
   await page.route('**/api/product/options**', async (route) => {
     requests.push(route.request().url())
-    const url = new URL(route.request().url())
-    const isFiltered = url.searchParams.get('liancai_top_category') === '乳品烘焙'
+    const creamOption = {
+      price_identity_key: 'liancai-cream|902',
+      price_identity_label: '伊利淡奶油1L*6盒 | 伊利 | 902',
+      site_count: 1,
+      price_observation_count: 1,
+      latest_captured_at: '2026-05-11T15:58:53',
+      source_name: '莲菜网',
+      source_category: '乳品烘焙',
+      liancai_top_category: '乳品烘焙',
+      liancai_subcategory: '其他原料类',
+      liancai_keyword: '奶油',
+      liancai_brand_name: '伊利',
+    }
     await route.fulfill({
       contentType: 'application/json',
       body: JSON.stringify({
-        items: isFiltered
-          ? [{
-              price_identity_key: 'liancai-cream|902',
-              price_identity_label: '伊利淡奶油1L*6盒 | 伊利 | 902',
-              site_count: 1,
-              price_observation_count: 1,
-              latest_captured_at: '2026-05-11T15:58:53',
-              source_name: '莲菜网',
-              source_category: '乳品烘焙',
-              liancai_top_category: '乳品烘焙',
-              liancai_subcategory: '其他原料类',
-              liancai_keyword: '奶油',
-              liancai_brand_name: '伊利',
-            }]
-          : [],
+        items: [creamOption],
         total: null,
         limit: 300,
         offset: 0,
@@ -100,18 +134,19 @@ test('PC 汇总行情切换莲菜分类时不等待慢 summary，先用商品选
 
   await page.goto('/?mode=workspace&tab=summary', { waitUntil: 'domcontentloaded' })
   await expect(page.getByText('今日行情列表')).toBeVisible()
+  await expect(page.getByTestId('pcw-summary-data-row').first()).toBeVisible({ timeout: 10_000 })
   await page.getByRole('button', { name: /全部种类/ }).click()
   await page.getByRole('menuitemradio', { name: /^乳品烘焙$/ }).click()
 
-  await expect(page.getByTestId('pcw-summary-data-row').first()).toBeVisible({ timeout: 10_000 })
   await expect(page.getByText('伊利淡奶油1L*6盒').first()).toBeVisible()
   await expect(page.getByTestId('pcw-summary-empty-row')).toHaveCount(0)
-  expect(requests.some((url) => url.includes('/api/product/options') && url.includes('liancai_top_category'))).toBeTruthy()
+  expect(requests.some((url) => url.includes('/api/market/summary') && url.includes('liancai_top_category'))).toBeTruthy()
 })
 
 
 test('PC 汇总行情查看报价会进入对应商品的单品趋势', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
+  await seedSummaryFirstPaintProcurementSession(page)
   const trendRequests: string[] = []
 
   await page.route('**/api/market/summary**', async (route) => {
@@ -128,7 +163,7 @@ test('PC 汇总行情查看报价会进入对应商品的单品趋势', async ({
             market_count: 2,
             site_count: 2,
             latest_captured_at: '2026-05-17T08:00:00',
-            source_names: '莲菜网,供应平台',
+            source_names: '莲菜网,莲菜档口A',
             liancai_top_category: '西餐',
           },
         ],

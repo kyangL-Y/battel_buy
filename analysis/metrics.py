@@ -1143,7 +1143,7 @@ def prepare_history(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return df
     result = df.copy()
-    result["captured_at"] = pd.to_datetime(result["captured_at"])
+    result["captured_at"] = pd.to_datetime(result["captured_at"], errors="coerce", format="mixed")
     return result.sort_values("captured_at")
 
 

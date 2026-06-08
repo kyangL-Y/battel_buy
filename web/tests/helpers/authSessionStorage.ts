@@ -1,0 +1,6 @@
+import { AUTH_STORAGE_KEYS, LEGACY_AUTH_STORAGE_KEY } from '../../src/apiSession'
+
+export const PROCUREMENT_AUTH_STORAGE_KEY = AUTH_STORAGE_KEYS.procurement
+export const SUPPLIER_AUTH_STORAGE_KEY = AUTH_STORAGE_KEYS.supplier
+export const ADMIN_AUTH_STORAGE_KEY = AUTH_STORAGE_KEYS.admin
+export { LEGACY_AUTH_STORAGE_KEY }

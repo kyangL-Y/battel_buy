@@ -67,7 +67,14 @@
             :value="item.price_identity_key"
           >
             <span class="trend-product-option" :title="item.price_identity_label">
-              <img v-if="isSourceProductImageAllowed(item.source_name) && item.image_url" :src="item.image_url" alt="" loading="lazy" @click.stop="openImagePreview(item.image_url, item.price_identity_label)" />
+              <img
+                v-if="isSourceProductImageAllowed(item.source_name) && item.image_url && !brokenTrendImageUrls.has(item.image_url)"
+                :src="item.image_url"
+                alt=""
+                loading="lazy"
+                @error="handleTrendImageError(item.image_url)"
+                @click.stop="openImagePreview(item.image_url, item.price_identity_label)"
+              />
               <span>
                 <strong>{{ item.price_identity_label }}</strong>
                 <small>{{ item.source_name || '来源' }} · {{ item.source_category || '未分类' }}</small>
@@ -184,7 +191,14 @@
             class="trend-empty-product-button primary"
             @click="selectRecommendedTrendProduct(item.price_identity_key)"
           >
-            <img v-if="isSourceProductImageAllowed(item.source_name) && item.image_url" :src="item.image_url" alt="" loading="lazy" @click.stop="openImagePreview(item.image_url, item.price_identity_label)" />
+            <img
+              v-if="isSourceProductImageAllowed(item.source_name) && item.image_url && !brokenTrendImageUrls.has(item.image_url)"
+              :src="item.image_url"
+              alt=""
+              loading="lazy"
+              @error="handleTrendImageError(item.image_url)"
+              @click.stop="openImagePreview(item.image_url, item.price_identity_label)"
+            />
             <span>
               <strong>{{ item.price_identity_label }}</strong>
               <small>{{ item.source_name || '来源' }} · {{ item.source_category || '未分类' }}</small>
@@ -490,7 +504,14 @@
           class="trend-empty-product-button"
           @click="selectRecommendedTrendProduct(item.price_identity_key)"
         >
-          <img v-if="isSourceProductImageAllowed(item.source_name) && item.image_url" :src="item.image_url" alt="" loading="lazy" @click.stop="openImagePreview(item.image_url, item.price_identity_label)" />
+          <img
+            v-if="isSourceProductImageAllowed(item.source_name) && item.image_url && !brokenTrendImageUrls.has(item.image_url)"
+            :src="item.image_url"
+            alt=""
+            loading="lazy"
+            @error="handleTrendImageError(item.image_url)"
+            @click.stop="openImagePreview(item.image_url, item.price_identity_label)"
+          />
           <span>
             <strong>{{ item.price_identity_label }}</strong>
             <small>{{ item.source_name || '来源' }} · {{ item.source_category || '未分类' }}</small>
@@ -538,7 +559,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import type { ProductOptionItem, ProductTrendRow } from '../types'
 import { useViewport } from '../composables/useViewport'
 
@@ -583,6 +604,7 @@ const productSearchQuery = ref('')
 const imagePreviewVisible = ref(false)
 const imagePreviewUrl = ref('')
 const imagePreviewTitle = ref('')
+const brokenTrendImageUrls = reactive(new Set<string>())
 const hoveredTrendSnapshot = ref<null | {
   axisLabel: string
   summary: string
@@ -956,6 +978,12 @@ function openImagePreview(url: string | null | undefined, title: string) {
   imagePreviewUrl.value = normalizedUrl
   imagePreviewTitle.value = String(title || '').trim()
   imagePreviewVisible.value = true
+}
+
+function handleTrendImageError(url: string | null | undefined) {
+  const normalizedUrl = String(url || '').trim()
+  if (!normalizedUrl) return
+  brokenTrendImageUrls.add(normalizedUrl)
 }
 
 function isLiancaiProductImageSource(sourceName: string) {

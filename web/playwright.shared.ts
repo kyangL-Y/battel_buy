@@ -7,7 +7,7 @@ function normalizeUrl(value: string | undefined, fallback: string) {
 }
 
 export const baseURL = normalizeUrl(process.env.PLAYWRIGHT_BASE_URL, 'http://127.0.0.1:4273')
-export const backendURL = normalizeUrl(process.env.PLAYWRIGHT_BACKEND_URL, 'http://127.0.0.1:8000')
+export const backendURL = normalizeUrl(process.env.PLAYWRIGHT_BACKEND_URL, 'http://127.0.0.1:8001')
 const frontendPort = Number(new URL(baseURL).port || (baseURL.startsWith('https:') ? 443 : 80))
 const backendPort = Number(new URL(backendURL).port || (backendURL.startsWith('https:') ? 443 : 80))
 

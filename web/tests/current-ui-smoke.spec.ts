@@ -1,12 +1,13 @@
 import { expect, test } from '@playwright/test'
 import type { APIRequestContext, Page } from '@playwright/test'
 import { expectNoHorizontalOverflow } from './helpers/layout'
+import { backendURL } from '../playwright.shared'
+import { PROCUREMENT_AUTH_STORAGE_KEY } from './helpers/authSessionStorage'
 
-const API_BASE_URL = 'http://127.0.0.1:8000'
-const AUTH_STORAGE_KEY = 'battel.auth.session.procurement'
+const AUTH_STORAGE_KEY = PROCUREMENT_AUTH_STORAGE_KEY
 
 async function loginAsAdmin(request: APIRequestContext) {
-  const response = await request.post(`${API_BASE_URL}/api/auth/login`, {
+  const response = await request.post(`${backendURL}/api/auth/login`, {
     data: {
       username: 'admin',
       password: 'admin123',
@@ -128,11 +129,11 @@ test.describe('当前采购端全界面冒烟', () => {
     await page.goto('/', { waitUntil: 'domcontentloaded' })
 
     await expect(page.getByTestId('sales-landing-view')).toBeVisible()
-    await expect(page.getByText('账号登录').first()).toBeVisible()
-    await expect(page.getByText('登录后查看自己的市场菜价。')).toBeVisible()
-    await expect(page.getByRole('button', { name: '我是供应商' }).first()).toBeVisible()
+    await expect(page.getByRole('heading', { name: '登录后查看菜价' })).toBeVisible()
+    await expect(page.getByRole('button', { name: '账号登录' })).toBeVisible()
+    await expect(page.getByRole('button', { name: /供应商.*我要报价/ })).toBeVisible()
 
-    await page.getByRole('button', { name: '登录', exact: true }).first().click()
+    await page.getByRole('button', { name: '账号登录' }).click()
     await expect(page.getByRole('dialog', { name: '账号登录' })).toBeVisible()
     await page.getByPlaceholder('采购账号或管理员账号').fill('admin')
     await page.getByPlaceholder('请输入密码').fill('admin123')
@@ -210,7 +211,7 @@ test.describe('当前采购端全界面冒烟', () => {
   test('真实 MySQL 商品接口可返回当前规格商品并打开走势接口', async ({ request }) => {
     const authSession = await loginAsAdmin(request)
     const headers = { Authorization: `Bearer ${authSession.access_token}` }
-    const optionsResponse = await request.get(`${API_BASE_URL}/api/product/options`, {
+    const optionsResponse = await request.get(`${backendURL}/api/product/options`, {
       headers,
       params: { keyword: '三黄鸡', limit: 20 },
       timeout: 70_000,
@@ -222,7 +223,7 @@ test.describe('当前采购端全界面冒烟', () => {
     ))
     expect(product).toBeTruthy()
 
-    const trendResponse = await request.get(`${API_BASE_URL}/api/product/${encodeURIComponent(product.price_identity_key)}/trend`, {
+    const trendResponse = await request.get(`${backendURL}/api/product/${encodeURIComponent(product.price_identity_key)}/trend`, {
       headers,
       params: { mode: 'cross_market' },
       timeout: 70_000,

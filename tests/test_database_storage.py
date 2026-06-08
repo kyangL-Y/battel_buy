@@ -51,6 +51,44 @@ def test_database_nested_connect_reuses_active_transaction(tmp_path: Path):
     assert result.iloc[0]["product_key"] == "nested-1"
 
 
+def test_get_product_keys_for_identity_uses_compact_identity_parts(tmp_path: Path):
+    db = Database(tmp_path / "test_price_tracker.db")
+    db.init_db()
+
+    matched_product_id = db.upsert_product(
+        product_key="lencai-frozen-chicken",
+        group_name="莲菜网",
+        product_name="冻三黄鸡2.3斤",
+        source_url="https://example.com/chicken",
+        site_name="莲菜网App | 冻品类",
+        category="冻鸡鸭",
+        brand="互冠",
+        product_series="909",
+    )
+    db.upsert_product(
+        product_key="lencai-other-chicken",
+        group_name="莲菜网",
+        product_name="冻三黄鸡2.3斤",
+        source_url="https://example.com/other-chicken",
+        site_name="莲菜网App | 冻品类",
+        category="冻鸡鸭",
+        brand="其他",
+        product_series="909",
+    )
+    db.insert_price_record(
+        product_id=matched_product_id,
+        captured_at="2026-05-14T10:00:00",
+        current_price=18.8,
+        original_price=None,
+        promotion_text=None,
+        currency="CNY",
+        availability=None,
+        raw_payload={"source": "liancai"},
+    )
+
+    assert db.get_product_keys_for_identity("冻三黄鸡23斤|互冠|909") == ["lencai-frozen-chicken"]
+
+
 def test_get_latest_records_exposes_only_supported_source_image_url(tmp_path: Path):
     db = Database(tmp_path / "test_price_tracker.db")
     db.init_db()

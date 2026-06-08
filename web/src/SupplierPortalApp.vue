@@ -11,11 +11,18 @@
           <div class="supplier-portal-brand-mark">报</div>
           <div class="supplier-portal-brand-copy">
             <p class="panel-kicker">供应商报价</p>
-            <h1>供应商报价登录</h1>
+            <h1>{{ portalTopbarTitle }}</h1>
           </div>
         </div>
         <div class="supplier-portal-auth-actions">
           <button type="button" class="supplier-native-button ghost" @click="backToMainWorkspace">返回采购工作台</button>
+        </div>
+        <div class="supplier-portal-auth-preview" aria-label="登录前概览">
+          <article v-for="item in portalLiveCards" :key="item.label" class="supplier-portal-auth-preview-card">
+            <span>{{ item.label }}</span>
+            <strong>{{ item.title }}</strong>
+            <small>{{ item.detail }}</small>
+          </article>
         </div>
       </div>
       <div class="supplier-portal-login-card supplier-portal-auth-card" data-testid="supplier-login-form">
@@ -65,13 +72,13 @@
 
     <template v-if="isAuthenticated || authRestoring">
     <header class="panel supplier-portal-topbar">
-      <div class="supplier-portal-brand">
-        <div class="supplier-portal-brand-mark">报</div>
-        <div class="supplier-portal-brand-copy">
-          <p class="panel-kicker">供应商报价</p>
-          <h1>供应商报价登录</h1>
+        <div class="supplier-portal-brand">
+          <div class="supplier-portal-brand-mark">报</div>
+          <div class="supplier-portal-brand-copy">
+            <p class="panel-kicker">供应商报价</p>
+            <h1>{{ portalTopbarTitle }}</h1>
+          </div>
         </div>
-      </div>
       <div class="supplier-portal-topbar-actions">
         <div class="supplier-portal-chip">
           <span>当前任务商品</span>
@@ -327,6 +334,7 @@ const isAuthenticated = computed(() => Boolean(authSession.value?.access_token &
 const currentAuthRole = computed(() => currentUser.value?.role ?? null)
 const currentAuthSupplierId = computed(() => currentUser.value?.supplier_id ?? null)
 const currentAuthDisplayName = computed(() => currentUser.value?.display_name || currentUser.value?.username || '')
+const portalTopbarTitle = computed(() => (isAuthenticated.value ? '供应商报价' : '供应商报价登录'))
 const selectedProductLabel = computed(() =>
   productOptions.value.find((item) => item.price_identity_key === selectedIdentityKey.value)?.price_identity_label
   || selectedProductFallbackLabel.value,
@@ -774,7 +782,44 @@ onMounted(async () => {
 
   :global(.supplier-portal-auth-hero) {
     align-content: space-between;
-    min-height: 430px;
+    min-height: 280px;
+  }
+
+  :global(.supplier-portal-auth-preview) {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+    align-items: stretch;
+  }
+
+  :global(.supplier-portal-auth-preview-card) {
+    display: grid;
+    gap: 6px;
+    min-height: 112px;
+    padding: 12px 14px;
+    border: 1px solid #dbe7f7;
+    border-radius: 14px;
+    background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  }
+
+  :global(.supplier-portal-auth-preview-card span) {
+    color: #64748b;
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  :global(.supplier-portal-auth-preview-card strong) {
+    color: #0f172a;
+    font-size: 15px;
+    line-height: 1.25;
+    letter-spacing: 0;
+  }
+
+  :global(.supplier-portal-auth-preview-card small) {
+    color: #475569;
+    font-size: 12px;
+    line-height: 1.45;
   }
 }
 
@@ -810,6 +855,10 @@ onMounted(async () => {
   :global(.supplier-portal-shell.mobile .supplier-portal-auth-foot button),
   :global(.supplier-portal-shell.mobile .supplier-portal-auth-note button) {
     padding: 0 10px;
+  }
+
+  :global(.supplier-portal-shell.mobile .supplier-portal-auth-preview) {
+    display: none;
   }
 }
 </style>

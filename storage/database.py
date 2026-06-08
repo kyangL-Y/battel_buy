@@ -1804,6 +1804,70 @@ class Database:
         with self.connect() as conn:
             return pd.read_sql_query(statement, conn, params={"product_keys": normalized_keys})
 
+    def get_product_keys_for_identity(self, identity_key: str, limit: int = 200) -> list[str]:
+        normalized_identity_key = str(identity_key or "").strip()
+        if not normalized_identity_key:
+            return []
+
+        def normalize_compare_segment(value: str) -> str:
+            normalized_value = value.strip().lower()
+            normalized_value = re.sub(r"[\s\-_·•|/]+", "", normalized_value)
+            return re.sub(r"[^\u4e00-\u9fa5a-z0-9]+", "", normalized_value)
+
+        identity_parts = [normalize_compare_segment(item) for item in normalized_identity_key.split("|")]
+        identity_parts = [item for item in identity_parts if item]
+        if not identity_parts:
+            return []
+
+        def normalized_column_sql(column_name: str) -> str:
+            expression = f"LOWER(COALESCE({column_name}, ''))"
+            for token in [" ", "\t", "\r", "\n", "-", "_", "·", "•", "|", "/", "*", ".", "。", ",", "，", "(", ")", "（", "）"]:
+                expression = f"REPLACE({expression}, '{token}', '')"
+            return expression
+
+        product_name_match = (
+            f"({normalized_column_sql('product_name')} = :primary_part "
+            f"OR {normalized_column_sql('group_name')} = :primary_part)"
+        )
+        attribute_columns = ["category", "brand", "product_series", "spec_text"]
+        where_clauses = [
+            "product_key = :identity_key",
+            f"{normalized_column_sql('compare_key')} = :compact_identity_key",
+        ]
+        params: dict[str, object] = {
+            "identity_key": normalized_identity_key,
+            "compact_identity_key": normalize_compare_segment(normalized_identity_key),
+            "primary_part": identity_parts[0],
+            "limit": max(1, min(int(limit or 0), 1000)),
+        }
+
+        if len(identity_parts) == 1:
+            where_clauses.append(product_name_match)
+        else:
+            attribute_match_clauses: list[str] = []
+            for index, identity_part in enumerate(identity_parts[1:], start=1):
+                param_name = f"identity_part_{index}"
+                params[param_name] = identity_part
+                attribute_match_clauses.append(
+                    "("
+                    + " OR ".join(f"{normalized_column_sql(column_name)} = :{param_name}" for column_name in attribute_columns)
+                    + ")"
+                )
+            where_clauses.append(f"({product_name_match} AND {' AND '.join(attribute_match_clauses)})")
+
+        statement = text(
+            f"""
+            SELECT product_key
+            FROM products
+            WHERE {' OR '.join(where_clauses)}
+            ORDER BY id DESC
+            LIMIT :limit
+            """
+        )
+        with self.connect() as conn:
+            rows = conn.execute(statement, params).mappings().all()
+        return [str(row["product_key"]) for row in rows if str(row.get("product_key") or "").strip()]
+
     def get_latest_records(self) -> pd.DataFrame:
         if self.backend == "mysql":
             return self._read_sql(

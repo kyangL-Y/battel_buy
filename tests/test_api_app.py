@@ -28,6 +28,13 @@ from utils.auth import hash_password
 
 
 
+@pytest.fixture(autouse=True)
+def clear_auth_failure_buckets():
+    api_app_module._AUTH_FAILURE_BUCKETS.clear()
+    yield
+    api_app_module._AUTH_FAILURE_BUCKETS.clear()
+
+
 def _create_authenticated_client(
 
     monkeypatch,
@@ -44,6 +51,10 @@ def _create_authenticated_client(
 
     display_name: str = "测试账号",
 
+    default_province: str | None = None,
+
+    default_city: str | None = None,
+
     db=None,
 
 ):
@@ -57,6 +68,10 @@ def _create_authenticated_client(
         "role": role,
 
         "display_name": display_name,
+
+        "default_province": default_province,
+
+        "default_city": default_city,
 
         "is_active": True,
 
@@ -218,6 +233,61 @@ def test_auth_login_and_me_endpoint_with_seeded_admin(tmp_path, monkeypatch):
 
 
 
+
+
+def test_auth_login_rate_limits_repeated_failures(tmp_path, monkeypatch):
+    db = Database(tmp_path / "auth_login_rate_limit.db")
+    db.init_db()
+    monkeypatch.setattr(api_deps_module, "get_db", lambda: db)
+    monkeypatch.setattr(api_app_module, "get_db", lambda: db)
+    current_time = {"value": 1000.0}
+    monkeypatch.setattr(api_app_module, "monotonic", lambda: current_time["value"])
+
+    client = TestClient(create_app())
+
+    for _ in range(api_app_module.AUTH_FAILURE_LIMIT):
+        failed_response = client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "wrong-password"},
+        )
+        assert failed_response.status_code == 401
+
+    locked_response = client.post(
+        "/api/auth/login",
+        json={"username": "admin", "password": "admin123"},
+    )
+    assert locked_response.status_code == 429
+    assert locked_response.json()["detail"] == "认证失败次数过多，请稍后再试"
+
+    current_time["value"] += api_app_module.AUTH_LOCK_SECONDS + 1
+    recovered_response = client.post(
+        "/api/auth/login",
+        json={"username": "admin", "password": "admin123"},
+    )
+    assert recovered_response.status_code == 200
+
+
+def test_auth_login_success_clears_previous_failures(tmp_path, monkeypatch):
+    db = Database(tmp_path / "auth_login_failure_clear.db")
+    db.init_db()
+    monkeypatch.setattr(api_deps_module, "get_db", lambda: db)
+    monkeypatch.setattr(api_app_module, "get_db", lambda: db)
+
+    client = TestClient(create_app())
+
+    for _ in range(api_app_module.AUTH_FAILURE_LIMIT - 1):
+        failed_response = client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "wrong-password"},
+        )
+        assert failed_response.status_code == 401
+
+    successful_response = client.post(
+        "/api/auth/login",
+        json={"username": "admin", "password": "admin123"},
+    )
+    assert successful_response.status_code == 200
+    assert api_app_module._AUTH_FAILURE_BUCKETS == {}
 
 
 def test_procurement_direct_register_endpoint_is_not_available(tmp_path, monkeypatch):
@@ -1404,6 +1474,65 @@ def test_market_summary_endpoint_requires_procurement_or_admin(monkeypatch):
     assert supplier_response.status_code == 403
     assert procurement_response.status_code == 200
     assert admin_response.status_code == 200
+
+    api_app_module._cached_market_summary_payload.cache_clear()
+
+
+def test_procurement_price_reads_are_limited_to_account_location(monkeypatch):
+    api_app_module._cached_market_summary_payload.cache_clear()
+    api_app_module._clear_market_summary_disk_cache()
+    captured: dict[str, list[tuple[str | None, str | None]]] = {
+        "summary": [],
+        "options": [],
+        "product_summary": [],
+        "trend": [],
+    }
+
+    monkeypatch.setattr(api_app_module, "get_latest_df", lambda: pd.DataFrame({"product_name": ["白菜"]}))
+
+    def fake_summary(df, selected_province=None, selected_city=None):
+        captured["summary"].append((selected_province, selected_city))
+        return pd.DataFrame([{"product_name": "白菜", "lowest_price": 1.2}])
+
+    def fake_options(df, selected_province=None, selected_city=None):
+        captured["options"].append((selected_province, selected_city))
+        return pd.DataFrame([{"price_identity_key": "白菜", "price_identity_label": "白菜"}])
+
+    def fake_product_summary(df, identity_key, selected_province=None, selected_city=None):
+        captured["product_summary"].append((selected_province, selected_city))
+        return {"product_name": identity_key}
+
+    def fake_trend(df, identity_key, selected_province=None, selected_city=None):
+        captured["trend"].append((selected_province, selected_city))
+        return pd.DataFrame([{"site_name": "南京市场", "price": 1.2}])
+
+    monkeypatch.setattr(api_app_module, "compute_cross_site_price_summary", fake_summary)
+    monkeypatch.setattr(api_app_module, "build_single_product_selector_options", fake_options)
+    monkeypatch.setattr(api_app_module, "compute_single_product_summary", fake_product_summary)
+    monkeypatch.setattr(api_app_module, "build_cross_market_product_trend", fake_trend)
+
+    client = _create_authenticated_client(
+        monkeypatch,
+        role="procurement",
+        supplier_id=None,
+        procurement_supplier_ids=[],
+        default_province="江苏省",
+        default_city="南京",
+    )
+
+    assert client.get("/api/market/summary").status_code == 200
+    assert client.get("/api/product/options?province=江苏省&city=南京").status_code == 200
+    assert client.get("/api/product/%E7%99%BD%E8%8F%9C/summary").status_code == 200
+    assert client.get("/api/product/%E7%99%BD%E8%8F%9C/trend?mode=cross_market").status_code == 200
+    assert client.get("/api/market/summary?province=北京市&city=北京市").status_code == 403
+    assert client.get("/api/product/options?province=北京市&city=北京市").status_code == 403
+    assert client.get("/api/product/%E7%99%BD%E8%8F%9C/summary?province=北京市&city=北京市").status_code == 403
+    assert client.get("/api/product/%E7%99%BD%E8%8F%9C/trend?mode=cross_market&province=北京市&city=北京市").status_code == 403
+
+    assert captured["summary"][0] == ("江苏省", "南京")
+    assert captured["options"][0] == ("江苏省", "南京")
+    assert captured["product_summary"][0] == ("江苏省", "南京")
+    assert captured["trend"][0] == ("江苏省", "南京")
 
     api_app_module._cached_market_summary_payload.cache_clear()
 
@@ -2688,6 +2817,64 @@ def test_auth_password_reset_updates_password_and_returns_session(tmp_path, monk
         json={"username": "supplier-reset", "password": "newpass123"},
     )
     assert new_login_response.status_code == 200
+
+
+def test_auth_password_reset_rate_limits_repeated_failures(tmp_path, monkeypatch):
+    db = Database(tmp_path / "auth_password_reset_rate_limit.db")
+    db.init_db()
+    supplier_id = db.upsert_supplier(
+        supplier_name="莲菜档口A",
+        contact_name="老王",
+        market_scope="南京市场",
+        market_category="蔬菜类",
+        channel="微信小程序",
+    )
+    db.upsert_auth_user(
+        username="supplier-reset-limit",
+        password_hash=hash_password("oldpass123"),
+        role="supplier",
+        supplier_id=supplier_id,
+        display_name="莲菜档口A",
+        is_active=True,
+    )
+    monkeypatch.setattr(api_deps_module, "get_db", lambda: db)
+    monkeypatch.setattr(api_app_module, "get_db", lambda: db)
+    current_time = {"value": 2000.0}
+    monkeypatch.setattr(api_app_module, "monotonic", lambda: current_time["value"])
+
+    client = TestClient(create_app())
+
+    for _ in range(api_app_module.AUTH_FAILURE_LIMIT):
+        failed_response = client.post(
+            "/api/auth/password/reset",
+            json={
+                "username": "supplier-reset-limit",
+                "current_password": "wrongpass123",
+                "new_password": "newpass123",
+            },
+        )
+        assert failed_response.status_code == 401
+
+    locked_response = client.post(
+        "/api/auth/password/reset",
+        json={
+            "username": "supplier-reset-limit",
+            "current_password": "oldpass123",
+            "new_password": "newpass123",
+        },
+    )
+    assert locked_response.status_code == 429
+
+    current_time["value"] += api_app_module.AUTH_LOCK_SECONDS + 1
+    recovered_response = client.post(
+        "/api/auth/password/reset",
+        json={
+            "username": "supplier-reset-limit",
+            "current_password": "oldpass123",
+            "new_password": "newpass123",
+        },
+    )
+    assert recovered_response.status_code == 200
 
 
 def test_registration_request_endpoints_are_not_available(tmp_path, monkeypatch):

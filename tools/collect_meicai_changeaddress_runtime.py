@@ -21,7 +21,9 @@ MEICAI_PACKAGE_NAME = "com.meicai.mall"
 
 def build_frida_script() -> str:
     return f"""
-Java.perform(function () {{
+function waitForJava(remainingAttempts) {{
+  if (typeof Java !== "undefined") {{
+    Java.perform(function () {{
   const Buffer = Java.use("okio.Buffer");
 
   function headersObject(headers) {{
@@ -115,7 +117,19 @@ Java.perform(function () {{
   if (!hooked) {{
     send({{ event: "hook_missing", path: "{CHANGE_ADDRESS_PATH}" }});
   }}
-}});
+    }});
+    return;
+  }}
+  if (remainingAttempts <= 0) {{
+    send({{ event: "java_unavailable", path: "{CHANGE_ADDRESS_PATH}" }});
+    return;
+  }}
+  setTimeout(function () {{
+    waitForJava(remainingAttempts - 1);
+  }}, 1000);
+}}
+
+waitForJava(30);
 """
 
 
@@ -221,7 +235,7 @@ def collect_changeaddress_runtime(
             hooked_seen = True
         if frida_message.get("type") == "error":
             frida_errors.append(str(frida_message.get("description") or frida_message.get("stack") or "frida script error"))
-        if sent_payload.get("event") in {"hook_error", "hook_missing"}:
+        if sent_payload.get("event") in {"hook_error", "hook_missing", "java_unavailable"}:
             frida_errors.append(json.dumps(sent_payload, ensure_ascii=False))
         append_capture_record(capture_path, frida_message)
 

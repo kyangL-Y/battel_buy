@@ -1,12 +1,12 @@
 import { reactive } from 'vue'
 import type { AuthUserItem, MarketSummaryItem } from './types'
 
-const AUTH_STORAGE_KEYS = {
+export const AUTH_STORAGE_KEYS = {
   procurement: 'battel.auth.session.procurement',
   supplier: 'battel.auth.session.supplier',
   admin: 'battel.auth.session.admin',
 } as const
-const LEGACY_AUTH_STORAGE_KEY = 'battel.auth.session'
+export const LEGACY_AUTH_STORAGE_KEY = 'battel.auth.session'
 const AUTH_TOKEN_EXPIRY_SKEW_MS = 30_000
 
 export type AuthSessionState = {

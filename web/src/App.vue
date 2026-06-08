@@ -440,12 +440,13 @@
               <div class="market-mobile-alert-row-main">
                 <div class="market-mobile-alert-thumb-shell">
                   <img
-                    v-if="item.imageUrl"
+                    v-if="item.imageUrl && !mobileAlertBrokenImageUrls.has(item.imageUrl)"
                     :src="item.imageUrl"
                     :alt="item.name"
                     class="market-mobile-alert-thumb-image"
                     loading="lazy"
                     decoding="async"
+                    @error="handleMobileAlertImageError(item.imageUrl)"
                     @click.stop="openImagePreview(item.imageUrl, item.name)"
                   />
                   <span v-else :class="['market-mobile-thumb', item.thumb]"></span>
@@ -1055,8 +1056,7 @@ const tabs = [
 ] as const
 const shouldRedirectToStandaloneSupplier = initialPathname !== SUPPLIER_PLATFORM_PATH && (initialMode === 'supplier' || initialTab === 'supplier')
 const initialAuthSession = readAuthSession()
-const initialAuthUserRole = initialAuthSession?.user?.role
-const hasInitialProcurementAccess = Boolean(initialAuthSession?.access_token && (initialAuthUserRole === 'admin' || initialAuthUserRole === 'procurement'))
+const hasInitialProcurementSession = Boolean(initialAuthSession?.access_token)
 const initialWorkspaceRequested = initialMode === 'workspace' || Boolean(initialTab)
 const defaultTab = tabs.some((item) => item.key === initialTab)
 
@@ -1077,7 +1077,7 @@ const initialWorkbenchSection = isWorkbenchSectionId(initialWorkbenchSectionPara
 
 const viewMode = ref<'landing' | 'workspace'>(
 
-  initialWorkspaceRequested && hasInitialProcurementAccess
+  initialWorkspaceRequested && hasInitialProcurementSession
 
     ? 'workspace'
 
@@ -1175,6 +1175,7 @@ const landingProcurementUsernameInput = ref<HTMLInputElement | null>(null)
 const imagePreviewVisible = ref(false)
 const imagePreviewUrl = ref('')
 const imagePreviewTitle = ref('')
+const mobileAlertBrokenImageUrls = reactive(new Set<string>())
 const showMobileHomeMore = ref(false)
 const mobileHomePanel = ref<'home' | 'categories'>('home')
 const showMobileLocationPanel = ref(false)
@@ -3283,6 +3284,12 @@ function openImagePreview(url?: string | null, title = '') {
   imagePreviewVisible.value = true
 }
 
+function handleMobileAlertImageError(url: string | null | undefined) {
+  const normalizedUrl = String(url || '').trim()
+  if (!normalizedUrl) return
+  mobileAlertBrokenImageUrls.add(normalizedUrl)
+}
+
 function filterSummaryRowsByLiancaiCategory(
   rows: MarketSummaryItem[],
   params: { source_name?: string; liancai_top_category?: string; liancai_subcategory?: string; liancai_keyword?: string; liancai_brand?: string },
@@ -4107,11 +4114,19 @@ async function restoreAuthSession() {
   } catch {
 
     applyAuthSession(null)
+    const isSupplierDeepLink = Boolean(initialWorkbenchSectionParam) && (initialWorkbenchSection === 'suppliers' || initialWorkbenchSection === 'accounts')
+    if (viewMode.value === 'workspace' && isSupplierDeepLink) {
+      return
+    }
     if (viewMode.value === 'workspace') {
       goToLanding()
       if (initialWorkspaceRequested) {
         openProcurementAuthDialog(defaultTab)
       }
+    }
+
+    if (viewMode.value === 'landing' && initialWorkspaceRequested && !hasInitialProcurementSession) {
+      openProcurementAuthDialog(defaultTab)
     }
 
   }
@@ -5318,6 +5333,30 @@ async function loadWorkspaceTabAssets(tabKey: (typeof tabs)[number]['key']) {
   return
 }
 
+async function awaitInitialDesktopSummaryOrBootstrapOptions(summaryLoad: Promise<void>) {
+  if (typeof window === 'undefined') {
+    await summaryLoad
+    return
+  }
+  await Promise.race([
+    summaryLoad,
+    (async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, MOBILE_SUMMARY_FALLBACK_WAIT_MS))
+      if (!marketRows.value.length) {
+        const params = buildFilterParams()
+        const optionsData = await fetchProductOptions({ ...params, limit: 1000 })
+        const nextProductOptions = filterSelectableProductOptions(optionsData.items ?? [])
+        if (nextProductOptions.length) {
+          productOptions.value = nextProductOptions
+          productOptionsContextKey.value = buildContextKey(params)
+          marketRows.value = marketSummaryRowsFromProductOptions(nextProductOptions)
+          writeLocalCache(PRODUCT_OPTIONS_CACHE_KEY, productOptionsContextKey.value, nextProductOptions)
+        }
+      }
+    })(),
+  ])
+}
+
 async function loadWorkbenchSectionAssets(sectionId: SectionId) {
   if (loadedWorkbenchSections.has(sectionId)) return
   loadedWorkbenchSections.add(sectionId)
@@ -6012,7 +6051,7 @@ onMounted(async () => {
     openSupplierBackend()
     return
   }
-  if (initialWorkspaceRequested && !hasInitialProcurementAccess) {
+  if (initialWorkspaceRequested && !hasInitialProcurementSession) {
     openProcurementAuthDialog(defaultTab)
     syncMobileAlertDraftFromSelection()
     return
@@ -6038,7 +6077,7 @@ onMounted(async () => {
     const shouldLoadInitialSummary = shouldReloadSummaryForCurrentView()
     const initialSummaryLoad = shouldLoadInitialSummary ? reloadSummary() : Promise.resolve()
     if (shouldLoadInitialSummary && !isMobileViewport.value) {
-      await initialSummaryLoad
+      await awaitInitialDesktopSummaryOrBootstrapOptions(initialSummaryLoad)
     }
     schedulePostRenderRequest(() => {
       void loadWorkspaceTabAssets(activeTab.value)
@@ -10807,11 +10846,11 @@ onBeforeUnmount(() => {
 /* Mobile touch/safe-area guard: fixed bottom nav should not steal final content,
    and header actions keep a thumb-friendly hit target. */
 .market-mobile-shell-content {
-  padding-bottom: calc(104px + env(safe-area-inset-bottom, 0px));
+  padding-bottom: calc(116px + env(safe-area-inset-bottom, 0px));
 }
 
 .market-mobile-home {
-  padding-bottom: calc(214px + env(safe-area-inset-bottom, 0px));
+  padding-bottom: calc(232px + env(safe-area-inset-bottom, 0px));
 }
 
 .market-mobile-back-button,
@@ -10932,7 +10971,7 @@ onBeforeUnmount(() => {
 
 .mobile-redesign-home {
   min-height: 100dvh;
-  padding: 14px 14px calc(104px + env(safe-area-inset-bottom, 0px));
+  padding: 14px 14px calc(156px + env(safe-area-inset-bottom, 0px));
 }
 
 .mobile-redesign-hero-card,
@@ -11016,7 +11055,7 @@ onBeforeUnmount(() => {
 
 .mobile-redesign-topbar {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(78px, auto) 46px;
+  grid-template-columns: minmax(0, 1fr) minmax(92px, auto) 46px;
   align-items: center;
   gap: 10px 8px;
 }
@@ -11143,14 +11182,14 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  max-width: 126px;
+  max-width: 138px;
   overflow: hidden;
   white-space: nowrap;
 }
 
 .mobile-redesign-login-button.is-authenticated {
   justify-content: flex-start;
-  padding: 0 9px 0 8px;
+  padding: 0 8px;
 }
 
 .mobile-redesign-account-avatar {
@@ -11555,7 +11594,7 @@ onBeforeUnmount(() => {
 }
 
 .mobile-redesign-workspace .market-mobile-shell-content {
-  padding: 8px 8px calc(70px + env(safe-area-inset-bottom, 0px));
+  padding: 8px 8px calc(88px + env(safe-area-inset-bottom, 0px));
 }
 
 .mobile-redesign-workspace :deep(.market-mobile-feed-hero),

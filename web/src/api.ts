@@ -89,7 +89,7 @@ export function clearProcurementApiResponseCache() {
 }
 
 function assertProcurementApiAccess() {
-  const sessions = [readAuthSession('procurement'), readAuthSession('admin')]
+  const sessions = [readAuthSession(), readAuthSession('procurement'), readAuthSession('admin')]
   const canUseProcurementApi = sessions.some((session) => {
     const role = session?.user?.role
     return Boolean(session?.access_token && (role === 'admin' || role === 'procurement'))

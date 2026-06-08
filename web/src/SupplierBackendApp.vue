@@ -2722,7 +2722,7 @@ watch(
 
   .supplier-backend-shell.mobile .supplier-backend-topbar-actions :deep(.el-button) {
     width: 100%;
-    min-height: 34px;
+    min-height: 44px;
     margin-left: 0;
     border-radius: 8px;
     font-size: 13px;
@@ -2889,20 +2889,21 @@ watch(
 }
 
 .supplier-backend-shell:not(.mobile) .supplier-backend-topbar {
-  height: 56px;
-  padding: 0 16px;
+  min-height: 64px;
+  height: auto;
+  padding: 8px 18px;
   border-bottom-color: #e2e8f0;
 }
 
 .supplier-backend-shell:not(.mobile) .supplier-backend-sidebar {
-  width: 184px;
-  padding: 14px 10px;
+  width: 224px;
+  padding: 16px 12px;
   border-right-color: #e2e8f0;
 }
 
 .supplier-backend-shell:not(.mobile) {
-  grid-template-columns: 184px minmax(0, 1fr);
-  grid-template-rows: 56px minmax(0, 1fr);
+  grid-template-columns: 224px minmax(0, 1fr);
+  grid-template-rows: minmax(64px, auto) minmax(0, 1fr);
 }
 
 .supplier-backend-shell:not(.mobile) .supplier-backend-stage {
@@ -2950,9 +2951,15 @@ watch(
 }
 
 .supplier-backend-shell:not(.mobile) .supplier-backend-nav-item {
-  min-height: 38px;
+  min-height: 46px;
+  padding: 8px 12px;
   border-radius: 6px;
   color: #334155;
+}
+
+.supplier-backend-shell:not(.mobile) .supplier-backend-nav-item em {
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .supplier-backend-shell:not(.mobile) .supplier-backend-nav-item.active {

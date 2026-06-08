@@ -1,8 +1,11 @@
 import type { APIRequestContext, Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
 
-const API_BASE_URL = 'http://127.0.0.1:8000'
-const AUTH_STORAGE_KEY = 'battel.auth.session.procurement'
+import { backendURL } from '../playwright.shared'
+import { PROCUREMENT_AUTH_STORAGE_KEY } from './helpers/authSessionStorage'
+
+const API_BASE_URL = backendURL
+const AUTH_STORAGE_KEY = PROCUREMENT_AUTH_STORAGE_KEY
 const PRODUCT_OPTIONS_STORAGE_KEY = 'battel.product-options.cache.v3'
 const PRODUCT_SUMMARY_STORAGE_KEY = 'battel.product-summary.cache.v3'
 const PRODUCT_TREND_STORAGE_KEY = 'battel.product-trend.cache.v3'

@@ -30,12 +30,13 @@
           <div class="market-mobile-alert-row-main">
             <div class="market-mobile-alert-thumb-shell">
               <img
-                v-if="item.imageUrl"
+                v-if="item.imageUrl && !brokenAlertImageUrls.has(item.imageUrl)"
                 :src="item.imageUrl"
                 :alt="item.name"
                 class="market-mobile-alert-thumb-image"
                 loading="lazy"
                 decoding="async"
+                @error="handleAlertImageError(item.imageUrl)"
                 @click.stop="emit('open-image-preview', item.imageUrl, item.name)"
               />
               <span v-else :class="['market-mobile-thumb', item.thumb]"></span>
@@ -111,7 +112,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, reactive } from 'vue'
 
 export type MobileAlertPageRow = {
   identityKey?: string
@@ -158,6 +159,7 @@ const emit = defineEmits<{
 
 const ruleDraft = defineModel<MobileAlertRuleDraft>('ruleDraft', { required: true })
 const showRuleForm = defineModel<boolean>('showRuleForm', { required: true })
+const brokenAlertImageUrls = reactive(new Set<string>())
 
 const alertHeroText = computed(() => {
   const pending = props.alertRows.filter((item) => item.state === '待处理').length
@@ -185,6 +187,12 @@ const alertThresholdLabel = computed(() => {
   if (lower > 0) return `<= ${lower.toFixed(2)}`
   return '未设置'
 })
+
+function handleAlertImageError(url: string | null | undefined) {
+  const normalizedUrl = String(url || '').trim()
+  if (!normalizedUrl) return
+  brokenAlertImageUrls.add(normalizedUrl)
+}
 </script>
 
 <style scoped>

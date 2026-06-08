@@ -140,12 +140,13 @@
           <div class="market-mobile-feed-card-main">
             <div class="market-mobile-feed-thumb-shell">
               <img
-                v-if="resolveMobileFoodImage(row)"
+                v-if="resolveMobileFoodImage(row) && !brokenMobileFoodImageUrls.has(resolveMobileFoodImage(row))"
                 :src="resolveMobileFoodImage(row)"
                 :alt="row.product_name"
                 class="market-mobile-feed-thumb-image"
                 loading="lazy"
                 decoding="async"
+                @error="handleMobileFoodImageError(resolveMobileFoodImage(row))"
                 @click.stop="openImagePreview(resolveMobileFoodImage(row), row.product_name)"
               />
               <span v-else :class="['market-mobile-food-thumb', resolveMobileFoodThumb(row)]"></span>
@@ -423,7 +424,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import type { MarketSummaryItem, SourceCoverageItem } from '../types'
 import { useViewport } from '../composables/useViewport'
 import { lazyElMessage } from '../lazyElementMessage'
@@ -451,6 +452,7 @@ const imagePreviewVisible = ref(false)
 const imagePreviewUrl = ref('')
 const imagePreviewTitle = ref('')
 const keywordDraft = ref(props.keyword)
+const brokenMobileFoodImageUrls = reactive(new Set<string>())
 let keywordCommitTimer: number | undefined
 
 const { isMobileViewport, isNarrowViewport } = useViewport()
@@ -961,6 +963,12 @@ function buildActionLabel(row: MarketSummaryItem) {
 
 function resolveMobileFoodImage(row: MarketSummaryItem) {
   return String(row.image_url || '').trim()
+}
+
+function handleMobileFoodImageError(url: string | null | undefined) {
+  const normalizedUrl = String(url || '').trim()
+  if (!normalizedUrl) return
+  brokenMobileFoodImageUrls.add(normalizedUrl)
 }
 
 function resolveMobileFoodThumb(row: MarketSummaryItem) {

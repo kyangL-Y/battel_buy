@@ -135,8 +135,12 @@ logger = logging.getLogger(__name__)
 _PRODUCT_RESPONSE_CACHE_TTL_SECONDS = 300.0
 _DEFAULT_MARKET_SUMMARY_LIMIT = 500
 _PRODUCT_OPTIONS_FULL_COMPUTE_LIMIT = 1000
+AUTH_FAILURE_LIMIT = 5
+AUTH_FAILURE_WINDOW_SECONDS = 300.0
+AUTH_LOCK_SECONDS = 600.0
 _LAST_CACHE_CLEARED_CRAWL_FINISHED_AT: str | None = None
 MARKET_SUMMARY_DISK_CACHE_DIR = CONFIG_BASE_DIR / 'data' / 'market_summary_cache'
+_AUTH_FAILURE_BUCKETS: dict[tuple[str, str, str], dict[str, float]] = {}
 DEFAULT_SUPPLIER_QUOTE_DUPLICATE_MATCH_FIELDS = (
     "quote_price",
     "quote_unit",
@@ -256,6 +260,48 @@ def _extract_public_client_ip(request: Request) -> str:
     return ""
 
 
+def _auth_client_key(request: Request) -> str:
+    forwarded_for = str(request.headers.get("x-forwarded-for") or "").split(",", 1)[0].strip()
+    real_ip = str(request.headers.get("x-real-ip") or "").strip()
+    socket_host = request.client.host if request.client else ""
+    return forwarded_for or real_ip or socket_host or "unknown"
+
+
+def _enforce_auth_failure_limit(action: str, username: str, client_key: str) -> None:
+    bucket_key = (action, username.strip().lower(), client_key)
+    bucket = _AUTH_FAILURE_BUCKETS.get(bucket_key)
+    if not bucket:
+        return
+    now = monotonic()
+    first_failed_at = float(bucket.get("first_failed_at") or 0)
+    last_failed_at = float(bucket.get("last_failed_at") or 0)
+    failed_count = int(bucket.get("failed_count") or 0)
+    if now - first_failed_at > AUTH_FAILURE_WINDOW_SECONDS and now - last_failed_at > AUTH_LOCK_SECONDS:
+        _AUTH_FAILURE_BUCKETS.pop(bucket_key, None)
+        return
+    if failed_count >= AUTH_FAILURE_LIMIT and now - last_failed_at < AUTH_LOCK_SECONDS:
+        raise HTTPException(status_code=429, detail="认证失败次数过多，请稍后再试")
+
+
+def _record_auth_failure(action: str, username: str, client_key: str) -> None:
+    bucket_key = (action, username.strip().lower(), client_key)
+    now = monotonic()
+    bucket = _AUTH_FAILURE_BUCKETS.get(bucket_key)
+    if not bucket or now - float(bucket.get("first_failed_at") or 0) > AUTH_FAILURE_WINDOW_SECONDS:
+        _AUTH_FAILURE_BUCKETS[bucket_key] = {
+            "first_failed_at": now,
+            "last_failed_at": now,
+            "failed_count": 1,
+        }
+        return
+    bucket["last_failed_at"] = now
+    bucket["failed_count"] = float(int(bucket.get("failed_count") or 0) + 1)
+
+
+def _clear_auth_failures(action: str, username: str, client_key: str) -> None:
+    _AUTH_FAILURE_BUCKETS.pop((action, username.strip().lower(), client_key), None)
+
+
 def _fetch_ip_location_suggestion(ip_address_text: str) -> dict | None:
     normalized_ip = str(ip_address_text or "").strip()
     if not normalized_ip:
@@ -269,6 +315,35 @@ def _fetch_ip_location_suggestion(ip_address_text: str) -> dict | None:
         ip_payload.get("country_name"),
     ))
     return _build_location_suggestion(raw_location, "ip_geolocation", "IP 归属地", 0.58)
+
+
+def _normalize_market_scope_value(value: str | None, kind: str) -> str:
+    normalized_value = str(value or "").strip()
+    if not normalized_value:
+        return ""
+    if kind == "province":
+        return match_standard_province(normalized_value) or normalized_value
+    matched_city, _ = match_standard_city(normalized_value)
+    return matched_city or normalized_value
+
+
+def _resolve_procurement_location_scope(
+    current_user: dict,
+    province: str | None,
+    city: str | None,
+) -> tuple[str, str]:
+    requested_province = _normalize_market_scope_value(province, "province")
+    requested_city = _normalize_market_scope_value(city, "city")
+    if not is_procurement_user(current_user):
+        return requested_province, requested_city
+
+    scoped_province = _normalize_market_scope_value(current_user.get("default_province"), "province")
+    scoped_city = _normalize_market_scope_value(current_user.get("default_city"), "city")
+    if scoped_province and requested_province and requested_province != scoped_province:
+        raise HTTPException(status_code=403, detail="当前采购账号无权访问该省份行情")
+    if scoped_city and requested_city and requested_city != scoped_city:
+        raise HTTPException(status_code=403, detail="当前采购账号无权访问该城市行情")
+    return scoped_province or requested_province, scoped_city or requested_city
 
 
 @lru_cache(maxsize=64)
@@ -911,9 +986,12 @@ def _build_fast_product_options_page(
     *,
     province: str | None,
     city: str | None,
+    keyword: str | None,
     source_name: str | None,
     liancai_top_category: str | None,
     liancai_subcategory: str | None,
+    liancai_keyword: str | None,
+    liancai_brand: str | None,
     limit: int,
     offset: int,
 ) -> dict:
@@ -925,9 +1003,12 @@ def _build_fast_product_options_page(
     rows = _fetch_latest_product_rows(
         province=province,
         city=city,
+        keyword=keyword,
         source_name=source_name,
         liancai_top_category=liancai_top_category,
         liancai_subcategory=liancai_subcategory,
+        liancai_keyword=liancai_keyword,
+        liancai_brand=liancai_brand,
         limit=probe_fetch_limit,
         offset=normalized_offset,
     )
@@ -938,6 +1019,8 @@ def _build_fast_product_options_page(
         latest_df,
         liancai_top_category=liancai_top_category or None,
         liancai_subcategory=liancai_subcategory or None,
+        liancai_keyword=liancai_keyword or None,
+        liancai_brand=liancai_brand or None,
     )
     summary_df = compute_cross_site_price_summary(
         latest_df,
@@ -2435,10 +2518,11 @@ def create_app() -> FastAPI:
 
 
         supplier_scope_ids = _visible_supplier_ids_for_price_read(current_user)
+        scoped_province, scoped_city = _resolve_procurement_location_scope(current_user, province, city)
         market_summary_arguments = (
             _product_response_cache_bucket(),
-            str(province or ""),
-            str(city or ""),
+            scoped_province,
+            scoped_city,
             str(keyword or "").strip(),
             str(source_name or "").strip(),
             str(liancai_top_category or ""),
@@ -2478,12 +2562,13 @@ def create_app() -> FastAPI:
         current_user: dict = Depends(require_procurement_or_admin_user),
     ) -> dict:
         cache_bucket = _product_response_cache_bucket()
+        scoped_province, scoped_city = _resolve_procurement_location_scope(current_user, province, city)
 
         def cached_or_empty_product_options_page(error: OperationalError) -> dict:
             logger.warning("商品选项查询数据库不可用，返回缓存降级页: %s", error)
             return _product_options_page_from_market_summary_cache_or_empty(
-                province=province,
-                city=city,
+                province=scoped_province,
+                city=scoped_city,
                 keyword=keyword,
                 source_name=source_name,
                 liancai_top_category=liancai_top_category,
@@ -2497,17 +2582,14 @@ def create_app() -> FastAPI:
         should_compute_full_options = bool(
             province
             or city
-            or keyword
-            or liancai_keyword
-            or liancai_brand
             or limit == 0
         )
         if should_compute_full_options:
             try:
                 items = _filter_product_option_items(_cached_product_options_payload(
                     cache_bucket,
-                    str(province or ""),
-                    str(city or ""),
+                    scoped_province,
+                    scoped_city,
                     str(source_name or ""),
                     str(liancai_top_category or ""),
                     str(liancai_subcategory or ""),
@@ -2527,21 +2609,22 @@ def create_app() -> FastAPI:
                 "has_more": end < total,
             }
         should_use_fast_page = bool(
-            not province
-            and not city
-            and not liancai_keyword
-            and not liancai_brand
+            not scoped_province
+            and not scoped_city
             and limit > 0
             and offset + limit <= _PRODUCT_OPTIONS_FULL_COMPUTE_LIMIT
         )
         if should_use_fast_page:
             try:
                 fast_page = _build_fast_product_options_page(
-                    province=province,
-                    city=city,
+                    province=scoped_province,
+                    city=scoped_city,
+                    keyword=keyword,
                     source_name=source_name,
                     liancai_top_category=liancai_top_category,
                     liancai_subcategory=liancai_subcategory,
+                    liancai_keyword=liancai_keyword,
+                    liancai_brand=liancai_brand,
                     limit=limit,
                     offset=offset,
                 )
@@ -2552,8 +2635,8 @@ def create_app() -> FastAPI:
             try:
                 items = _cached_product_options_payload.__wrapped__(
                     cache_bucket,
-                    str(province or ""),
-                    str(city or ""),
+                    scoped_province,
+                    scoped_city,
                     str(source_name or ""),
                     str(liancai_top_category or ""),
                     str(liancai_subcategory or ""),
@@ -2576,8 +2659,8 @@ def create_app() -> FastAPI:
         supplier_scope_ids = _visible_supplier_ids_for_price_read(current_user)
         market_summary_arguments = (
             cache_bucket,
-            str(province or ""),
-            str(city or ""),
+            scoped_province,
+            scoped_city,
             "",
             "",
             str(liancai_top_category or ""),
@@ -2609,11 +2692,12 @@ def create_app() -> FastAPI:
     ) -> dict:
         decoded_key = unquote(identity_key)
         supplier_scope_ids = _visible_supplier_ids_for_price_read(current_user)
+        scoped_province, scoped_city = _resolve_procurement_location_scope(current_user, province, city)
         product_summary_arguments = (
             decoded_key,
             _product_response_cache_bucket(),
-            str(province or ""),
-            str(city or ""),
+            scoped_province,
+            scoped_city,
             str(source_name or "").strip(),
             str(liancai_top_category or ""),
             str(liancai_subcategory or ""),
@@ -2644,14 +2728,15 @@ def create_app() -> FastAPI:
     ) -> dict:
         decoded_key = unquote(identity_key)
         supplier_scope_ids = _visible_supplier_ids_for_price_read(current_user)
+        scoped_province, scoped_city = _resolve_procurement_location_scope(current_user, province, city)
         product_trend_arguments = (
             decoded_key,
             _product_response_cache_bucket(),
             mode,
             str(site_name or ""),
             str(series_key or ""),
-            str(province or ""),
-            str(city or ""),
+            scoped_province,
+            scoped_city,
             str(source_name or "").strip(),
             str(liancai_top_category or ""),
             str(liancai_subcategory or ""),
@@ -2689,12 +2774,16 @@ def create_app() -> FastAPI:
         )
 
     @app.post("/api/auth/login", response_model=AuthLoginResponse)
-    def auth_login(payload: AuthLoginRequest) -> AuthLoginResponse:
+    def auth_login(payload: AuthLoginRequest, request: Request) -> AuthLoginResponse:
+        client_key = _auth_client_key(request)
+        _enforce_auth_failure_limit("login", payload.username, client_key)
         user = get_auth_user_by_username(payload.username)
         if not user or not verify_password(payload.password, user.get("password_hash")):
+            _record_auth_failure("login", payload.username, client_key)
             raise HTTPException(status_code=401, detail="账号或密码错误")
         if not user.get("is_active"):
             raise HTTPException(status_code=403, detail="当前账号已停用")
+        _clear_auth_failures("login", payload.username, client_key)
         token, expires_in = create_access_token(
             user_id=int(user["id"]),
             username=str(user["username"]),
@@ -2707,12 +2796,16 @@ def create_app() -> FastAPI:
         return AuthLoginResponse(access_token=token, expires_in=expires_in, user=_build_auth_user_item(latest_user))
 
     @app.post("/api/auth/password/reset", response_model=AuthLoginResponse)
-    def reset_auth_password(payload: AuthPasswordResetRequest) -> AuthLoginResponse:
+    def reset_auth_password(payload: AuthPasswordResetRequest, request: Request) -> AuthLoginResponse:
+        client_key = _auth_client_key(request)
+        _enforce_auth_failure_limit("password_reset", payload.username, client_key)
         user = get_auth_user_by_username(payload.username)
         if not user or not verify_password(payload.current_password, user.get("password_hash")):
+            _record_auth_failure("password_reset", payload.username, client_key)
             raise HTTPException(status_code=401, detail="账号或当前密码错误")
         if not user.get("is_active"):
             raise HTTPException(status_code=403, detail="当前账号已停用")
+        _clear_auth_failures("password_reset", payload.username, client_key)
         password_hash = _hash_required_account_password(payload.new_password, "新密码不能为空")
         try:
             user_id = get_db().upsert_auth_user(

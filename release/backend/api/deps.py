@@ -120,6 +120,9 @@ def get_product_keys_for_identity(identity_key: str) -> list[str]:
         return []
     normalized_identity_lookup = normalized_identity_key.casefold()
     compact_identity_lookup = re.sub(r"[\s*·•/]+", "", normalized_identity_key).casefold()
+    direct_product_keys = get_db().get_product_keys_for_identity(normalized_identity_key)
+    if direct_product_keys:
+        return list(dict.fromkeys(item for item in direct_product_keys if item))
 
     latest_identity_df = get_latest_identity_df()
     latest_cross_site_identity_df = get_latest_cross_site_identity_df()

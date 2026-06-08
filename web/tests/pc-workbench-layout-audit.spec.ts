@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test'
 
+import { PROCUREMENT_AUTH_STORAGE_KEY } from './helpers/authSessionStorage'
+
 test.setTimeout(120_000)
 
 const pcSections = ['summary', 'trend', 'alerts', 'market', 'suppliers', 'purchase', 'quotes', 'plan', 'reports', 'settings'] as const
@@ -12,19 +14,26 @@ const pcViewports = [
 ] as const
 
 async function enterPcWorkbench(page: import('@playwright/test').Page) {
-  await page.addInitScript(() => {
-    window.localStorage.setItem('battel.auth.session.procurement', JSON.stringify({
+  const procurementUser = {
+    id: 1,
+    username: 'admin',
+    display_name: '管理员',
+    role: 'admin',
+    supplier_id: null,
+  }
+  await page.addInitScript(([storageKey, sessionUser]) => {
+    window.localStorage.setItem(storageKey, JSON.stringify({
       access_token: 'layout-audit-token',
       token_type: 'Bearer',
       expires_in: 3600,
-      user: {
-        id: 1,
-        username: 'admin',
-        display_name: '管理员',
-        role: 'admin',
-        supplier_id: null,
-      },
+      user: sessionUser,
     }))
+  }, [PROCUREMENT_AUTH_STORAGE_KEY, procurementUser] as const)
+  await page.route('**/api/auth/me', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({ user: procurementUser }),
+    })
   })
   await page.goto('/?mode=workspace&tab=summary&section=summary', { waitUntil: 'domcontentloaded' })
   await page.getByTestId('pc-price-workbench').waitFor({ state: 'visible', timeout: 30_000 })

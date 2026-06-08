@@ -1280,6 +1280,43 @@
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.02);
 }
 
+.platform-admin-shell.auth-only:not(.mobile) {
+  align-content: start;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 100vh;
+}
+
+.platform-admin-shell.auth-only:not(.mobile) .platform-admin-frame {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: center;
+  align-content: start;
+  min-width: 0;
+  min-height: calc(100vh - 84px);
+  padding: 28px 22px 40px;
+}
+
+.platform-admin-shell.auth-only:not(.mobile) .platform-admin-panel[data-testid="platform-admin-login-form"],
+.platform-admin-shell.auth-only:not(.mobile) .platform-admin-panel[data-testid="platform-admin-forbidden"],
+.platform-admin-shell.auth-only:not(.mobile) .platform-admin-panel[data-testid="platform-admin-auth-restoring"] {
+  width: min(560px, calc(100vw - 44px));
+  margin: 0;
+}
+
+.platform-admin-shell.auth-only:not(.mobile) .platform-admin-panel[data-testid="platform-admin-login-form"] {
+  padding: 28px;
+}
+
+.platform-admin-shell.auth-only:not(.mobile) .platform-admin-panel[data-testid="platform-admin-login-form"] .market-auth-form {
+  display: grid;
+  gap: 14px;
+}
+
+.platform-admin-shell.auth-only:not(.mobile) .platform-admin-panel[data-testid="platform-admin-login-form"] .market-auth-actions {
+  justify-content: flex-start;
+}
+
 /* Data-workbench controls inspired by open-source admin consoles. */
 .platform-admin-workbench-toolbar {
   display: grid;
