@@ -1468,7 +1468,7 @@ def _normalize_supplier_id_list(values: list[int] | None) -> list[int]:
 
 def _validate_procurement_supplier_ids(supplier_ids: list[int], existing_user_id: int | None = None) -> None:
     if not supplier_ids:
-        raise HTTPException(status_code=400, detail="采购账号至少绑定一家供应商")
+        return
     supplier_rows = _sanitize_dataframe(get_db().get_suppliers(active_only=False))
     existing_ids = {int(item.get("id") or 0) for item in supplier_rows}
     missing_ids = [supplier_id for supplier_id in supplier_ids if supplier_id not in existing_ids]

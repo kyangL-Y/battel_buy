@@ -117,7 +117,7 @@
               filterable
               collapse-tags
               collapse-tags-tooltip
-              placeholder="至少选择一家供应商"
+              placeholder="可先不选，后续再分配"
             >
               <el-option v-for="item in suppliers" :key="`procurement-supplier-${item.id}`" :label="item.supplier_name" :value="item.id" />
             </el-select>
@@ -138,7 +138,7 @@
 
         <div class="account-detail-note">
           <strong>权限边界</strong>
-          <p>管理员账号可进入采购端和账号中心；采购账号只能维护绑定供应商；供应商账号只能进入绑定供应商的数据范围。</p>
+          <p>管理员账号可进入采购端和账号中心；采购账号可先只分配行情地区，未绑定供应商时供应商相关模块为空；供应商账号只能进入绑定供应商的数据范围。</p>
         </div>
 
         <div class="account-detail-actions">
@@ -233,7 +233,7 @@ function accountScopeLabel(item: AuthUserItem) {
     const supplierCount = (item.procurement_supplier_ids || []).length
     if (marketScope && supplierCount > 0) return `${marketScope} · ${supplierCount} 家供应商`
     if (supplierCount > 0) return `${supplierCount} 家供应商`
-    return marketScope || '未绑定供应商'
+    return marketScope ? `${marketScope} · 未绑定供应商` : '未绑定供应商'
   }
   if (marketScope && item.supplier_profile?.supplier_name) {
     return `${item.supplier_profile.supplier_name} · ${marketScope}`
@@ -288,10 +288,6 @@ function validateBeforeSave() {
   }
   if (accountForm.role === 'supplier' && !accountForm.supplier_id) {
     ElMessage.warning('供应商账号必须绑定供应商')
-    return false
-  }
-  if (accountForm.role === 'procurement' && accountForm.procurement_supplier_ids.length === 0) {
-    ElMessage.warning('采购账号至少绑定一家供应商')
     return false
   }
   if (!selectedUserId.value && !password) {

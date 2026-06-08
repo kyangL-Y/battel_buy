@@ -656,6 +656,28 @@ def test_auth_user_management_endpoints_cover_create_update_and_self_guard(tmp_p
 
     assert procurement_payload["procurement_supplier_ids"] == [supplier_id, second_supplier_id]
 
+    unassigned_procurement_response = client.post(
+        "/api/auth/users",
+        json={
+            "username": "buyer-unassigned",
+            "password": "buyer123456",
+            "role": "procurement",
+            "procurement_supplier_ids": [],
+            "display_name": "待分配采购",
+            "market_scope": "上海市",
+            "is_active": True,
+        },
+    )
+
+    assert unassigned_procurement_response.status_code == 200
+    unassigned_payload = unassigned_procurement_response.json()
+    assert unassigned_payload["role"] == "procurement"
+    assert unassigned_payload["market_scope"] == "上海市"
+    assert unassigned_payload["default_province"] == "上海市"
+    assert unassigned_payload["default_city"] == "上海市"
+    assert unassigned_payload["procurement_supplier_ids"] == []
+    assert db.get_procurement_user_supplier_ids(int(unassigned_payload["id"])) == []
+
 
 
     self_disable_response = client.put(
