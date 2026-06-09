@@ -24,7 +24,7 @@
             class="mobile-redesign-login-button"
             :class="{ 'is-authenticated': procurementAccountLabel }"
             :aria-label="procurementAccountLabel ? `当前账号：${procurementAccountLabel}` : '账号登录'"
-            @click="openProcurementEntry()"
+            @click="handleMobileAccountButtonClick"
           >
             <template v-if="procurementAccountLabel">
               <span class="mobile-redesign-account-avatar">{{ procurementAccountInitial }}</span>
@@ -33,7 +33,7 @@
             <template v-else>登录</template>
           </button>
           <button type="button" class="mobile-redesign-alert-dot" aria-label="查看价格提醒" @click="openProcurementEntry('alerts')">
-            <b>{{ mobileAlertBadge }}</b>
+            <b v-if="mobileAlertBadge">{{ mobileAlertBadge }}</b>
           </button>
         </div>
       </div>
@@ -44,14 +44,13 @@
 
       <div v-if="showMobileLocationPanel" class="mobile-redesign-location-panel">
         <div class="mobile-redesign-location-panel-head">
-          <strong>{{ isAuthScopedLocationLocked ? '账号绑定地区' : '选择市场' }}</strong>
-          <span>{{ isAuthScopedLocationLocked ? '登录后按账号显示' : '先看这个市场的菜价' }}</span>
+          <strong>{{ isAuthScopedLocationLocked ? '默认行情地区' : '选择市场' }}</strong>
+          <span>{{ isAuthScopedLocationLocked ? '进入页面时按账号默认地区展示，也可切换其他已抓取地区' : '先看这个市场的菜价' }}</span>
         </div>
-        <small v-if="isAuthScopedLocationLocked" class="mobile-redesign-location-loading">当前账号已绑定地区</small>
+        <small v-if="isAuthScopedLocationLocked" class="mobile-redesign-location-loading">{{ authScopedLocationHint }}</small>
         <small v-if="locationLoading" class="mobile-redesign-location-loading">正在加载市场</small>
         <small v-if="locationSuggestionHint" class="mobile-redesign-location-loading">{{ locationSuggestionHint }}</small>
         <button
-          v-if="!isAuthScopedLocationLocked"
           type="button"
           class="mobile-redesign-location-hint-button"
           :disabled="locationSuggestionLoading"
@@ -63,8 +62,7 @@
           v-for="item in mobileLocationOptions"
           :key="item"
           type="button"
-          :class="{ active: item === selectedLocationLabel }"
-          :disabled="isAuthScopedLocationLocked"
+          :class="{ active: item === selectedLocationSelectionLabel }"
           @click="selectMobileLocation(item)"
         >
           {{ item }}
@@ -301,13 +299,11 @@
         <small>{{ mobileTabMeta.description }}</small>
       </div>
 
-      <button type="button" class="mobile-trend-shortcut market-mobile-bottom-item" aria-label="明细" :disabled="mobileNavigationLocked || mobileActiveTab === 'trend'" @click="enterWorkspace('trend')">明细</button>
-
       <button type="button" class="market-mobile-message-button" aria-label="查看价格提醒" :disabled="mobileNavigationLocked || mobileActiveTab === 'alerts'" @click="enterWorkspace('alerts')">
 
         <span></span>
 
-        <b>{{ mobileAlertBadge }}</b>
+        <b v-if="mobileAlertBadge">{{ mobileAlertBadge }}</b>
 
       </button>
 
@@ -429,10 +425,10 @@
         <section class="market-mobile-alert-card market-mobile-alert-feed-card">
           <div class="market-mobile-section-head">
             <div>
-              <p class="market-mobile-kicker">待办</p>
-              <h2>今天要看的商品</h2>
+              <p class="market-mobile-kicker">{{ mobileAlertFeedKicker }}</p>
+              <h2>{{ mobileAlertFeedTitle }}</h2>
             </div>
-            <span>{{ mobileAlertRows.length }} 条</span>
+            <span>{{ mobileAlertFeedCountLabel }}</span>
           </div>
 
           <div class="market-mobile-alert-list">
@@ -461,7 +457,8 @@
               <footer>
                 <button type="button" @click="openMobileAlertTrend(item)">看趋势</button>
                 <button type="button" @click="openMobileAlertSupplier(item)">找报价</button>
-                <button type="button" class="primary" @click="acknowledgeMobileAlert(item)">标记处理</button>
+                <button v-if="item.state === '待处理'" type="button" class="primary" @click="acknowledgeMobileAlert(item)">标记处理</button>
+                <button v-else type="button" disabled>已观察</button>
                 <time>{{ item.time }}</time>
               </footer>
             </article>
@@ -558,8 +555,14 @@
           :total-cost-label="menuTotalCostLabel"
 
           :loading="menuPlanLoading"
+          :saving="procurementPlanSaving"
+          :history-loading="procurementPlanHistoryLoading"
+          :plan-history="procurementPlanHistory"
 
           @submit="submitMenuPlan"
+          @save-plan="saveCurrentProcurementPlan"
+          @load-history="loadProcurementPlanHistory"
+          @open-plan-record="loadProcurementPlanRecord"
           @view-market="handleMenuPlanViewMarket"
           @fill-supplier-price="handleMenuPlanFillSupplierPrice"
           @confirm-row="handleMenuPlanConfirmRow"
@@ -723,16 +726,21 @@
     v-else-if="!isMobileViewport"
     :active-tab="activeTab"
     :location-label="selectedLocationLabel"
+    :location-options="locationOptions"
     :rows="activeSupplierSummaryRow && activeTab === 'summary' ? [activeSupplierSummaryRow, ...marketRows] : marketRows"
     :summary-loading="summaryLoading"
     :summary-status-text="summaryStatusText"
     :summary-has-more-rows="summaryCanLoadMore"
+    :summary-next-page-loading="summaryBackfillLoading"
     :source-coverage-rows="sourceCoverageRows"
     :crawl-status="crawlStatus"
     :summary-liancai-filter="summaryLiancaiFilter"
     :liancai-category-summary-items="liancaiCategorySummaryItems"
     :liancai-facet-options="liancaiFacetOptions"
     :product-options="productOptions"
+    :product-options-total="productOptionsTotal"
+    :search-product-options="mobileTrendSearchOptions"
+    :product-search-loading="mobileTrendSearchLoading"
 
     :selected-identity-key="selectedIdentityKey"
 
@@ -761,6 +769,9 @@
     :pending-plan-count="pendingPlanCount"
     :menu-total-cost-label="menuTotalCostLabel"
     :menu-loading="menuPlanLoading"
+    :menu-saving="procurementPlanSaving"
+    :menu-history-loading="procurementPlanHistoryLoading"
+    :menu-plan-history="procurementPlanHistory"
     :location-suggestion-loading="locationSuggestionLoading"
     :global-alert-rules="globalAlertRules"
     :settings-change-logs="settingsChangeLogs"
@@ -770,6 +781,7 @@
     @select-tab="enterWorkspace"
     @section-change="handleWorkbenchSectionChange"
     @select-product="handleWorkbenchSelectProduct"
+    @search-product-options="searchMobileTrendProducts"
     @update-summary-liancai-filter="handleWorkbenchSummaryLiancaiFilter"
     @ensure-trend="ensureWorkbenchTrend"
     @update:menu-text="menuForm.menuText = $event"
@@ -777,6 +789,9 @@
     @update:menu-diners="menuForm.diners = $event"
     @update:menu-preferred-location="menuForm.preferredLocation = $event"
     @submit-menu="submitMenuPlan"
+    @save-menu-plan="saveCurrentProcurementPlan"
+    @load-menu-history="loadProcurementPlanHistory"
+    @open-menu-plan-record="loadProcurementPlanRecord"
     @menu-view-market="handleMenuPlanViewMarket"
     @menu-fill-supplier-price="handleMenuPlanFillSupplierPrice"
     @menu-confirm-row="handleMenuPlanConfirmRow"
@@ -850,6 +865,45 @@
     </section>
   </div>
 
+  <div
+    v-if="isMobileViewport && mobileAccountPanelVisible && procurementAccountLabel"
+    class="market-auth-mobile-layer"
+    role="dialog"
+    aria-modal="true"
+    aria-label="账号信息"
+  >
+    <div class="market-auth-mobile-backdrop" @click="closeMobileAccountPanel"></div>
+    <section class="market-auth-mobile-sheet mobile-account-sheet">
+      <div class="mobile-account-head">
+        <span class="mobile-redesign-account-avatar">{{ procurementAccountInitial }}</span>
+        <div>
+          <strong>{{ procurementAccountLabel }}</strong>
+          <small>{{ procurementAccountRoleLabel || '采购端账号' }}</small>
+        </div>
+      </div>
+      <div class="mobile-account-grid">
+        <article>
+          <span>账号</span>
+          <strong>{{ procurementAccountUsername }}</strong>
+        </article>
+        <article>
+          <span>默认行情地区</span>
+          <strong>{{ procurementAccountDefaultLocationLabel }}</strong>
+        </article>
+        <article>
+          <span>当前查看地区</span>
+          <strong>{{ selectedLocationLabel }}</strong>
+        </article>
+      </div>
+      <p class="mobile-account-note">默认行情地区只作为进入页面时的初始选择，不限制查看其他已抓取地区。</p>
+      <div class="mobile-account-actions">
+        <button type="button" @click="openMobileAccountLocationPanel">切换地区</button>
+        <button type="button" class="primary" @click="openMobileAccountWorkspace">进入工作台</button>
+        <button type="button" class="danger" @click="logoutProcurementAuth">退出登录</button>
+      </div>
+    </section>
+  </div>
+
   <el-dialog v-if="!isMobileViewport && procurementAuthVisible" v-model="procurementAuthVisible" title="账号登录" width="min(92vw, 420px)">
     <div class="market-auth-dialog">
       <div class="market-auth-notice">
@@ -917,6 +971,8 @@ import {
   fetchMarketSummary,
 
   fetchProcurementRecommendation,
+  fetchProcurementPlanRecord,
+  fetchProcurementPlanRecords,
 
   fetchGlobalAlertRules,
   fetchProductOptions,
@@ -939,6 +995,7 @@ import {
   login,
   readAuthSession,
   triggerCrawlRun,
+  saveProcurementPlanRecord,
   updateCrawlSchedule,
   updateGlobalAlertRules,
   updateSourceCoverage,
@@ -954,6 +1011,7 @@ import type {
   MarketSummaryItem,
 
   MenuPlanRow,
+  ProcurementPlanRecordItem,
 
   ProcurementRecommendationItem,
   GlobalAlertRuleItem,
@@ -1042,10 +1100,11 @@ const initialMode = searchParams.get('mode')
 const MAIN_APP_PATH = '/'
 const SUPPLIER_PLATFORM_PATH = '/supplier-backend'
 const SUPPLIER_PORTAL_PATH = '/supplier-portal'
-const MARKET_SUMMARY_INITIAL_LIMIT = 200
-const MARKET_SUMMARY_BACKGROUND_LIMIT = 1000
+const MARKET_SUMMARY_INITIAL_LIMIT = 40
+const MARKET_SUMMARY_BACKGROUND_LIMIT = 40
 const MOBILE_SUMMARY_FALLBACK_WAIT_MS = 650
 const MOBILE_PRODUCT_OPTIONS_LIMIT = 240
+const SEARCH_PRODUCT_OPTIONS_PAGE_LIMIT = 40
 
 const tabs = [
   { key: 'signals', label: '经营总览', code: 'SIG' },
@@ -1098,6 +1157,7 @@ const liancaiCategorySummaryItems = ref<LiancaiCategorySummaryItem[]>([])
 const liancaiFacetOptions = ref<LiancaiFacetResponse>({ keywords: [], brands: [] })
 const sourceCoverageRows = ref<SourceCoverageItem[]>([])
 const productOptions = ref<ProductOptionItem[]>([])
+const productOptionsTotal = ref(0)
 const selectedIdentityKey = ref('')
 const selectedSiteName = ref('')
 const selectedProductFallbackLabel = ref('')
@@ -1111,6 +1171,7 @@ const mobileAlertRuleDraft = ref({
 })
 const showMobileAlertRuleForm = ref(false)
 const mobileProductAlertRules = ref(readProductAlertRules())
+const processedMobileAlertKeys = ref<Set<string>>(new Set())
 if (mobileProductAlertRules.value[0]) {
   mobileAlertRuleDraft.value = {
     identityKey: mobileProductAlertRules.value[0].identityKey,
@@ -1131,9 +1192,13 @@ const ingredientRows = ref<Record<string, any>[]>([])
 
 const planRows = ref<MenuPlanRow[]>([])
 
+const procurementPlanHistory = ref<ProcurementPlanRecordItem[]>([])
+
 const procurementRecommendations = ref<ProcurementRecommendationItem[]>([])
 
 const menuPlanLoading = ref(false)
+const procurementPlanSaving = ref(false)
+const procurementPlanHistoryLoading = ref(false)
 
 const crawlStatus = ref<CrawlStatusItem | null>(null)
 
@@ -1160,7 +1225,9 @@ const mobileTrendSearchLoading = ref(false)
 const workbenchRefreshing = ref(false)
 const productOptionsContextKey = ref('')
 const mobileTrendSearchOptions = ref<ProductOptionItem[]>([])
+const locationOptions = computed(() => normalizeLocationList([...cities.value, ...provinces.value]))
 const ACCOUNT_USERNAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.@-]{2,63}$/
+const AUTH_SCOPED_LOCATION_HINT = '当前账号有默认行情地区'
 const authSession = ref<AuthLoginResponse | null>(initialAuthSession)
 const procurementAuthVisible = ref(false)
 const procurementAuthSubmitting = ref(false)
@@ -1179,6 +1246,7 @@ const mobileAlertBrokenImageUrls = reactive(new Set<string>())
 const showMobileHomeMore = ref(false)
 const mobileHomePanel = ref<'home' | 'categories'>('home')
 const showMobileLocationPanel = ref(false)
+const mobileAccountPanelVisible = ref(false)
 const mobileLocationPreset = ref<'henan' | 'all' | ''>('')
 
 const selectedProductTouched = ref(false)
@@ -1215,17 +1283,19 @@ function resolveAuthScopedLocation(user?: AuthLoginResponse['user'] | null) {
 }
 
 function hasLockedAuthScopedLocation() {
-  const scopedLocation = resolveAuthScopedLocation(authSession.value?.user ?? null)
-  return Boolean(scopedLocation.scope || scopedLocation.province || scopedLocation.city)
+  const user = authSession.value?.user
+  if (!user) return false
+  const defaultProvince = String(user.default_province || '').trim()
+  const defaultCity = String(user.default_city || '').trim()
+  const marketScope = String(user.market_scope || '').trim()
+  return Boolean(defaultProvince || defaultCity || marketScope)
 }
 
 const isAuthScopedLocationLocked = computed(() => hasLockedAuthScopedLocation())
 
-const initialAuthScopedLocation = resolveAuthScopedLocation(authSession.value?.user ?? null)
-
 const filters = reactive({
-  province: initialAuthScopedLocation.province,
-  city: initialAuthScopedLocation.city,
+  province: '',
+  city: '',
   keyword: '',
   summarySourceName: '',
   liancaiTopCategory: '',
@@ -1388,12 +1458,30 @@ const mobileAlertSourceOptions = computed(() => {
   return Array.from(options)
 })
 const selectedLocationLabel = computed(() => {
+  const selectedLocation = (() => {
+    if (mobileLocationPreset.value === 'all') return '全国'
+    if (mobileLocationPreset.value === 'henan') return '河南本地市场'
+    if (filters.city) return filters.city
+    if (filters.province === '河南省') return '河南本地市场'
+    if (filters.province) return filters.province
+    return ''
+  })()
+  if (selectedLocation) return selectedLocation
+  const scopedLocation = resolveAuthScopedLocation(authSession.value?.user ?? null)
+  if (scopedLocation.scope.includes('全国')) return '全国'
+  if (scopedLocation.city) return scopedLocation.city
+  if (scopedLocation.province === '河南省') return '河南本地市场'
+  return scopedLocation.province || '河南本地市场'
+})
+const selectedLocationSelectionLabel = computed(() => {
   if (mobileLocationPreset.value === 'all') return '全国'
   if (mobileLocationPreset.value === 'henan') return '河南本地市场'
   if (filters.city) return filters.city
   if (filters.province === '河南省') return '河南本地市场'
-  return filters.province || '河南本地市场'
+  if (filters.province) return filters.province
+  return ''
 })
+const authScopedLocationHint = computed(() => `${AUTH_SCOPED_LOCATION_HINT}，仍可查看其他已抓取地区`)
 const procurementAccountLabel = computed(() => {
   const user = authSession.value?.user
   if (!user || (user.role !== 'admin' && user.role !== 'procurement')) return ''
@@ -1405,6 +1493,14 @@ const procurementAccountRoleLabel = computed(() => {
   if (role === 'admin') return '管理员'
   if (role === 'procurement') return '采购账号'
   return ''
+})
+const procurementAccountUsername = computed(() => authSession.value?.user?.username || procurementAccountLabel.value || '未登录')
+const procurementAccountDefaultLocationLabel = computed(() => {
+  const scopedLocation = resolveAuthScopedLocation(authSession.value?.user ?? null)
+  if (scopedLocation.scope.includes('全国')) return '全国'
+  if (scopedLocation.city) return scopedLocation.city
+  if (scopedLocation.province === '河南省') return '河南本地市场'
+  return scopedLocation.province || '未设置'
 })
 const mobileLandingHeroTitle = computed(() => (
   procurementAccountLabel.value
@@ -1614,6 +1710,19 @@ type MobileAlertActionRow = {
   market?: string
 }
 
+function buildMobileAlertProcessKey(item: MobileAlertActionRow) {
+  return `${String(item.identityKey || '').trim()}::${String(item.name || '').trim()}::${String(item.market || '').trim()}`
+}
+
+function applyMobileAlertProcessState<T extends MobileAlertActionRow & { state: string; tone: string }>(item: T): T {
+  if (!processedMobileAlertKeys.value.has(buildMobileAlertProcessKey(item))) return item
+  return {
+    ...item,
+    state: '已处理',
+    tone: 'down',
+  }
+}
+
 function resolveMobileAlertIdentityKey(item: MobileAlertActionRow) {
   if (item.identityKey) return item.identityKey
   const matchedOption = productOptions.value.find((option) => option.price_identity_label === item.name)
@@ -1650,6 +1759,7 @@ function openMobileAlertSupplier(item: MobileAlertActionRow) {
 
 function acknowledgeMobileAlert(item: MobileAlertActionRow) {
   if (!ensureProcurementAccess('alerts')) return
+  processedMobileAlertKeys.value = new Set([...processedMobileAlertKeys.value, buildMobileAlertProcessKey(item)])
   ElMessage.success(`${item.name} 已标记处理`)
 }
 const mobileTabMeta = computed(() => {
@@ -1710,7 +1820,7 @@ const summaryStatusText = computed(() => {
     return `已加载 ${loaded} 条，继续加载中`
   }
   if (summaryCanLoadMore.value) {
-    return `已加载 ${loaded} 条，翻页继续加载`
+    return `已加载 ${loaded} 条，下滑继续加载`
   }
   return loaded > 0 ? `共 ${loaded} 条真实报价` : '暂无报价'
 })
@@ -2380,13 +2490,13 @@ const mobileSpotlightRows = computed(() => {
     pickedKeys.add(key)
     return {
       identityKey: match.price_identity_key || match.product_name,
-      title: match.product_name,
+      title: formatMobileProductTitle(match.product_name),
       strategy,
       category: resolveMobileDisplayCategory(match),
       market: match.lowest_price_site || match.region_label || '本地市场',
       thumb: resolveMobileThumbClass(match.product_name, resolveMarketCategory(match)),
       price: formatMetricValue(match.average_price),
-      unit: match.price_unit_basis || '元/公斤',
+      unit: formatMobilePriceUnit(match.price_unit_basis),
       lowest: formatMetricValue(match.lowest_price),
       spread: formatMetricSpread(match),
       changeLabel: buildMobileChangeLabel(match),
@@ -2456,9 +2566,9 @@ const mobileAlertRows = computed(() => {
         rule.identityKey === selectedIdentityKey.value ? trendRows.value : [],
       )
       if (!hit) return null
-      return {
+      return applyMobileAlertProcessState({
         identityKey: rule.identityKey,
-        name: hit.productLabel,
+        name: formatMobileProductTitle(hit.productLabel),
         market: formatMobileAlertMarketLabel(hit.market),
         current: `${formatMetricValue(hit.currentPrice)} 元`,
         rule: hit.rule,
@@ -2467,7 +2577,7 @@ const mobileAlertRows = computed(() => {
         tone: hit.tone,
         thumb: resolveMobileThumbClass(hit.productLabel, ''),
         imageUrl: resolveMobileAlertImageUrl(rule.identityKey, hit.productLabel),
-      }
+      })
     })
     .filter((item): item is NonNullable<typeof item> => Boolean(item))
   if (configuredRows.length) return configuredRows
@@ -2480,21 +2590,21 @@ const mobileAlertRows = computed(() => {
 
       const spreadRatio = lowValue > 0 && !Number.isNaN(highValue) ? (highValue - lowValue) / lowValue : 0
 
-      return {
+      return applyMobileAlertProcessState({
 
         identityKey: item.price_identity_key || item.product_name,
 
-        name: item.product_name,
+        name: formatMobileProductTitle(item.product_name),
 
         market: formatMobileAlertMarketLabel(item.lowest_price_site || item.region_label || selectedLocationLabel.value),
 
-        current: `${formatMetricValue(item.average_price)} ${item.price_unit_basis || '元/公斤'}`,
+        current: `${formatMetricValue(item.average_price)} ${formatMobilePriceUnit(item.price_unit_basis)}`,
 
         rule: spreadRatio >= 0.12
           ? `当前均价 ${formatMetricValue(item.average_price)}，最低 ${formatMetricValue(item.lowest_price)}，最高 ${formatMetricValue(item.highest_price)}，价差 ${(highValue - lowValue).toFixed(2)}`
           : `当前均价 ${formatMetricValue(item.average_price)}，与最低价相差 ${(Number(item.average_price || 0) - lowValue).toFixed(2)}`,
 
-        state: spreadRatio >= 0.12 ? '待处理' : index % 2 ? '已确认' : '观察中',
+        state: spreadRatio >= 0.12 ? '待处理' : '观察中',
 
         time: formatMobileAlertTime(index),
 
@@ -2504,7 +2614,7 @@ const mobileAlertRows = computed(() => {
 
         imageUrl: resolveMobileAlertImageUrl(item.price_identity_key || item.product_name, item.product_name),
 
-      }
+      })
 
     })
 
@@ -2514,11 +2624,11 @@ const mobileAlertRows = computed(() => {
 
   if (marketAlertRows.length) return marketAlertRows
 
-  const riskRows = (signalOverview.value?.top_risks || []).slice(0, 4).map((item, index) => ({
+  const riskRows = (signalOverview.value?.top_risks || []).slice(0, 4).map((item, index) => applyMobileAlertProcessState({
 
     identityKey: item.product_name,
 
-    name: item.product_name,
+        name: formatMobileProductTitle(item.product_name),
 
     market: formatMobileAlertMarketLabel(item.recommended_market || item.recommended_site || selectedLocationLabel.value),
 
@@ -2526,7 +2636,7 @@ const mobileAlertRows = computed(() => {
 
     rule: item.reason_summary || formatRecommendedAction(item.recommended_action, '触发真实行情风险信号'),
 
-    state: index % 3 === 1 ? '已确认' : index % 3 === 2 ? '观察中' : '待处理',
+    state: item.signal_level === 'high' || item.signal_level === 'critical' ? '待处理' : '观察中',
 
     time: formatMobileAlertTime(index),
 
@@ -2545,10 +2655,7 @@ const mobileAlertRows = computed(() => {
 })
 
 const mobileAlertBadge = computed(() => {
-
-  const explicitCount = Number(signalOverview.value?.alert_count || 0)
-
-  return explicitCount || mobileAlertRows.value.filter((item) => item.state === '待处理').length || mobileAlertRows.value.length
+  return mobileAlertRows.value.filter((item) => item.state === '待处理').length
 
 })
 
@@ -2564,7 +2671,7 @@ const mobileAlertKpis = computed(() => {
 
   return [
 
-    { label: '待处理', value: String(pending || mobileAlertBadge.value), detail: '个商品', tone: 'pending' },
+    { label: '待处理', value: String(pending), detail: '个商品', tone: 'pending' },
 
     { label: '价格上涨', value: String(up), detail: '个商品', tone: 'up' },
 
@@ -2583,12 +2690,20 @@ const mobileAlertHeroText = computed(() => {
   return '暂无价格提醒。'
 })
 
+const mobileAlertFeedKicker = computed(() => (mobileAlertBadge.value > 0 ? '待办' : '关注'))
+const mobileAlertFeedTitle = computed(() => (mobileAlertBadge.value > 0 ? '今天要处理的商品' : '今天观察的商品'))
+const mobileAlertFeedCountLabel = computed(() => (
+  mobileAlertBadge.value > 0
+    ? `${mobileAlertBadge.value} 条待处理`
+    : `${mobileAlertRows.value.length} 条观察`
+))
+
 const mobileAlertSummaryPills = computed(() => {
   const pending = mobileAlertRows.value.filter((item) => item.state === '待处理').length
   const up = mobileAlertRows.value.filter((item) => item.tone === 'up').length
   const down = mobileAlertRows.value.filter((item) => item.tone === 'down').length
   return [
-    { label: '待处理', value: String(pending || mobileAlertBadge.value), tone: 'pending' },
+    { label: '待处理', value: String(pending), tone: 'pending' },
     { label: '上涨', value: String(up), tone: 'up' },
     { label: '下跌', value: String(down), tone: 'down' },
   ]
@@ -2635,7 +2750,7 @@ const primaryMobileSpotlight = computed(() => {
 
 
 const SUMMARY_CACHE_KEY = 'battel.market-summary.cache.v4'
-const PRODUCT_OPTIONS_CACHE_KEY = 'battel.product-options.cache.v3'
+const PRODUCT_OPTIONS_CACHE_KEY = 'battel.product-options.cache.v4'
 const PRODUCT_SUMMARY_CACHE_KEY = 'battel.product-summary.cache.v3'
 const PRODUCT_TREND_CACHE_KEY = 'battel.product-trend.cache.v3'
 const PROCUREMENT_BUSINESS_CACHE_KEYS = [
@@ -2693,11 +2808,19 @@ function buildFilterParams() {
   return {
     province: filters.province || undefined,
     city: filters.city || undefined,
+    keyword: filters.keyword || undefined,
     source_name: filters.summarySourceName || undefined,
     liancai_top_category: filters.liancaiTopCategory || undefined,
     liancai_subcategory: filters.liancaiSubcategory || undefined,
     liancai_keyword: filters.liancaiKeyword || undefined,
     liancai_brand: filters.liancaiBrand || undefined,
+  }
+}
+
+function buildProductOptionScopeParams() {
+  return {
+    province: filters.province || undefined,
+    city: filters.city || undefined,
   }
 }
 
@@ -2714,6 +2837,22 @@ function formatMetricValue(value?: number | string | null) {
 
   return Number.isNaN(normalizedValue) ? String(value) : normalizedValue.toFixed(2)
 
+}
+
+function formatMobileProductTitle(value?: string | null) {
+  const rawValue = String(value || '').trim()
+  if (!rawValue) return '未命名商品'
+  return rawValue
+    .replace(/\s*\|\s*[^|]*\|\s*(斤|公斤|kg|g|克|袋|箱|件|份|个|只|瓶)\s*$/i, '')
+    .replace(/\s*\d+(?:\.\d+)?\s*(斤|公斤|kg|g|克|袋|箱|件|份|个|只|瓶)\s*$/i, '')
+    .replace(/\s+/g, ' ')
+    .trim() || rawValue
+}
+
+function formatMobilePriceUnit(value?: string | null) {
+  const rawValue = String(value || '').trim()
+  if (!rawValue) return '元/公斤'
+  return rawValue.includes('元/') ? rawValue : `元/${rawValue.replace(/^\/+/, '')}`
 }
 
 function formatRecommendedAction(value?: string | null, fallback = '先复核价格来源') {
@@ -3049,6 +3188,7 @@ function clearProcurementBusinessState() {
   liancaiFacetOptions.value = { keywords: [], brands: [] }
   sourceCoverageRows.value = []
   productOptions.value = []
+  productOptionsTotal.value = 0
   productOptionsContextKey.value = ''
   selectedIdentityKey.value = ''
   selectedSiteName.value = ''
@@ -3570,14 +3710,16 @@ function handleWorkbenchSelectProduct(identityKey: string) {
   syncWorkspaceTrendUrl(identityKey, matchedProduct)
 }
 
-async function handleWorkbenchSummaryLiancaiFilter(payload: { source_name?: string; liancai_top_category?: string; liancai_subcategory?: string; liancai_keyword?: string; liancai_brand?: string }) {
+async function handleWorkbenchSummaryLiancaiFilter(payload: { source_name?: string; keyword?: string; liancai_top_category?: string; liancai_subcategory?: string; liancai_keyword?: string; liancai_brand?: string }) {
   const nextSourceName = String((payload as any).source_name || '').trim()
+  const nextProductKeyword = String(payload.keyword || '').trim()
   const nextTopCategory = String(payload.liancai_top_category || '').trim()
   const nextSubcategory = String(payload.liancai_subcategory || '').trim()
   const nextKeyword = String(payload.liancai_keyword || '').trim()
   const nextBrand = String(payload.liancai_brand || '').trim()
   if (
     filters.summarySourceName === nextSourceName
+    && filters.keyword === nextProductKeyword
     && filters.liancaiTopCategory === nextTopCategory
     && filters.liancaiSubcategory === nextSubcategory
     && filters.liancaiKeyword === nextKeyword
@@ -3585,11 +3727,13 @@ async function handleWorkbenchSummaryLiancaiFilter(payload: { source_name?: stri
   ) return
 
   filters.summarySourceName = nextSourceName
+  filters.keyword = nextProductKeyword
   filters.liancaiTopCategory = nextTopCategory
   filters.liancaiSubcategory = nextSubcategory
   filters.liancaiKeyword = nextKeyword
   filters.liancaiBrand = nextBrand
   productOptions.value = []
+  productOptionsTotal.value = 0
   productOptionsContextKey.value = ''
   selectedIdentityKey.value = ''
   selectedSiteName.value = ''
@@ -3615,6 +3759,7 @@ function goToLanding() {
   viewMode.value = 'landing'
   mobileHomePanel.value = 'home'
   showMobileLocationPanel.value = false
+  closeMobileAccountPanel()
   mobileRouteFeedbackTab.value = ''
   mobileNavigationLocked.value = false
   mobilePreviousWorkspaceTab.value = ''
@@ -3913,22 +4058,12 @@ function applyAuthSession(session: AuthLoginResponse | null) {
   }
 
   const scopedLocation = resolveAuthScopedLocation(session?.user ?? null)
-  if (filters.province !== scopedLocation.province) {
-    filters.province = scopedLocation.province
-  }
-  if (filters.city !== scopedLocation.city) {
-    filters.city = scopedLocation.city
-  }
-  if (scopedLocation.scope.includes('全国')) {
-    mobileLocationPreset.value = 'all'
-  } else if (scopedLocation.province === '河南省' && !scopedLocation.city) {
-    mobileLocationPreset.value = 'henan'
-  } else {
-    mobileLocationPreset.value = ''
+  if (!menuForm.preferredLocation && (scopedLocation.city || scopedLocation.province)) {
+    menuForm.preferredLocation = scopedLocation.city || scopedLocation.province
   }
 
   locationSuggestionHint.value = hasLockedAuthScopedLocation()
-    ? '当前账号已绑定地区'
+    ? authScopedLocationHint.value
     : ''
 
 }
@@ -3962,6 +4097,41 @@ function closeProcurementAuthDialog() {
 
   procurementAuthVisible.value = false
 
+}
+
+function closeMobileAccountPanel() {
+  mobileAccountPanelVisible.value = false
+}
+
+function openMobileAccountPanel() {
+  if (!procurementAccountLabel.value) {
+    openProcurementAuthDialog('summary')
+    return
+  }
+  procurementAuthVisible.value = false
+  showMobileLocationPanel.value = false
+  mobileAccountPanelVisible.value = true
+}
+
+function handleMobileAccountButtonClick() {
+  if (procurementAccountLabel.value && isMobileViewport.value) {
+    openMobileAccountPanel()
+    return
+  }
+  openProcurementEntry()
+}
+
+function openMobileAccountWorkspace() {
+  closeMobileAccountPanel()
+  openProcurementEntry('summary')
+}
+
+function openMobileAccountLocationPanel() {
+  closeMobileAccountPanel()
+  showMobileLocationPanel.value = true
+  if (!locationLoading.value && !provinces.value.length && !cities.value.length) {
+    void reloadLocations(true)
+  }
 }
 
 
@@ -4070,6 +4240,8 @@ async function submitProcurementAuth() {
 
 function logoutProcurementAuth() {
 
+  closeMobileAccountPanel()
+
   applyAuthSession(null)
 
   supplierOverview.value = null
@@ -4157,6 +4329,7 @@ function enterWorkspace(targetTab: (typeof tabs)[number]['key'] = 'summary', opt
   }
   viewMode.value = 'workspace'
   showMobileLocationPanel.value = false
+  closeMobileAccountPanel()
   const urlTab = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('tab') : ''
   const launchedDirectlyToTrend = targetTab === 'trend' && activeTab.value !== 'trend' && urlTab === 'trend' && !selectedProductTouched.value
   if (launchedDirectlyToTrend) {
@@ -4168,6 +4341,9 @@ function enterWorkspace(targetTab: (typeof tabs)[number]['key'] = 'summary', opt
   }
   if (targetTab === 'summary' || targetTab === 'trend') {
     writeMobileRecentState({ workspaceTab: targetTab })
+  }
+  if (targetTab === 'menu' && !procurementPlanHistory.value.length && !procurementPlanHistoryLoading.value) {
+    void loadProcurementPlanHistory()
   }
   if (!sameWorkspaceTab) {
     void activateTab(targetTab)
@@ -4338,11 +4514,6 @@ function resolveMobileLocationSelection(value: string) {
 }
 
 function selectMobileLocation(value: string) {
-  if (isAuthScopedLocationLocked.value) {
-    locationSuggestionHint.value = '当前账号已绑定地区'
-    ElMessage.info(locationSuggestionHint.value)
-    return
-  }
   const selection = resolveMobileLocationSelection(value)
   if (!selection) return
   mobileLocationPreset.value = selection.preset
@@ -4383,10 +4554,6 @@ async function fetchAuxiliaryLocationSuggestion() {
 }
 
 function applyAuxiliaryLocationSuggestion(suggestion: LocationSuggestionResponse) {
-  if (isAuthScopedLocationLocked.value) {
-    locationSuggestionHint.value = '当前账号已绑定地区'
-    return false
-  }
   if (!suggestion.matched) {
     return false
   }
@@ -4417,11 +4584,6 @@ function applyAuxiliaryLocationSuggestion(suggestion: LocationSuggestionResponse
 
 async function requestAuxiliaryLocationSuggestion() {
   if (locationSuggestionLoading.value) return
-  if (hasLockedAuthScopedLocation()) {
-    locationSuggestionHint.value = '当前账号已绑定地区'
-    ElMessage.info(locationSuggestionHint.value)
-    return
-  }
   locationSuggestionLoading.value = true
   locationSuggestionHint.value = ''
   try {
@@ -4481,7 +4643,7 @@ async function reloadSummary() {
     const cachedRows = readSummaryCache(params)
     if (cachedRows?.length) {
 
-      marketRows.value = fillSummaryRowImageUrls(cachedRows, productOptions.value)
+      marketRows.value = fillSummaryRowImageUrls(cachedRows.slice(0, MARKET_SUMMARY_INITIAL_LIMIT), productOptions.value)
 
     }
 
@@ -4883,6 +5045,9 @@ async function handleWorkbenchUpdateCrawlSchedule(payload: {
   daily_run_time?: string | null
   interval_seconds: number
   fetch_mode?: 'requests' | 'playwright'
+  target_scope?: 'all_saved' | 'province' | 'city'
+  target_province?: string
+  target_city?: string
 }) {
   try {
     const data = await updateCrawlSchedule(payload)
@@ -4890,7 +5055,13 @@ async function handleWorkbenchUpdateCrawlSchedule(payload: {
     const scheduleText = payload.mode === 'daily_time'
       ? `每天 ${payload.daily_run_time || '03:30'}`
       : `频率 ${payload.interval_seconds} 秒`
-    appendSettingsChangeLog('schedule', '系统同步设置', `${payload.enabled ? '开启' : '关闭'}自动同步，${scheduleText}，模式 ${payload.fetch_mode || 'requests'}`)
+    const scopeText =
+      payload.target_scope === 'province'
+        ? `省级默认 ${payload.target_province || '未填'}`
+        : payload.target_scope === 'city'
+          ? `市级默认 ${payload.target_city || '未填'}`
+          : '全部已保存地区'
+    appendSettingsChangeLog('schedule', '系统同步设置', `${payload.enabled ? '开启' : '关闭'}自动同步，${scheduleText}，模式 ${payload.fetch_mode || 'requests'}，范围 ${scopeText}`)
     ElMessage.success(payload.enabled ? '已更新自动同步设置' : '已关闭自动同步')
   } catch {
     ElMessage.error('更新系统同步设置失败')
@@ -5049,50 +5220,94 @@ const activeSupplierSummaryRow = computed<MarketSummaryItem | null>(() => {
 
 
 async function searchMobileTrendProducts(query = '') {
-  if (!isMobileViewport.value) return
   const normalizedQuery = String(query || '').trim()
   const normalizedSearchText = normalizedQuery.replace(/\s+/g, '').toLowerCase()
   const requestId = ++mobileTrendSearchRequestSequence
-  const contextKey = buildContextKey(buildFilterParams())
+  const params = buildProductOptionScopeParams()
+  const contextKey = buildContextKey(params)
+  const selectedLoadedOption = selectedIdentityKey.value
+    ? productOptions.value.find((item) => item.price_identity_key === selectedIdentityKey.value) || null
+    : null
   if (!normalizedQuery) {
-    mobileTrendSearchLoading.value = false
-    const selectedOption = selectedIdentityKey.value
-      ? productOptions.value.find((item) => item.price_identity_key === selectedIdentityKey.value) || null
-      : null
     const baseOptions = productOptions.value.slice(0, 24)
-    mobileTrendSearchOptions.value = selectedOption
-      ? [selectedOption, ...baseOptions.filter((item) => item.price_identity_key !== selectedOption.price_identity_key)]
+    mobileTrendSearchOptions.value = selectedLoadedOption
+      ? [selectedLoadedOption, ...baseOptions.filter((item) => item.price_identity_key !== selectedLoadedOption.price_identity_key)]
       : baseOptions
-    return
+  } else {
+    mobileTrendSearchOptions.value = []
   }
   mobileTrendSearchLoading.value = true
   try {
-    const data = await fetchProductOptions({
-      ...buildFilterParams(),
-      keyword: normalizedQuery,
-      limit: 40,
-      offset: 0,
-    })
-    if (requestId !== mobileTrendSearchRequestSequence) return
-    if (contextKey !== buildContextKey(buildFilterParams())) return
-    const incomingOptions = filterSelectableProductOptions(data.items ?? [])
-    const selectedOption = selectedIdentityKey.value
-      ? productOptions.value.find((item) => item.price_identity_key === selectedIdentityKey.value)
-        || incomingOptions.find((item) => item.price_identity_key === selectedIdentityKey.value)
-        || null
-      : null
-    const selectedOptionMatchesQuery = selectedOption && normalizedSearchText
-      ? `${selectedOption.price_identity_label} ${selectedOption.price_identity_key} ${selectedOption.source_name || ''} ${selectedOption.source_category || ''} ${selectedOption.liancai_subcategory || ''}`
-          .replace(/\s+/g, '')
-          .toLowerCase()
-          .includes(normalizedSearchText)
-      : Boolean(selectedOption)
-    mobileTrendSearchOptions.value = selectedOptionMatchesQuery && selectedOption
-      ? [selectedOption, ...incomingOptions.filter((item) => item.price_identity_key !== selectedOption.price_identity_key)]
-      : incomingOptions
+    if (!normalizedQuery) {
+      const data = await fetchProductOptions({
+        ...params,
+        limit: 0,
+        offset: 0,
+      })
+      if (requestId !== mobileTrendSearchRequestSequence) return
+      if (contextKey !== buildContextKey(buildProductOptionScopeParams())) return
+      const incomingOptions = filterSelectableProductOptions(data.items ?? [])
+      const selectedOption = selectedIdentityKey.value
+        ? productOptions.value.find((item) => item.price_identity_key === selectedIdentityKey.value)
+          || incomingOptions.find((item) => item.price_identity_key === selectedIdentityKey.value)
+          || null
+        : null
+      const nextProductOptions = selectedOption
+        ? [selectedOption, ...incomingOptions.filter((item) => item.price_identity_key !== selectedOption.price_identity_key)]
+        : incomingOptions
+      if (incomingOptions.length) {
+        productOptions.value = filterSelectableProductOptions(nextProductOptions)
+        productOptionsTotal.value = Number(data.total || 0) || productOptions.value.length
+        productOptionsContextKey.value = contextKey
+        writeLocalCache(PRODUCT_OPTIONS_CACHE_KEY, contextKey, productOptions.value)
+      }
+      mobileTrendSearchOptions.value = selectedOption
+        ? [selectedOption, ...incomingOptions.filter((item) => item.price_identity_key !== selectedOption.price_identity_key)]
+        : incomingOptions
+      return
+    }
+
+    const optionByKey = new Map<string, ProductOptionItem>()
+    let offset = 0
+    let hasMore = true
+    while (hasMore) {
+      const data = await fetchProductOptions({
+        ...params,
+        keyword: normalizedQuery,
+        limit: SEARCH_PRODUCT_OPTIONS_PAGE_LIMIT,
+        offset,
+      })
+      if (requestId !== mobileTrendSearchRequestSequence) return
+      if (contextKey !== buildContextKey(buildProductOptionScopeParams())) return
+
+      const incomingOptions = filterSelectableProductOptions(data.items ?? [])
+      for (const item of incomingOptions) {
+        optionByKey.set(item.price_identity_key, item)
+      }
+      const accumulatedOptions = Array.from(optionByKey.values())
+      const selectedOption = selectedIdentityKey.value
+        ? productOptions.value.find((item) => item.price_identity_key === selectedIdentityKey.value)
+          || accumulatedOptions.find((item) => item.price_identity_key === selectedIdentityKey.value)
+          || null
+        : null
+      const selectedOptionMatchesQuery = selectedOption
+        ? `${selectedOption.price_identity_label} ${selectedOption.price_identity_key} ${selectedOption.source_name || ''} ${selectedOption.source_category || ''} ${selectedOption.liancai_subcategory || ''}`
+            .replace(/\s+/g, '')
+            .toLowerCase()
+            .includes(normalizedSearchText)
+        : false
+      mobileTrendSearchOptions.value = selectedOptionMatchesQuery && selectedOption
+        ? [selectedOption, ...accumulatedOptions.filter((item) => item.price_identity_key !== selectedOption.price_identity_key)]
+        : accumulatedOptions
+
+      hasMore = Boolean(data.has_more) && incomingOptions.length > 0
+      offset += SEARCH_PRODUCT_OPTIONS_PAGE_LIMIT
+    }
   } catch {
     if (requestId !== mobileTrendSearchRequestSequence) return
-    mobileTrendSearchOptions.value = []
+    if (normalizedQuery) {
+      mobileTrendSearchOptions.value = []
+    }
   } finally {
     if (requestId === mobileTrendSearchRequestSequence) {
       mobileTrendSearchLoading.value = false
@@ -5101,7 +5316,7 @@ async function searchMobileTrendProducts(query = '') {
 }
 
 async function ensureProductOptionsLoaded(force = false) {
-  const params = buildFilterParams()
+  const params = buildProductOptionScopeParams()
   const contextKey = buildContextKey(params)
   const cachedOptions = readLocalCache<ProductOptionItem[]>(PRODUCT_OPTIONS_CACHE_KEY, contextKey)
   if (cachedOptions?.length) {
@@ -5111,6 +5326,7 @@ async function ensureProductOptionsLoaded(force = false) {
       : true
     if (selectableCachedOptions.length && (!force || cachedHasSelection)) {
       productOptions.value = selectableCachedOptions
+      productOptionsTotal.value = Math.max(productOptionsTotal.value, selectableCachedOptions.length)
       if (!marketRows.value.length && selectableCachedOptions.length) {
         marketRows.value = marketSummaryRowsFromProductOptions(selectableCachedOptions)
       } else if (marketRows.value.length) {
@@ -5168,7 +5384,7 @@ async function ensureProductOptionsLoaded(force = false) {
     try {
 
       const optionsData = await fetchProductOptions({ ...params, limit: isMobileViewport.value ? MOBILE_PRODUCT_OPTIONS_LIMIT : 1000 })
-      if (requestId !== productOptionsLoadSequence || contextKey !== buildContextKey(buildFilterParams())) {
+      if (requestId !== productOptionsLoadSequence || contextKey !== buildContextKey(buildProductOptionScopeParams())) {
         return
       }
       const incomingOptions = filterSelectableProductOptions(optionsData.items ?? [])
@@ -5179,6 +5395,7 @@ async function ensureProductOptionsLoaded(force = false) {
         ? [preservedSelectedOption, ...incomingOptions.filter((item) => item.price_identity_key !== preservedSelectedOption.price_identity_key)]
         : incomingOptions
       productOptions.value = filterSelectableProductOptions(nextProductOptions)
+      productOptionsTotal.value = Number(optionsData.total || 0) || productOptions.value.length
       if (!marketRows.value.length && productOptions.value.length) {
         marketRows.value = marketSummaryRowsFromProductOptions(productOptions.value)
       } else if (marketRows.value.length) {
@@ -5212,6 +5429,7 @@ async function ensureProductOptionsLoaded(force = false) {
       if (!productOptions.value.length) {
 
         productOptions.value = []
+        productOptionsTotal.value = 0
 
         productOptionsContextKey.value = ''
 
@@ -5343,11 +5561,12 @@ async function awaitInitialDesktopSummaryOrBootstrapOptions(summaryLoad: Promise
     (async () => {
       await new Promise((resolve) => window.setTimeout(resolve, MOBILE_SUMMARY_FALLBACK_WAIT_MS))
       if (!marketRows.value.length) {
-        const params = buildFilterParams()
+        const params = buildProductOptionScopeParams()
         const optionsData = await fetchProductOptions({ ...params, limit: 1000 })
         const nextProductOptions = filterSelectableProductOptions(optionsData.items ?? [])
         if (nextProductOptions.length) {
           productOptions.value = nextProductOptions
+          productOptionsTotal.value = Number(optionsData.total || 0) || nextProductOptions.length
           productOptionsContextKey.value = buildContextKey(params)
           marketRows.value = marketSummaryRowsFromProductOptions(nextProductOptions)
           writeLocalCache(PRODUCT_OPTIONS_CACHE_KEY, productOptionsContextKey.value, nextProductOptions)
@@ -5472,6 +5691,9 @@ async function loadCurrentProductSupplierQuotes() {
 
 function handleWorkbenchSectionChange(sectionId: SectionId) {
   activeWorkbenchSection.value = sectionId
+  if (sectionId === 'plan' && !procurementPlanHistory.value.length && !procurementPlanHistoryLoading.value) {
+    void loadProcurementPlanHistory()
+  }
   schedulePostRenderRequest(() => {
     void loadWorkbenchSectionAssets(sectionId)
   }, 120)
@@ -5877,6 +6099,88 @@ function handleMenuPlanConfirmRow(row: MenuPlanRow) {
   ElMessage.success(`${getMenuPlanRowLabel(row) || '该食材'}已标记确认`)
 }
 
+function calculateMenuPlanTotalCost() {
+  return planRows.value.reduce((sum, item) => sum + (Number(item.estimated_cost) || 0), 0)
+}
+
+function buildProcurementPlanTitle() {
+  const firstMenuName = menuForm.menuText.split(/\r?\n/).map((line) => line.trim()).find(Boolean)
+  const timestamp = new Date().toLocaleString('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  })
+  return `${firstMenuName || '菜单采购计划'} ${timestamp}`
+}
+
+async function loadProcurementPlanHistory() {
+  if (!ensureProcurementAccess('menu')) return
+  procurementPlanHistoryLoading.value = true
+  try {
+    const response = await fetchProcurementPlanRecords({ limit: 8 })
+    procurementPlanHistory.value = response.items || []
+  } catch (error) {
+    ElMessage.warning(`采购计划历史加载失败：${extractApiErrorDetail(error) || '请稍后重试'}`)
+  } finally {
+    procurementPlanHistoryLoading.value = false
+  }
+}
+
+async function saveCurrentProcurementPlan() {
+  if (!ensureProcurementAccess('menu')) return
+  if (!planRows.value.length && !ingredientRows.value.length) {
+    ElMessage.warning('请先生成采购方案再保存')
+    return
+  }
+  procurementPlanSaving.value = true
+  try {
+    const response = await saveProcurementPlanRecord({
+      plan_title: buildProcurementPlanTitle(),
+      menu_text: menuForm.menuText,
+      diners: menuForm.diners,
+      tables: menuForm.tables,
+      preferred_province: filters.province || null,
+      preferred_city: filters.city || null,
+      preferred_location: menuForm.preferredLocation || null,
+      ingredient_items: ingredientRows.value,
+      procurement_plan: planRows.value,
+      total_cost: calculateMenuPlanTotalCost() || null,
+    })
+    procurementPlanHistory.value = [
+      response.item,
+      ...procurementPlanHistory.value.filter((item) => item.id !== response.item.id),
+    ].slice(0, 8)
+    ElMessage.success('采购计划已保存')
+  } catch (error) {
+    ElMessage.error(`采购计划保存失败：${extractApiErrorDetail(error) || '请稍后重试'}`)
+  } finally {
+    procurementPlanSaving.value = false
+  }
+}
+
+async function loadProcurementPlanRecord(recordId: number) {
+  if (!ensureProcurementAccess('menu')) return
+  procurementPlanHistoryLoading.value = true
+  try {
+    const response = await fetchProcurementPlanRecord(recordId)
+    const record = response.item
+    menuForm.menuText = record.menu_text || menuForm.menuText
+    menuForm.diners = record.diners || menuForm.diners
+    menuForm.tables = record.tables || menuForm.tables
+    menuForm.preferredLocation = record.preferred_location || record.preferred_city || record.preferred_province || menuForm.preferredLocation
+    ingredientRows.value = record.ingredient_items || []
+    planRows.value = record.procurement_plan || []
+    procurementRecommendations.value = []
+    ElMessage.success(`已载入“${record.plan_title}”`)
+  } catch (error) {
+    ElMessage.error(`采购计划载入失败：${extractApiErrorDetail(error) || '请稍后重试'}`)
+  } finally {
+    procurementPlanHistoryLoading.value = false
+  }
+}
+
 async function submitMenuPlan() {
   if (!ensureProcurementAccess('menu')) return
 
@@ -5910,6 +6214,7 @@ async function submitMenuPlan() {
     ingredientRows.value = data.ingredient_items ?? []
     planRows.value = data.procurement_plan ?? []
     procurementRecommendations.value = recommendation?.items ?? []
+    void loadProcurementPlanHistory()
     ElMessage.success('采购方案已生成')
   } catch (error) {
     ElMessage.error(`采购方案生成失败：${extractApiErrorDetail(error) || '请确认 API 已启动'}`)
@@ -5928,6 +6233,7 @@ watch([() => filters.province, () => filters.city], async () => {
   activeMarketCategory.value = '全部'
 
   productOptions.value = []
+  productOptionsTotal.value = 0
 
   productOptionsContextKey.value = ''
 
@@ -9000,6 +9306,96 @@ onBeforeUnmount(() => {
   box-shadow: 0 -18px 46px rgba(20, 37, 30, .18);
 }
 
+.mobile-account-sheet {
+  display: grid;
+  gap: 12px;
+}
+
+.mobile-account-head {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+}
+
+.mobile-account-head .mobile-redesign-account-avatar {
+  width: 44px;
+  height: 44px;
+  background: #1f8b68;
+  color: #ffffff;
+  font-size: 16px;
+}
+
+.mobile-account-head strong,
+.mobile-account-grid strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #0f172a;
+  font-size: 16px;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mobile-account-head small,
+.mobile-account-grid span,
+.mobile-account-note {
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.mobile-account-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.mobile-account-grid article {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid #dbe4ef;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.mobile-account-note {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid #bfdbfe;
+  border-radius: 12px;
+  background: #eff6ff;
+}
+
+.mobile-account-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.mobile-account-actions button {
+  min-height: 44px;
+  border: 1px solid #dbe4ef;
+  border-radius: 12px;
+  background: #ffffff;
+  color: #334155;
+  font: inherit;
+  font-weight: 800;
+}
+
+.mobile-account-actions button.primary {
+  border-color: #1f8b68;
+  background: #1f8b68;
+  color: #ffffff;
+}
+
+.mobile-account-actions button.danger {
+  grid-column: 1 / -1;
+  border-color: #fecaca;
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
 .market-auth-switch {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -11493,6 +11889,13 @@ onBeforeUnmount(() => {
   backdrop-filter: blur(14px);
 }
 
+.mobile-redesign-workspace .market-mobile-bottom-nav {
+  position: static;
+  left: auto;
+  right: auto;
+  bottom: auto;
+}
+
 .market-mobile-home.mobile-redesign-home .mobile-redesign-nav {
   left: 14px;
   right: 14px;
@@ -11542,6 +11945,15 @@ onBeforeUnmount(() => {
 
 .mobile-redesign-workspace {
   min-height: 100dvh;
+}
+
+.mobile-redesign-workspace.market-mobile-shell {
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  align-content: stretch;
+  height: 100dvh;
+  min-height: 0;
+  padding-bottom: max(10px, env(safe-area-inset-bottom, 0px));
+  overflow: hidden;
 }
 
 .mobile-redesign-workspace-head {
@@ -11594,7 +12006,10 @@ onBeforeUnmount(() => {
 }
 
 .mobile-redesign-workspace .market-mobile-shell-content {
-  padding: 8px 8px calc(88px + env(safe-area-inset-bottom, 0px));
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 8px 8px 18px;
 }
 
 .mobile-redesign-workspace :deep(.market-mobile-feed-hero),

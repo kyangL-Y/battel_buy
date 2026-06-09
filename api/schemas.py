@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 AuthUserRole = Literal["admin", "supplier", "procurement"]
@@ -501,6 +501,48 @@ class MenuPlanResponse(BaseModel):
     total_cost: float | None = None
 
 
+class ProcurementPlanSaveRequest(BaseModel):
+    plan_title: str = Field(..., min_length=1)
+    menu_text: str | None = None
+    diners: int = Field(0, ge=0)
+    tables: int = Field(0, ge=0)
+    preferred_province: str | None = None
+    preferred_city: str | None = None
+    preferred_location: str | None = None
+    ingredient_items: list[dict] = Field(default_factory=list)
+    procurement_plan: list[dict] = Field(default_factory=list)
+    total_cost: float | None = None
+
+
+class ProcurementPlanRecordItem(BaseModel):
+    id: int
+    plan_title: str
+    menu_text: str | None = None
+    diners: int = 0
+    tables: int = 0
+    preferred_province: str | None = None
+    preferred_city: str | None = None
+    preferred_location: str | None = None
+    ingredient_items: list[dict] = Field(default_factory=list)
+    procurement_plan: list[dict] = Field(default_factory=list)
+    row_count: int = 0
+    matched_count: int = 0
+    pending_count: int = 0
+    total_cost: float | None = None
+    created_by_user_id: int | None = None
+    created_by: str | None = None
+    created_at: str | None = None
+    updated_at: str | None = None
+
+
+class ProcurementPlanRecordResponse(BaseModel):
+    item: ProcurementPlanRecordItem
+
+
+class ProcurementPlanRecordListResponse(BaseModel):
+    items: list[ProcurementPlanRecordItem]
+
+
 class AISearchRequest(BaseModel):
     query: str = Field(..., min_length=1)
 
@@ -555,7 +597,7 @@ class SourceStrategyUpdateRequest(BaseModel):
 
 
 class GlobalAlertRuleItem(BaseModel):
-    target_name: str = Field(..., min_length=1)
+    target_name: str | None = Field(default=None)
     threshold: float = Field(..., ge=0)
     note: str | None = None
     group_name: str | None = None
@@ -563,6 +605,82 @@ class GlobalAlertRuleItem(BaseModel):
 
 class GlobalAlertRulesUpdateRequest(BaseModel):
     items: list[GlobalAlertRuleItem] = Field(default_factory=list)
+
+
+class SettingsSnapshotItem(BaseModel):
+    key: str
+    label: str
+    value: str | None = None
+    changed_at: str | None = None
+
+
+class SettingsSnapshotSummary(BaseModel):
+    source_count: int = 0
+    strategy_count: int = 0
+    alert_rule_count: int = 0
+
+
+class SettingsSnapshotSchedule(BaseModel):
+    enabled: bool = False
+    mode: str | None = "interval"
+    daily_run_time: str | None = None
+    interval_seconds: int = 86400
+    fetch_mode: str | None = None
+    target_scope: str | None = None
+    target_province: str | None = None
+    target_city: str | None = None
+
+
+class SettingsSnapshotSourceCoverageItem(BaseModel):
+    source_url: str | None = None
+    source_name: str | None = None
+    configured_name: str | None = None
+    enabled: bool = True
+    market_scope: str | None = None
+    market_category: str | None = None
+    market_subcategory: str | None = None
+    channel: str | None = None
+    notes: str | None = None
+
+
+class SettingsSnapshotSourceStrategyItem(BaseModel):
+    source_name: str | None = None
+    preferred_fetch_mode: str | None = None
+    strategy: str | None = None
+    timeout_seconds: int | None = None
+    retry_count: int | None = None
+    request_delay_seconds: float | None = None
+    blocked_status_codes: list[int] = Field(default_factory=list)
+    verify_ssl: bool | None = None
+    api_strategy: str | None = None
+
+
+class SettingsSnapshotResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    snapshot_schema: Literal["battel.settings.snapshot"] = Field(default="battel.settings.snapshot", alias="schema")
+    version: Literal[1] = 1
+    generated_at: str
+    summary: SettingsSnapshotSummary = Field(default_factory=SettingsSnapshotSummary)
+    schedule: SettingsSnapshotSchedule = Field(default_factory=SettingsSnapshotSchedule)
+    source_coverage: list[SettingsSnapshotSourceCoverageItem] = Field(default_factory=list)
+    source_strategies: list[SettingsSnapshotSourceStrategyItem] = Field(default_factory=list)
+    selected_source_url: str | None = None
+    selected_source_name: str | None = None
+    selected_source_strategy: SettingsSnapshotSourceStrategyItem | None = None
+    alert_rules: list[GlobalAlertRuleItem] = Field(default_factory=list)
+
+
+class SettingsSnapshotPreviewRequest(SettingsSnapshotResponse):
+    pass
+
+
+class SettingsSnapshotPreviewResponse(SettingsSnapshotResponse):
+    warnings: list[str] = Field(default_factory=list)
+
+
+class SettingsSnapshotApplyRequest(SettingsSnapshotResponse):
+    pass
 
 
 class SignalMetric(BaseModel):

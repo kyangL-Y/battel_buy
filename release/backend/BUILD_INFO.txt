@@ -1,3 +1,4 @@
-build_time=2026-06-06 16:34:14 +08:00
-source=E:\battel
-notes=backend-runtime-directory; auth-users-nan-sanitization; supplier-backend-ui-audit-sync
+Build time: 2026-06-09 17:53:40
+Frontend: release/dist
+Backend: release/backend
+Notes: procurement plan persistence and latest UI audit build

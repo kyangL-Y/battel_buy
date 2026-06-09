@@ -225,6 +225,53 @@ def test_product_options_endpoint_paginates_and_reports_total(monkeypatch):
     assert [item["price_identity_key"] for item in payload["items"]] == ["item-1", "item-2"]
 
 
+def test_product_options_keyword_search_uses_filtered_latest_rows(monkeypatch):
+    captured: dict[str, object] = {}
+
+    def fake_latest_rows(**kwargs):
+        captured.update(kwargs)
+        return [
+            {
+                "product_key": f"salt-{index}",
+                "group_name": "美菜网",
+                "product_name": f"食用盐{index}",
+                "category": "调味品",
+                "brand": "",
+                "product_series": "",
+                "spec_text": "袋",
+                "province": "河南省",
+                "city": "郑州市",
+                "market_name": "郑州",
+                "region_label": "郑州",
+                "site_name": "美菜网H5 | 推荐商品",
+                "source_url": "https://mall-entrance.yunshanmeicai.com",
+                "current_price": 2 + index,
+                "captured_at": "2026-06-01T08:00:00",
+                "image_url": "",
+            }
+            for index in range(12)
+        ]
+
+    def forbidden_full_options(*args):
+        raise AssertionError("keyword search must not compute full product options before filtering")
+
+    monkeypatch.setattr(api_app_module, "_fetch_latest_product_rows", fake_latest_rows)
+    monkeypatch.setattr(api_app_module, "_cached_product_options_payload", forbidden_full_options)
+
+    client = _create_procurement_client(monkeypatch)
+    response = client.get("/api/product/options?city=%E9%83%91%E5%B7%9E&keyword=%E7%9B%90&limit=0")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert captured["city"] == "郑州市"
+    assert captured["keyword"] == "盐"
+    assert payload["total"] == 12
+    assert payload["limit"] == 0
+    assert payload["has_more"] is False
+    assert len(payload["items"]) == 12
+    assert payload["items"][0]["price_identity_label"].startswith("食用盐")
+
+
 def test_product_options_endpoint_defaults_to_bounded_payload(monkeypatch):
     api_app_module._cached_product_options_payload.cache_clear()
     rows = tuple(

@@ -443,6 +443,68 @@ def test_deleted_auth_user_is_archived_and_releases_username_and_supplier_bindin
     assert recreated_rows.iloc[0]["username"] == "lencai-a"
 
 
+def test_deleted_supplier_auth_user_clears_procurement_bindings(tmp_path: Path):
+    db = Database(tmp_path / "test_deleted_supplier_auth_user_clears_procurement_bindings.db")
+    db.init_db()
+
+    supplier_id = db.upsert_supplier(supplier_name="莲菜档口A")
+    supplier_user_id = db.upsert_auth_user(
+        username="lencai-a",
+        password_hash=hash_password("first12345"),
+        role="supplier",
+        supplier_id=supplier_id,
+        display_name="莲菜档口A",
+        is_active=True,
+    )
+    procurement_user_id = db.upsert_auth_user(
+        username="buyer-a",
+        password_hash=hash_password("buyer123456"),
+        role="procurement",
+        display_name="采购A",
+        is_active=True,
+    )
+    db.replace_procurement_user_suppliers(procurement_user_id, [supplier_id])
+
+    assert db.delete_auth_user(supplier_user_id, deleted_by="tester") is True
+    assert db.get_procurement_user_supplier_ids(procurement_user_id) == []
+
+
+def test_deleted_procurement_auth_user_releases_supplier_binding(tmp_path: Path):
+    db = Database(tmp_path / "test_deleted_procurement_auth_user_releases_supplier_binding.db")
+    db.init_db()
+
+    supplier_id = db.upsert_supplier(supplier_name="莲菜档口A")
+    procurement_user_id = db.upsert_auth_user(
+        username="buyer-a",
+        password_hash=hash_password("buyer123456"),
+        role="procurement",
+        display_name="采购A",
+        is_active=True,
+    )
+    db.replace_procurement_user_suppliers(procurement_user_id, [supplier_id])
+
+    assert db.delete_auth_user(procurement_user_id, deleted_by="tester") is True
+    assert db.get_procurement_user_supplier_mappings([supplier_id]).empty
+
+
+def test_procurement_supplier_scope_ignores_disabled_supplier(tmp_path: Path):
+    db = Database(tmp_path / "test_procurement_supplier_scope_ignores_disabled_supplier.db")
+    db.init_db()
+
+    supplier_id = db.upsert_supplier(supplier_name="莲菜档口A", is_active=True)
+    procurement_user_id = db.upsert_auth_user(
+        username="buyer-a",
+        password_hash=hash_password("buyer123456"),
+        role="procurement",
+        display_name="采购A",
+        is_active=True,
+    )
+    db.replace_procurement_user_suppliers(procurement_user_id, [supplier_id])
+    db.upsert_supplier(supplier_name="莲菜档口A", supplier_id=supplier_id, is_active=False)
+
+    assert db.get_procurement_user_supplier_ids(procurement_user_id) == []
+
+
 def test_local_compare_records_are_persisted_and_queryable(tmp_path: Path):
     db = Database(tmp_path / "test_price_tracker.db")
     db.init_db()

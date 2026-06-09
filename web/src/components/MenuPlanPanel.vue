@@ -52,7 +52,7 @@
           复制待确认食材
         </button>
       </section>
-      <div class="menu-grid">
+      <div class="menu-grid" :class="{ 'is-single': !showDesktopGuidance }">
         <div class="menu-form">
           <el-input
             :model-value="menuText"
@@ -94,6 +94,8 @@
           <p class="menu-action-helper">{{ guestSizingHint }}</p>
           <div class="menu-submit-bar">
             <el-button aria-label="生成采购方案" type="primary" :loading="loading" :disabled="!hasMenuInput" @click="emit('submit')">生成采购方案</el-button>
+            <el-button aria-label="保存采购计划" plain :loading="saving" :disabled="!canSavePlan" @click="emit('save-plan')">保存计划</el-button>
+            <el-button aria-label="刷新历史计划" plain :loading="historyLoading" @click="emit('load-history')">历史计划</el-button>
             <p v-if="!hasMenuInput" class="menu-input-required" role="status" aria-live="polite">请先输入至少 1 个菜名</p>
             <p v-if="loading" :class="['menu-ai-status', { warning: isPlanTakingLong }]" role="status" aria-live="polite" data-testid="menu-ai-status">
               {{ isPlanTakingLong ? '生成有点慢，可以稍后重试。' : '正在整理食材和今日菜价' }}
@@ -101,7 +103,7 @@
           </div>
         </div>
         <aside
-          v-if="!isMobileViewport"
+          v-if="showDesktopGuidance"
           class="menu-guidance-card compact-guidance-card"
           :class="{ 'is-parse-ready': ingredientParseRows.length > 0 }"
           :data-testid="ingredientParseRows.length ? 'menu-ai-parse-panel' : undefined"
@@ -129,15 +131,50 @@
               <span class="guidance-tag">采购流程</span>
               <strong>三步完成采购判断</strong>
             </div>
-            <ul class="menu-guidance-list">
-              <li>先录菜单，再整理主要食材。</li>
-              <li>优先地区会影响推荐顺序。</li>
-              <li>没有报价的食材会标出来，方便补价。</li>
-            </ul>
+            <div class="menu-guidance-steps">
+              <article>
+                <span>01</span>
+                <strong>录菜单</strong>
+                <small>一行一个菜名</small>
+              </article>
+              <article>
+                <span>02</span>
+                <strong>拆食材</strong>
+                <small>按人数估算</small>
+              </article>
+              <article>
+                <span>03</span>
+                <strong>补报价</strong>
+                <small>缺价会标出</small>
+              </article>
+            </div>
           </template>
         </aside>
       </div>
     </div>
+
+    <section v-if="planHistory.length" class="menu-history-strip" aria-label="采购计划历史">
+      <div class="menu-history-head">
+        <div>
+          <p class="panel-kicker">历史计划</p>
+          <strong>最近保存</strong>
+        </div>
+        <span>{{ planHistory.length }} 条</span>
+      </div>
+      <div class="menu-history-list">
+        <button
+          v-for="item in planHistory"
+          :key="item.id"
+          type="button"
+          class="menu-history-card"
+          @click="emit('open-plan-record', item.id)"
+        >
+          <strong>{{ item.plan_title }}</strong>
+          <small>{{ item.row_count }} 项 · {{ item.matched_count }} 已匹配 · {{ item.pending_count }} 待确认</small>
+          <span>{{ formatHistoryTime(item.created_at) }}</span>
+        </button>
+      </div>
+    </section>
 
     <div v-if="!isMobileViewport" class="menu-summary-strip content-overview-strip">
       <div class="summary-card menu-kpi">
@@ -396,11 +433,11 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import type { MenuPlanRow } from '../types'
+import type { MenuPlanRow, ProcurementPlanRecordItem } from '../types'
 import { useViewport } from '../composables/useViewport'
 import { lazyElMessage as ElMessage } from '../lazyElementMessage'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   menuText: string
   tables: number
   diners: number
@@ -413,7 +450,14 @@ const props = defineProps<{
   pendingPlanCount: number
   totalCostLabel: string
   loading: boolean
-}>()
+  saving?: boolean
+  historyLoading?: boolean
+  planHistory?: ProcurementPlanRecordItem[]
+}>(), {
+  saving: false,
+  historyLoading: false,
+  planHistory: () => [],
+})
 
 const emit = defineEmits<{
   (event: 'update:menu-text', value: string): void
@@ -421,6 +465,9 @@ const emit = defineEmits<{
   (event: 'update:diners', value: number): void
   (event: 'update:preferred-location', value: string): void
   (event: 'submit'): void
+  (event: 'save-plan'): void
+  (event: 'load-history'): void
+  (event: 'open-plan-record', recordId: number): void
   (event: 'view-market', row: MenuPlanRow): void
   (event: 'fill-supplier-price', row: MenuPlanRow): void
   (event: 'confirm-row', row: MenuPlanRow): void
@@ -450,6 +497,8 @@ watch(
 )
 
 const hasMenuInput = computed(() => props.menuText.split(/\r?\n/).some((line) => line.trim()))
+const canSavePlan = computed(() => !props.saving && (props.planRows.length > 0 || props.ingredientRows.length > 0))
+const showDesktopGuidance = computed(() => !isMobileViewport.value && (hasMenuInput.value || ingredientParseRows.value.length > 0))
 const guestSizingHint = computed(() => {
   const totalTables = Math.max(1, Number(props.tables) || 1)
   const totalDiners = Math.max(1, Number(props.diners) || 1)
@@ -561,6 +610,18 @@ function formatQuantity(value: number | null | undefined, unit?: string | null) 
   return `${Number(value).toFixed(2)} ${unit || ''}`.trim()
 }
 
+function formatHistoryTime(value?: string | null) {
+  const timestamp = Date.parse(String(value || ''))
+  if (Number.isNaN(timestamp)) return '刚刚保存'
+  return new Date(timestamp).toLocaleString('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  })
+}
+
 function calculatePanelTableHeight(rowCount: number, rowHeight: number) {
   if (!rowCount) return 160
   return Math.min(Math.max(118 + rowCount * rowHeight, 220), 420)
@@ -603,6 +664,66 @@ const ingredientTableHeight = computed(() => calculatePanelTableHeight(props.ing
 </script>
 
 <style scoped>
+.menu-history-strip {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid #dbeafe;
+  border-radius: 16px;
+  background: #f8fbff;
+}
+
+.menu-history-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.menu-history-head strong {
+  display: block;
+  color: #0f172a;
+  font-size: 15px;
+}
+
+.menu-history-head span {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.menu-history-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 10px;
+}
+
+.menu-history-card {
+  display: grid;
+  gap: 5px;
+  min-height: 86px;
+  padding: 12px;
+  text-align: left;
+  border: 1px solid #dbeafe;
+  border-radius: 12px;
+  background: #ffffff;
+  color: #0f172a;
+  cursor: pointer;
+}
+
+.menu-history-card strong,
+.menu-history-card small,
+.menu-history-card span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.menu-history-card small,
+.menu-history-card span {
+  color: #64748b;
+  font-size: 12px;
+}
+
 .menu-plan-filter-row {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -791,11 +912,59 @@ const ingredientTableHeight = computed(() => calculatePanelTableHeight(props.ing
   line-height: 1.35;
 }
 
+.menu-guidance-steps {
+  display: grid;
+  gap: 8px;
+}
+
+.menu-guidance-steps article {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 2px 10px;
+  align-items: center;
+  min-height: 50px;
+  padding: 9px 10px;
+  border: 1px solid rgba(226, 232, 240, 0.92);
+  border-radius: 12px;
+  background: #ffffff;
+}
+
+.menu-guidance-steps span {
+  display: grid;
+  grid-row: span 2;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.menu-guidance-steps strong {
+  min-width: 0;
+  color: #0f172a;
+  font-size: 13px;
+  line-height: 1.25;
+}
+
+.menu-guidance-steps small {
+  min-width: 0;
+  color: #64748b;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
 .menu-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
   gap: 16px;
   align-items: stretch;
+}
+
+.menu-grid.is-single {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .menu-form {
@@ -806,14 +975,18 @@ const ingredientTableHeight = computed(() => calculatePanelTableHeight(props.ing
 
 .menu-actions {
   display: grid;
-  grid-template-columns: minmax(132px, 160px) minmax(148px, 176px) minmax(280px, 1fr);
-  gap: 14px;
+  grid-template-columns: repeat(2, minmax(160px, 1fr));
+  gap: 12px;
   align-items: end;
   min-width: 0;
   padding: 12px;
   border: 1px solid rgba(226, 232, 240, 0.92);
   border-radius: 18px;
   background: #f8fafc;
+}
+
+.menu-location-field {
+  grid-column: 1 / -1;
 }
 
 .menu-action-field {
@@ -929,7 +1102,7 @@ const ingredientTableHeight = computed(() => calculatePanelTableHeight(props.ing
 
   .menu-form {
     display: grid;
-    gap: 12px;
+    gap: 14px;
   }
 
   .menu-form :deep(.el-textarea__inner) {
@@ -941,22 +1114,31 @@ const ingredientTableHeight = computed(() => calculatePanelTableHeight(props.ing
   }
 
   .menu-actions {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 10px;
+    grid-template-columns: 1fr;
+    gap: 12px;
     padding: 0;
     border: 0;
     border-radius: 0;
     background: transparent;
   }
 
-  .menu-location-field {
+  .menu-actions > * {
+    min-width: 0;
+  }
+
+  .menu-actions .menu-action-field,
+  .menu-actions .menu-location-field {
     grid-column: 1 / -1;
+  }
+
+  .menu-location-field {
+    margin-top: 2px;
   }
 
   .menu-action-field {
     display: grid;
-    gap: 8px;
-    padding: 10px;
+    gap: 9px;
+    padding: 12px;
     border-radius: 16px;
     background: #ffffff;
   }
@@ -996,7 +1178,8 @@ const ingredientTableHeight = computed(() => calculatePanelTableHeight(props.ing
 
   .menu-submit-bar {
     display: grid;
-    gap: 8px;
+    gap: 10px;
+    margin-top: 2px;
   }
 
   .menu-submit-bar :deep(.el-button) {
@@ -1005,6 +1188,12 @@ const ingredientTableHeight = computed(() => calculatePanelTableHeight(props.ing
     border-radius: 14px;
     font-size: 15px;
     font-weight: 800;
+  }
+
+  .menu-action-helper,
+  .menu-input-required,
+  .menu-ai-status {
+    line-height: 1.4;
   }
 
   .menu-ai-parse-panel {

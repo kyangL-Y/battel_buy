@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 
@@ -13,6 +15,7 @@ import pandas as pd
 
 
 import analysis.metrics as metrics_module
+import analysis.alerts as alerts_module
 
 import api.app as api_app_module
 
@@ -33,6 +36,95 @@ def clear_auth_failure_buckets():
     api_app_module._AUTH_FAILURE_BUCKETS.clear()
     yield
     api_app_module._AUTH_FAILURE_BUCKETS.clear()
+
+
+def _write_settings_snapshot_fixture(tmp_path):
+    config_dir = tmp_path / "config"
+    config_dir.mkdir(parents=True, exist_ok=True)
+
+    (config_dir / "runtime.json").write_text(
+        json.dumps(
+            {
+                "database": {"backend": "sqlite", "sqlite_path": "data/price_tracker.db"},
+                "schedule": {
+                    "enabled": True,
+                    "mode": "daily_time",
+                    "daily_run_time": "03:30",
+                    "interval_seconds": 86400,
+                    "fetch_mode": "requests",
+                    "target_scope": "all_saved",
+                    "target_province": "河南省",
+                    "target_city": "郑州",
+                },
+                "crawler": {"default_timeout": 15},
+                "ai": {"enabled": False},
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    (config_dir / "products.json").write_text(
+        json.dumps(
+            [
+                {
+                    "product_key": "wbncp-market-all",
+                    "group_name": "公开价格源",
+                    "product_name": "万邦国际行情",
+                    "source_name": "万邦国际",
+                    "source_tier": "主价格源",
+                    "url": "https://www.wbncp.com/?m=home&c=Lists&a=index&tid=69",
+                    "enabled": True,
+                    "market_scope": "全国公开市场",
+                    "market_category": "综合行情",
+                    "channel": "公开接口",
+                    "notes": "当前已接入官方公开批量抓取接口。",
+                }
+            ],
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    (config_dir / "sites.json").write_text(
+        json.dumps(
+            [
+                {
+                    "site_name": "万邦国际",
+                    "domains": ["wbncp.com", "www.wbncp.com"],
+                    "currency": "CNY",
+                    "preferred_fetch_mode": "api",
+                    "strategy": "api_batch",
+                    "timeout_seconds": 30,
+                    "retry_count": 1,
+                    "request_delay_seconds": 1.0,
+                    "blocked_status_codes": [403, 429],
+                    "verify_ssl": True,
+                    "api_strategy": "prefer",
+                }
+            ],
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    (config_dir / "alerts.json").write_text(
+        json.dumps(
+            [
+                {
+                    "target_name": "海天味极鲜生抽500ml",
+                    "threshold": 12.0,
+                    "note": "总价低于 12 元提醒",
+                    "group_name": "海天味极鲜生抽500ml",
+                }
+            ],
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    return config_dir
 
 
 def _create_authenticated_client(
@@ -495,6 +587,89 @@ def test_inactive_supplier_token_cannot_access_protected_endpoint(tmp_path, monk
 
 
 
+def test_inactive_supplier_profile_cannot_login(tmp_path, monkeypatch):
+    db = Database(tmp_path / "auth_inactive_supplier_profile.db")
+    db.init_db()
+    supplier_id = db.upsert_supplier(
+        supplier_name="停用档口A",
+        contact_name="老王",
+        market_scope="本地市场",
+        market_category="干调类",
+        channel="微信小程序",
+        is_active=False,
+    )
+    db.upsert_auth_user(
+        username="supplier-profile-disabled",
+        password_hash=hash_password("demo123456"),
+        role="supplier",
+        supplier_id=supplier_id,
+        display_name="供应商档案停用账号",
+        is_active=True,
+    )
+
+    monkeypatch.setattr(api_deps_module, "get_db", lambda: db)
+    monkeypatch.setattr(api_app_module, "get_db", lambda: db)
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/api/auth/login",
+        json={"username": "supplier-profile-disabled", "password": "demo123456"},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "绑定供应商已停用"
+
+
+def test_inactive_supplier_profile_token_cannot_access_protected_endpoint(tmp_path, monkeypatch):
+    db = Database(tmp_path / "auth_inactive_supplier_profile_access.db")
+    db.init_db()
+    supplier_id = db.upsert_supplier(
+        supplier_name="停用后不可访问档口",
+        contact_name="小李",
+        market_scope="本地市场",
+        market_category="蔬菜类",
+        channel="门店直报",
+        is_active=True,
+    )
+    db.upsert_auth_user(
+        username="supplier-profile-access",
+        password_hash=hash_password("demo123456"),
+        role="supplier",
+        supplier_id=supplier_id,
+        display_name="供应商账号C",
+        is_active=True,
+    )
+
+    monkeypatch.setattr(api_deps_module, "get_db", lambda: db)
+    monkeypatch.setattr(api_app_module, "get_db", lambda: db)
+    client = TestClient(create_app())
+
+    login_response = client.post(
+        "/api/auth/login",
+        json={"username": "supplier-profile-access", "password": "demo123456"},
+    )
+
+    assert login_response.status_code == 200
+    token = login_response.json()["access_token"]
+    db.upsert_supplier(
+        supplier_id=supplier_id,
+        supplier_name="停用后不可访问档口",
+        contact_name="小李",
+        market_scope="本地市场",
+        market_category="蔬菜类",
+        channel="门店直报",
+        is_active=False,
+    )
+
+    response = client.get(
+        f"/api/suppliers/{supplier_id}/quotes",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "绑定供应商已停用"
+
+
 def test_auth_user_management_endpoints_cover_create_update_and_self_guard(tmp_path, monkeypatch):
 
     db = Database(tmp_path / "auth_user_management.db")
@@ -757,6 +932,93 @@ def test_supplier_role_cannot_access_other_supplier_quotes(monkeypatch):
 
 
 
+
+
+def test_auth_user_endpoint_rejects_inactive_supplier_binding(tmp_path, monkeypatch):
+    db = Database(tmp_path / "auth_user_inactive_supplier_binding.db")
+    db.init_db()
+    inactive_supplier_id = db.upsert_supplier(
+        supplier_name="停用供应商",
+        contact_name="老王",
+        market_scope="本地市场",
+        market_category="蔬菜类",
+        channel="门店直报",
+        is_active=False,
+    )
+    client = _create_authenticated_client(monkeypatch, db=db, username="admin", display_name="系统管理员")
+
+    response = client.post(
+        "/api/auth/users",
+        json={
+            "username": "inactive-supplier-account",
+            "password": "supplier123",
+            "role": "supplier",
+            "supplier_id": inactive_supplier_id,
+            "display_name": "停用供应商账号",
+            "is_active": True,
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "供应商不存在或已停用"
+
+
+def test_procurement_user_cannot_create_supplier_directly(tmp_path, monkeypatch):
+    db = Database(tmp_path / "procurement_cannot_create_supplier.db")
+    db.init_db()
+    client = _create_authenticated_client(
+        monkeypatch,
+        db=db,
+        role="procurement",
+        supplier_id=None,
+        procurement_supplier_ids=[],
+        username="buyer-nj",
+        display_name="南京采购",
+    )
+
+    response = client.post(
+        "/api/suppliers",
+        json={
+            "supplier_name": "采购自建供应商",
+            "contact_name": "老王",
+            "market_scope": "南京市场",
+            "market_category": "蔬菜类",
+            "channel": "门店直报",
+            "is_active": True,
+        },
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "当前账号没有管理员权限"
+
+
+def test_supplier_price_endpoint_rejects_inactive_supplier(tmp_path, monkeypatch):
+    db = Database(tmp_path / "inactive_supplier_quote_write.db")
+    db.init_db()
+    inactive_supplier_id = db.upsert_supplier(
+        supplier_name="停用报价供应商",
+        contact_name="老王",
+        market_scope="本地市场",
+        market_category="蔬菜类",
+        channel="门店直报",
+        is_active=False,
+    )
+    client = _create_authenticated_client(monkeypatch, db=db, username="admin", display_name="系统管理员")
+
+    response = client.post(
+        "/api/supplier-prices",
+        json={
+            "supplier_id": inactive_supplier_id,
+            "price_identity_key": "菠菜|蔬菜类|斤",
+            "price_identity_label": "菠菜 | 蔬菜类 | 斤",
+            "product_name": "菠菜",
+            "quote_price": 2.8,
+            "quote_unit": "斤",
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "供应商不存在或已停用"
 
 
 class _FakeCrawlManager:
@@ -1160,6 +1422,208 @@ def test_source_coverage_endpoint_includes_local_source_metadata(monkeypatch):
     assert local_row["channel"] == "微信H5"
 
 
+def test_settings_snapshot_endpoints_cover_export_preview_and_apply(tmp_path, monkeypatch):
+    config_dir = _write_settings_snapshot_fixture(tmp_path)
+    monkeypatch.setattr(api_app_module, "CONFIG_BASE_DIR", tmp_path)
+    monkeypatch.setattr(api_app_module, "MARKET_SUMMARY_DISK_CACHE_DIR", tmp_path / "data" / "market_summary_cache")
+    monkeypatch.setattr(alerts_module, "ALERTS_CONFIG_PATH", config_dir / "alerts.json")
+    monkeypatch.setattr(api_app_module, "load_alert_rules", alerts_module.load_alert_rules)
+    monkeypatch.setattr(api_app_module, "save_alert_rules", alerts_module.save_alert_rules)
+
+    class _SnapshotDb:
+        def get_source_coverage_summary(self):
+            return pd.DataFrame(
+                [
+                    {
+                        "source_url": "https://www.wbncp.com/?m=home&c=Lists&a=index&tid=69",
+                        "product_key_count": 120,
+                        "comparable_item_count": 80,
+                        "source_item_count": 80,
+                        "market_count": 12,
+                        "price_record_count": 500,
+                        "latest_capture": "2026-04-18T12:00:00",
+                        "failed_count": 0,
+                        "last_failure": None,
+                    }
+                ]
+            )
+
+    monkeypatch.setattr(api_app_module, "get_db", lambda: _SnapshotDb())
+    monkeypatch.setattr(api_deps_module, "get_db", lambda: _SnapshotDb())
+    client = _create_authenticated_client(monkeypatch)
+
+    export_response = client.get("/api/settings/snapshot")
+    assert export_response.status_code == 200
+    export_payload = export_response.json()
+    assert export_payload["summary"]["source_count"] == 1
+    assert export_payload["summary"]["strategy_count"] == 1
+    assert export_payload["summary"]["alert_rule_count"] == 1
+    assert export_payload["schedule"]["target_province"] == "河南省"
+    assert export_payload["source_coverage"][0]["source_url"].endswith("tid=69")
+    assert export_payload["source_strategies"][0]["source_name"] == "万邦国际"
+    assert export_payload["alert_rules"][0]["target_name"] == "海天味极鲜生抽500ml"
+
+    preview_response = client.post(
+        "/api/settings/snapshot/preview",
+        json={
+            "generated_at": "2026-06-08T10:00:00+08:00",
+            "schedule": {
+                "enabled": True,
+                "mode": "invalid-mode",
+                "daily_run_time": "7:5",
+                "interval_seconds": 30,
+                "fetch_mode": "wrong",
+                "target_scope": "wrong",
+                "target_province": "  河南省 ",
+                "target_city": "  郑州 ",
+            },
+            "source_coverage": [
+                {
+                    "source_url": "https://www.wbncp.com/?m=home&c=Lists&a=index&tid=69",
+                    "configured_name": "万邦国际行情",
+                    "enabled": True,
+                }
+            ],
+            "source_strategies": [
+                {
+                    "source_name": "万邦国际",
+                    "preferred_fetch_mode": "api",
+                    "strategy": "api_batch",
+                    "timeout_seconds": 30,
+                    "retry_count": 1,
+                    "request_delay_seconds": 1.0,
+                    "blocked_status_codes": [403, "429"],
+                    "verify_ssl": True,
+                    "api_strategy": "prefer",
+                }
+            ],
+            "alert_rules": [
+                {
+                    "target_name": "海天味极鲜生抽500ml",
+                    "threshold": 10,
+                    "note": "预警",
+                    "group_name": "海天味极鲜生抽500ml",
+                }
+            ],
+        },
+    )
+    assert preview_response.status_code == 200
+    preview_payload = preview_response.json()
+    assert preview_payload["schedule"]["mode"] == "interval"
+    assert preview_payload["schedule"]["daily_run_time"] == "03:30"
+    assert preview_payload["schedule"]["interval_seconds"] == 86400
+    assert preview_payload["schedule"]["fetch_mode"] is None
+    assert preview_payload["summary"]["source_count"] == 1
+    assert preview_payload["source_coverage"][0]["configured_name"] == "万邦国际行情"
+    assert preview_payload["source_strategies"][0]["blocked_status_codes"] == [403, 429]
+
+    apply_response = client.post(
+        "/api/settings/snapshot/apply",
+        json={
+            "generated_at": "2026-06-08T10:00:00+08:00",
+            "schedule": {
+                "enabled": False,
+                "mode": "daily_time",
+                "daily_run_time": "04:20",
+                "interval_seconds": 86400,
+                "fetch_mode": "requests",
+                "target_scope": "province",
+                "target_province": "河南省",
+                "target_city": None,
+            },
+            "source_coverage": [
+                {
+                    "source_url": "https://www.wbncp.com/?m=home&c=Lists&a=index&tid=69",
+                    "source_name": "万邦国际",
+                    "configured_name": "万邦国际行情-更新",
+                    "enabled": False,
+                    "market_scope": "全国公开市场",
+                    "market_category": "综合行情",
+                    "market_subcategory": None,
+                    "channel": "公开接口",
+                    "notes": "已停用",
+                }
+            ],
+            "source_strategies": [
+                {
+                    "source_name": "万邦国际",
+                    "preferred_fetch_mode": "api",
+                    "strategy": "api_batch",
+                    "timeout_seconds": 45,
+                    "retry_count": 2,
+                    "request_delay_seconds": 0.5,
+                    "blocked_status_codes": [403, 429],
+                    "verify_ssl": True,
+                    "api_strategy": "prefer",
+                }
+            ],
+            "alert_rules": [
+                {
+                    "target_name": "海天味极鲜生抽500ml",
+                    "threshold": 11.5,
+                    "note": "更新阈值",
+                    "group_name": "海天味极鲜生抽500ml",
+                }
+            ],
+        },
+    )
+    assert apply_response.status_code == 200
+    applied_payload = apply_response.json()
+    assert applied_payload["schedule"]["daily_run_time"] == "04:20"
+    assert applied_payload["source_coverage"][0]["configured_name"] == "万邦国际行情-更新"
+    assert applied_payload["source_coverage"][0]["enabled"] is False
+    assert applied_payload["source_strategies"][0]["timeout_seconds"] == 45
+    assert applied_payload["alert_rules"][0]["threshold"] == 11.5
+
+    runtime_payload = json.loads((config_dir / "runtime.json").read_text(encoding="utf-8"))
+    products_payload = json.loads((config_dir / "products.json").read_text(encoding="utf-8"))
+    sites_payload = json.loads((config_dir / "sites.json").read_text(encoding="utf-8"))
+    alerts_payload = json.loads((config_dir / "alerts.json").read_text(encoding="utf-8"))
+    assert runtime_payload["schedule"]["daily_run_time"] == "04:20"
+    assert products_payload[0]["product_name"] == "万邦国际行情-更新"
+    assert products_payload[0]["enabled"] is False
+    assert sites_payload[0]["timeout_seconds"] == 45
+    assert alerts_payload[0]["threshold"] == 11.5
+
+
+def test_settings_snapshot_preview_and_apply_reject_missing_keys(tmp_path, monkeypatch):
+    _write_settings_snapshot_fixture(tmp_path)
+    monkeypatch.setattr(api_app_module, "CONFIG_BASE_DIR", tmp_path)
+    monkeypatch.setattr(api_app_module, "MARKET_SUMMARY_DISK_CACHE_DIR", tmp_path / "data" / "market_summary_cache")
+    monkeypatch.setattr(api_app_module, "load_alert_rules", lambda: [])
+    monkeypatch.setattr(api_app_module, "save_alert_rules", alerts_module.save_alert_rules)
+    client = _create_authenticated_client(monkeypatch)
+
+    bad_preview = client.post(
+        "/api/settings/snapshot/preview",
+        json={
+            "generated_at": "2026-06-08T10:00:00+08:00",
+            "schedule": {},
+            "source_coverage": [{"configured_name": "缺少 source_url"}],
+            "source_strategies": [],
+            "alert_rules": [],
+        },
+    )
+    assert bad_preview.status_code == 400
+
+    bad_apply = client.post(
+        "/api/settings/snapshot/apply",
+        json={
+            "generated_at": "2026-06-08T10:00:00+08:00",
+            "schedule": {},
+            "source_coverage": [
+                {
+                    "source_url": "https://not-exist.example",
+                    "configured_name": "不存在",
+                }
+            ],
+            "source_strategies": [],
+            "alert_rules": [],
+        },
+    )
+    assert bad_apply.status_code == 404
+
+
 
 
 
@@ -1500,8 +1964,9 @@ def test_market_summary_endpoint_requires_procurement_or_admin(monkeypatch):
     api_app_module._cached_market_summary_payload.cache_clear()
 
 
-def test_procurement_price_reads_are_limited_to_account_location(monkeypatch):
+def test_procurement_price_reads_use_explicit_location_only(monkeypatch):
     api_app_module._cached_market_summary_payload.cache_clear()
+    api_app_module._cached_product_options_payload.cache_clear()
     api_app_module._clear_market_summary_disk_cache()
     captured: dict[str, list[tuple[str | None, str | None]]] = {
         "summary": [],
@@ -1546,17 +2011,22 @@ def test_procurement_price_reads_are_limited_to_account_location(monkeypatch):
     assert client.get("/api/product/options?province=江苏省&city=南京").status_code == 200
     assert client.get("/api/product/%E7%99%BD%E8%8F%9C/summary").status_code == 200
     assert client.get("/api/product/%E7%99%BD%E8%8F%9C/trend?mode=cross_market").status_code == 200
-    assert client.get("/api/market/summary?province=北京市&city=北京市").status_code == 403
-    assert client.get("/api/product/options?province=北京市&city=北京市").status_code == 403
-    assert client.get("/api/product/%E7%99%BD%E8%8F%9C/summary?province=北京市&city=北京市").status_code == 403
-    assert client.get("/api/product/%E7%99%BD%E8%8F%9C/trend?mode=cross_market&province=北京市&city=北京市").status_code == 403
+    assert client.get("/api/market/summary?province=北京市&city=北京市").status_code == 200
+    assert client.get("/api/product/options?province=北京市&city=北京市").status_code == 200
+    assert client.get("/api/product/%E7%99%BD%E8%8F%9C/summary?province=北京市&city=北京市").status_code == 200
+    assert client.get("/api/product/%E7%99%BD%E8%8F%9C/trend?mode=cross_market&province=北京市&city=北京市").status_code == 200
 
-    assert captured["summary"][0] == ("江苏省", "南京")
-    assert captured["options"][0] == ("江苏省", "南京")
-    assert captured["product_summary"][0] == ("江苏省", "南京")
-    assert captured["trend"][0] == ("江苏省", "南京")
+    assert (None, None) in captured["summary"]
+    assert ("北京市", "北京市") in captured["summary"]
+    assert ("江苏省", "南京市") in captured["options"]
+    assert ("北京市", "北京市") in captured["options"]
+    assert (None, None) in captured["product_summary"]
+    assert ("北京市", "北京市") in captured["product_summary"]
+    assert (None, None) in captured["trend"]
+    assert ("北京市", "北京市") in captured["trend"]
 
     api_app_module._cached_market_summary_payload.cache_clear()
+    api_app_module._cached_product_options_payload.cache_clear()
 
 
 def test_procurement_market_price_reads_only_include_bound_suppliers(monkeypatch):
@@ -1867,7 +2337,7 @@ def test_product_endpoints_use_identity_scoped_history_lookup(monkeypatch):
 
 def test_location_options_endpoint_returns_province_city_map(monkeypatch):
 
-    latest_df = pd.DataFrame(
+    location_df = pd.DataFrame(
 
         [
 
@@ -1881,9 +2351,13 @@ def test_location_options_endpoint_returns_province_city_map(monkeypatch):
 
     )
 
-    monkeypatch.setattr(api_app_module, "get_latest_df", lambda: latest_df)
+    class FakeLocationDatabase:
 
-    monkeypatch.setattr(api_app_module, "_fetch_latest_product_rows", lambda **kwargs: (_ for _ in ()).throw(RuntimeError("use fixture df")))
+        def get_crawled_location_records(self):
+
+            return location_df
+
+    monkeypatch.setattr(api_app_module, "get_db", lambda: FakeLocationDatabase())
 
     client = _create_authenticated_client(monkeypatch)
 
@@ -1910,6 +2384,63 @@ def test_location_options_endpoint_returns_province_city_map(monkeypatch):
         },
 
     }
+
+
+def test_location_options_endpoint_uses_crawled_history_not_first_latest_page(monkeypatch):
+
+    latest_df = pd.DataFrame(
+
+        [
+
+            {"product_name": "萝卜", "province": "河南省", "city": "郑州市"},
+
+        ]
+
+    )
+
+    location_df = pd.DataFrame(
+
+        [
+
+            {"product_name": "萝卜", "province": "河南省", "city": "郑州市"},
+
+            {"product_name": "青菜", "province": "上海市", "city": "上海市"},
+
+            {"product_name": "土豆", "province": "安徽省", "city": "天长"},
+
+        ]
+
+    )
+
+    monkeypatch.setattr(api_app_module, "get_latest_df", lambda: latest_df)
+
+    class FakeLocationDatabase:
+
+        def get_crawled_location_records(self):
+
+            return location_df
+
+    monkeypatch.setattr(api_app_module, "get_db", lambda: FakeLocationDatabase())
+
+    client = _create_authenticated_client(monkeypatch)
+
+
+
+    response = client.get("/api/location/options")
+
+
+
+    assert response.status_code == 200
+
+    payload = response.json()
+
+    assert payload["provinces"] == ["上海市", "安徽省", "河南省"]
+
+    assert payload["province_city_map"]["上海市"] == ["上海市"]
+
+    assert payload["province_city_map"]["安徽省"] == ["天长"]
+
+    assert payload["province_city_map"]["河南省"] == ["郑州"]
 
 
 def test_location_suggestion_prefers_browser_coordinates(monkeypatch):
@@ -2329,6 +2860,84 @@ def test_procurement_recommend_and_sales_endpoints(monkeypatch):
 
 
 
+def test_procurement_plan_records_can_be_saved_and_loaded(tmp_path, monkeypatch):
+    db = Database(tmp_path / "procurement_plan_records.db")
+    db.init_db()
+    client = _create_authenticated_client(
+        monkeypatch,
+        db=db,
+        role="procurement",
+        supplier_id=None,
+        procurement_supplier_ids=[],
+        username="buyer-nj",
+        display_name="南京采购",
+    )
+
+    save_response = client.post(
+        "/api/procurement/plans",
+        json={
+            "plan_title": "周一午餐采购计划",
+            "menu_text": "蒜蓉西兰花",
+            "diners": 100,
+            "tables": 10,
+            "preferred_city": "南京",
+            "ingredient_items": [{"menu_name": "蒜蓉西兰花", "ingredient_name": "西兰花"}],
+            "procurement_plan": [
+                {
+                    "menu_name": "蒜蓉西兰花",
+                    "ingredient_name": "西兰花",
+                    "price_status": "已匹配报价",
+                    "estimated_cost": 128.5,
+                }
+            ],
+            "total_cost": 128.5,
+        },
+    )
+
+    assert save_response.status_code == 200
+    saved_item = save_response.json()["item"]
+    assert saved_item["plan_title"] == "周一午餐采购计划"
+    assert saved_item["row_count"] == 1
+    assert saved_item["matched_count"] == 1
+    assert saved_item["created_by"] == "南京采购"
+
+    list_response = client.get("/api/procurement/plans")
+    detail_response = client.get(f"/api/procurement/plans/{saved_item['id']}")
+
+    assert list_response.status_code == 200
+    assert list_response.json()["items"][0]["plan_title"] == "周一午餐采购计划"
+    assert detail_response.status_code == 200
+    assert detail_response.json()["item"]["procurement_plan"][0]["ingredient_name"] == "西兰花"
+
+
+def test_procurement_plan_detail_rejects_other_procurement_owner(tmp_path, monkeypatch):
+    db = Database(tmp_path / "procurement_plan_owner_scope.db")
+    db.init_db()
+    record_id = db.insert_procurement_plan_record(
+        plan_title="其他采购计划",
+        menu_text="红烧排骨",
+        diners=50,
+        tables=5,
+        ingredient_items=[],
+        procurement_plan=[],
+        created_by_user_id=2,
+        created_by="其他采购",
+    )
+    client = _create_authenticated_client(
+        monkeypatch,
+        db=db,
+        role="procurement",
+        supplier_id=None,
+        procurement_supplier_ids=[],
+        username="buyer-nj",
+        display_name="南京采购",
+    )
+
+    response = client.get(f"/api/procurement/plans/{record_id}")
+
+    assert response.status_code == 403
+
+
 def test_suppliers_endpoint_returns_supplier_list(monkeypatch):
 
     class _FakeDb:
@@ -2719,6 +3328,45 @@ def test_procurement_account_binding_rejects_supplier_owned_by_other_procurement
     assert "已绑定其他采购账号" in conflict_response.json()["detail"]
 
 
+def test_procurement_account_binding_rejects_deleted_supplier_auth_user(tmp_path, monkeypatch):
+    db = Database(tmp_path / "procurement_deleted_supplier_auth.db")
+    db.init_db()
+
+    supplier_id = db.upsert_supplier(
+        supplier_name="莲菜档口A",
+        contact_name="老王",
+        market_scope="南京市场",
+        market_category="干调类",
+        channel="微信小程序",
+    )
+    supplier_user_id = db.upsert_auth_user(
+        username="lencai-a",
+        password_hash=hash_password("first12345"),
+        role="supplier",
+        supplier_id=supplier_id,
+        display_name="莲菜档口A",
+        is_active=True,
+    )
+    db.delete_auth_user(supplier_user_id, deleted_by="tester")
+
+    admin_client = _create_authenticated_client(monkeypatch, db=db)
+    response = admin_client.post(
+        "/api/auth/users",
+        json={
+            "username": "buyer-a",
+            "password": "buyer123456",
+            "role": "procurement",
+            "procurement_supplier_ids": [supplier_id],
+            "display_name": "采购A",
+            "market_scope": "南京市场",
+            "is_active": True,
+        },
+    )
+
+    assert response.status_code == 400
+    assert "未找到或已停用" in response.json()["detail"]
+
+
 def test_procurement_supplier_creation_rejects_existing_supplier_name(tmp_path, monkeypatch):
     db = Database(tmp_path / "procurement_supplier_duplicate.db")
     db.init_db()
@@ -2779,8 +3427,98 @@ def test_procurement_supplier_creation_rejects_existing_supplier_name(tmp_path, 
         },
     )
 
-    assert response.status_code == 400
-    assert response.json()["detail"] == "供应商已存在，请直接编辑现有档案"
+    assert response.status_code == 403
+    assert response.json()["detail"] == "当前账号没有管理员权限"
+
+
+def test_procurement_supplier_update_rejects_account_management_fields(tmp_path, monkeypatch):
+    db = Database(tmp_path / "procurement_supplier_account_update_forbidden.db")
+    db.init_db()
+
+    supplier_id = db.upsert_supplier(
+        supplier_name="自有档口",
+        contact_name="王哥",
+        market_scope="南京市场",
+        market_category="蔬菜类",
+        channel="门店直报",
+    )
+    db.upsert_auth_user(
+        username="supplier-owned",
+        password_hash=hash_password("supplier123456"),
+        role="supplier",
+        supplier_id=supplier_id,
+        display_name="自有档口账号",
+        is_active=True,
+    )
+    client = _create_authenticated_client(
+        monkeypatch,
+        db=db,
+        role="procurement",
+        supplier_id=None,
+        procurement_supplier_ids=[supplier_id],
+        username="buyer-owned",
+        display_name="采购A",
+    )
+
+    response = client.put(
+        f"/api/suppliers/{supplier_id}",
+        json={
+            "supplier_name": "自有档口",
+            "contact_name": "王哥",
+            "contact_phone": "13800000000",
+            "market_scope": "南京市场",
+            "market_category": "蔬菜类",
+            "channel": "门店直报",
+            "notes": "采购侧不能改账号",
+            "is_active": True,
+            "account_username": "supplier-owned-new",
+            "account_password": "newSupplier123456",
+            "account_display_name": "新供应商账号",
+            "account_is_active": False,
+        },
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "采购账号不能管理供应商账号或启停状态"
+
+
+def test_procurement_supplier_update_rejects_supplier_deactivation(tmp_path, monkeypatch):
+    db = Database(tmp_path / "procurement_supplier_deactivation_forbidden.db")
+    db.init_db()
+
+    supplier_id = db.upsert_supplier(
+        supplier_name="自有档口",
+        contact_name="王哥",
+        market_scope="南京市场",
+        market_category="蔬菜类",
+        channel="门店直报",
+    )
+    client = _create_authenticated_client(
+        monkeypatch,
+        db=db,
+        role="procurement",
+        supplier_id=None,
+        procurement_supplier_ids=[supplier_id],
+        username="buyer-owned",
+        display_name="采购A",
+    )
+
+    response = client.put(
+        f"/api/suppliers/{supplier_id}",
+        json={
+            "supplier_name": "自有档口",
+            "contact_name": "王哥",
+            "contact_phone": "13800000000",
+            "market_scope": "南京市场",
+            "market_category": "蔬菜类",
+            "channel": "门店直报",
+            "notes": "采购侧不能停用",
+            "is_active": False,
+        },
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "采购账号不能管理供应商账号或启停状态"
 
 
 

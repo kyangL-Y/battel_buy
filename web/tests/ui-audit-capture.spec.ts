@@ -1,5 +1,8 @@
 import { expect, test } from '@playwright/test'
 import type { APIRequestContext } from '@playwright/test'
+import fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 import { backendURL } from '../playwright.shared'
 import {
@@ -11,6 +14,34 @@ import {
 
 const loginAccount = process.env.BATTEL_E2E_ACCOUNT || 'admin'
 const loginPassword = process.env.BATTEL_E2E_PASSWORD || 'admin123'
+const screenshotOutputDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'artifacts', 'ui-audit-screenshots')
+const supplierPortalUser = {
+  id: 2,
+  username: 'demo-veg-a',
+  role: 'supplier',
+  display_name: '鲜蔬直采A',
+  is_active: true,
+  supplier_id: 1,
+  supplier_profile: {
+    supplier_id: 1,
+    supplier_name: '鲜蔬直采A',
+    market_category: '蔬菜类',
+    channel: '微信小程序',
+    market_scope: '上海市场',
+    is_active: true,
+  },
+}
+const supplierPortalSession = {
+  access_token: 'supplier-portal-token',
+  token_type: 'Bearer',
+  expires_in: 3600,
+  user: supplierPortalUser,
+}
+
+function screenshotPath(fileName: string) {
+  fs.mkdirSync(screenshotOutputDir, { recursive: true })
+  return path.join(screenshotOutputDir, fileName)
+}
 
 async function loginAsAdmin(request: APIRequestContext) {
   const response = await request.post(`${backendURL}/api/auth/login`, {
@@ -346,6 +377,224 @@ async function seedSupplierBackendFixtureData(page: import('@playwright/test').P
   })
 }
 
+async function seedSupplierPortalFixtureData(page: import('@playwright/test').Page) {
+  await page.route('**/api/auth/login', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify(supplierPortalSession),
+    })
+  })
+  await page.route('**/api/auth/me', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({ user: supplierPortalUser }),
+    })
+  })
+  await page.route('**/api/location/options**', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        provinces: ['上海市'],
+        cities: ['上海市'],
+        province_city_map: { 上海市: ['上海市'] },
+      }),
+    })
+  })
+  await page.route('**/api/product/options**', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        items: [
+          {
+            price_identity_key: 'supplier-product|coriander',
+            price_identity_label: '香菜 普通',
+            site_count: 1,
+            price_observation_count: 3,
+            latest_captured_at: '2026-06-06T08:00:00',
+            source_name: '美菜网',
+            source_category: '蔬菜类',
+            liancai_top_category: '蔬菜类',
+            liancai_subcategory: '叶菜类',
+          },
+        ],
+        total: 1,
+        limit: 40,
+        offset: 0,
+        has_more: false,
+      }),
+    })
+  })
+  await page.route((url) => url.pathname === '/api/suppliers', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        items: [
+          {
+            id: 1,
+            supplier_name: '鲜蔬直采A',
+            contact_name: '老王',
+            contact_phone: '13800000000',
+            market_scope: '上海市场',
+            market_category: '蔬菜类',
+            channel: '微信小程序',
+            notes: '供应商视角只展示自身档案',
+            is_active: true,
+            account_id: 101,
+            account_username: 'demo-veg-a',
+            account_display_name: '鲜蔬直采A',
+            account_is_active: true,
+            quote_count: 2,
+            latest_quoted_at: '2026-06-05T16:20:00',
+          },
+        ],
+      }),
+    })
+  })
+  await page.route('**/api/suppliers/overview**', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        summary: {
+          supplier_count: 1,
+          active_supplier_count: 1,
+          inactive_supplier_count: 0,
+          category_count: 1,
+          total_quote_count: 2,
+          latest_quoted_at: '2026-06-05T16:20:00',
+        },
+        category_items: [
+          { market_category: '蔬菜类', supplier_count: 1, active_supplier_count: 1, quote_count: 2, latest_quoted_at: '2026-06-05T16:20:00' },
+        ],
+        recent_quotes: [
+          {
+            record_id: 101,
+            supplier_id: 1,
+            supplier_name: '鲜蔬直采A',
+            price_identity_key: 'supplier-product|coriander',
+            price_identity_label: '香菜 普通',
+            product_name: '香菜 普通',
+            quote_price: 5.36,
+            quote_unit: '元/公斤',
+            quoted_at: '2026-06-05T16:20:00',
+          },
+        ],
+      }),
+    })
+  })
+  await page.route('**/api/product/*/supplier-quotes**', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        summary: {
+          identity_key: 'supplier-product|coriander',
+          product_name: '香菜 普通',
+          supplier_count: 1,
+          market_lowest_price: 5.27,
+          market_lowest_site: '上海美菜网',
+          market_lowest_source_name: '美菜网',
+          market_lowest_source_tier: '主价格源',
+          market_average_price: 5.42,
+          lowest_quote: 5.36,
+          lowest_quote_supplier: '鲜蔬直采A',
+          latest_quoted_at: '2026-06-05T16:20:00',
+        },
+        items: [
+          {
+            record_id: 101,
+            supplier_id: 1,
+            supplier_name: '鲜蔬直采A',
+            market_scope: '上海市场',
+            market_category: '蔬菜类',
+            channel: '微信小程序',
+            price_identity_key: 'supplier-product|coriander',
+            price_identity_label: '香菜 普通',
+            product_name: '香菜 普通',
+            category: '蔬菜类',
+            spec_text: '公斤',
+            quote_price: 5.36,
+            quote_unit: '元/公斤',
+            inventory_status: '有货',
+            remarks: '供应商视角稳定展示',
+            quoted_by: '老王',
+            status: 'active',
+            quoted_at: '2026-06-05T16:20:00',
+          },
+        ],
+      }),
+    })
+  })
+  await page.route('**/api/suppliers/1/quotes**', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        items: [
+          {
+            record_id: 101,
+            supplier_id: 1,
+            supplier_name: '鲜蔬直采A',
+            price_identity_key: 'supplier-product|coriander',
+            price_identity_label: '香菜 普通',
+            product_name: '香菜 普通',
+            category: '蔬菜类',
+            spec_text: '公斤',
+            quote_price: 5.36,
+            quote_unit: '元/公斤',
+            inventory_status: '有货',
+            status: 'active',
+            quoted_by: '老王',
+            quoted_at: '2026-06-05T16:20:00',
+          },
+        ],
+        total: 1,
+        limit: 12,
+        offset: 0,
+        has_more: false,
+      }),
+    })
+  })
+  await page.route('**/api/suppliers/1/quote-actions**', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        items: [
+          {
+            id: 101,
+            supplier_id: 1,
+            supplier_name: '鲜蔬直采A',
+            record_id: 101,
+            action_type: 'quote_create',
+            action_reason: '供应商提交报价',
+            operator_name: '鲜蔬直采A',
+            created_at: '2026-06-05T16:21:00',
+            price_identity_key: 'supplier-product|coriander',
+            price_identity_label: '香菜 普通',
+            product_name: '香菜 普通',
+            quote_price: 5.36,
+            quote_unit: '元/公斤',
+            quoted_at: '2026-06-05T16:20:00',
+          },
+        ],
+        total: 1,
+        limit: 12,
+        offset: 0,
+        has_more: false,
+      }),
+    })
+  })
+  await page.route('**/api/suppliers/1/settlements**', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        items: [],
+        total: 0,
+        limit: 12,
+        offset: 0,
+        has_more: false,
+      }),
+    })
+  })
+}
+
 async function seedProcurementSession(
   page: import('@playwright/test').Page,
   request: APIRequestContext,
@@ -383,38 +632,41 @@ test('capture desktop landing and workbench screens', async ({ page, request }) 
 
   await page.goto('/', { waitUntil: 'domcontentloaded' })
   await expect(page.getByTestId('sales-landing-view')).toBeVisible()
-  await page.screenshot({ path: 'test-results/desktop-landing-home.png', fullPage: true })
+  await page.screenshot({ path: screenshotPath('desktop-landing-home.png'), fullPage: true })
 
   await seedAdminSession(page, request)
   await page.goto('/?mode=workspace&tab=summary', { waitUntil: 'domcontentloaded' })
   await expect(page.getByTestId('pc-price-workbench')).toBeVisible({ timeout: 30_000 })
-  await page.screenshot({ path: 'test-results/desktop-workbench-summary.png', fullPage: true })
+  await expect(page.getByText('正在加载菜价')).toHaveCount(0, { timeout: 60_000 })
+  await expect(page.getByText('正在获取前台行情')).toHaveCount(0, { timeout: 60_000 })
+  await page.screenshot({ path: screenshotPath('desktop-workbench-summary.png'), fullPage: true })
 
   await page.locator('[data-section-id="trend"]').click()
   await expect(page.locator('.pcw-trend-page')).toBeVisible({ timeout: 30_000 })
   await expect(page.getByText('正在加载价格走势')).toHaveCount(0, { timeout: 60_000 })
-  await page.screenshot({ path: 'test-results/desktop-workbench-trend.png', fullPage: true })
+  await page.screenshot({ path: screenshotPath('desktop-workbench-trend.png'), fullPage: true })
 
   await page.locator('[data-section-id="alerts"]').click()
   await expect(page.getByRole('heading', { name: '今日价格提醒' })).toBeVisible({ timeout: 30_000 })
-  await page.screenshot({ path: 'test-results/desktop-workbench-alerts.png', fullPage: true })
+  await page.screenshot({ path: screenshotPath('desktop-workbench-alerts.png'), fullPage: true })
 
   await page.locator('[data-section-id="market"]').click()
-  await expect(page.getByRole('heading', { name: '市场行情' })).toBeVisible({ timeout: 30_000 })
-  await page.screenshot({ path: 'test-results/desktop-workbench-market.png', fullPage: true })
+  await expect(page.getByTestId('pcw-market-workspace')).toBeVisible({ timeout: 30_000 })
+  await expect(page.locator('[data-section-id="market"]')).toHaveClass(/active/)
+  await page.screenshot({ path: screenshotPath('desktop-workbench-market.png'), fullPage: true })
 
   await page.locator('[data-section-id="quotes"]').click()
   await expect(page.getByRole('heading', { name: '供应商报价' })).toBeVisible({ timeout: 30_000 })
-  await page.screenshot({ path: 'test-results/desktop-workbench-quotes.png', fullPage: true })
+  await page.screenshot({ path: screenshotPath('desktop-workbench-quotes.png'), fullPage: true })
 
   await page.locator('[data-section-id="plan"]').click()
   await expect(page.getByTestId('pcw-menu-workspace')).toBeVisible({ timeout: 30_000 })
   await expect(page.getByLabel('菜单文本输入')).toBeVisible({ timeout: 30_000 })
-  await page.screenshot({ path: 'test-results/desktop-workbench-plan.png', fullPage: true })
+  await page.screenshot({ path: screenshotPath('desktop-workbench-plan.png'), fullPage: true })
 
   await page.locator('[data-section-id="settings"]').click()
-  await expect(page.getByRole('heading', { name: '数据同步设置' })).toBeVisible({ timeout: 30_000 })
-  await page.screenshot({ path: 'test-results/desktop-workbench-settings.png', fullPage: true })
+  await expect(page.getByRole('heading', { name: '同步、来源、策略、提醒统一管理' })).toBeVisible({ timeout: 30_000 })
+  await page.screenshot({ path: screenshotPath('desktop-workbench-settings.png'), fullPage: true })
 })
 
 test('capture platform admin and supplier backend screens', async ({ page, request }) => {
@@ -423,7 +675,7 @@ test('capture platform admin and supplier backend screens', async ({ page, reque
   await clearAuthSessions(page)
   await page.goto('/admin', { waitUntil: 'domcontentloaded' })
   await expect(page.getByTestId('platform-admin-screen')).toBeVisible()
-  await page.screenshot({ path: 'test-results/desktop-platform-admin-login.png', fullPage: true })
+  await page.screenshot({ path: screenshotPath('desktop-platform-admin-login.png'), fullPage: true })
 
   await seedPlatformAdminSession(page, request)
   await page.reload({ waitUntil: 'domcontentloaded' })
@@ -431,57 +683,63 @@ test('capture platform admin and supplier backend screens', async ({ page, reque
 
   await page.getByRole('button', { name: /来源覆盖 SRC/ }).click()
   await expect(page.getByTestId('platform-source-coverage-list')).toBeVisible()
-  await page.screenshot({ path: 'test-results/desktop-platform-admin-coverage.png', fullPage: true })
+  await page.screenshot({ path: screenshotPath('desktop-platform-admin-coverage.png'), fullPage: true })
 
   await page.goto('/supplier-backend', { waitUntil: 'domcontentloaded' })
   await expect(page.getByTestId('supplier-login-form')).toBeVisible()
-  await page.screenshot({ path: 'test-results/desktop-supplier-backend-login.png', fullPage: true })
+  await page.screenshot({ path: screenshotPath('desktop-supplier-backend-login.png'), fullPage: true })
 
   await seedSupplierBackendFixtureData(page)
   await seedSupplierSession(page, request)
   await page.reload({ waitUntil: 'domcontentloaded' })
   await expect(page.getByTestId('supplier-admin-panel')).toBeVisible({ timeout: 30_000 })
   await expect(page.getByRole('button', { name: /海鲜供应站B/ })).toBeVisible({ timeout: 30_000 })
-  await page.screenshot({ path: 'test-results/desktop-supplier-backend-suppliers.png', fullPage: true })
+  await page.screenshot({ path: screenshotPath('desktop-supplier-backend-suppliers.png'), fullPage: true })
 
   await page.getByRole('button', { name: /账号管理 ACC/ }).click()
   await expect(page.getByTestId('account-admin-panel')).toBeVisible({ timeout: 30_000 })
   await expect(page.getByTestId('account-admin-panel').getByText('demo-sea-b')).toBeVisible({ timeout: 30_000 })
-  await page.screenshot({ path: 'test-results/desktop-supplier-backend-accounts.png', fullPage: true })
+  await page.screenshot({ path: screenshotPath('desktop-supplier-backend-accounts.png'), fullPage: true })
 
   await page.getByRole('button', { name: /报价管理 QTE/ }).click()
   await expect(page.getByTestId('supplier-admin-panel')).toBeVisible({ timeout: 30_000 })
   await expect(page.getByText('报价工作台').first()).toBeVisible({ timeout: 30_000 })
   await expect(page.getByText('海鲜供应站B').first()).toBeVisible({ timeout: 30_000 })
-  await page.screenshot({ path: 'test-results/desktop-supplier-backend-quote.png', fullPage: true })
+  await page.screenshot({ path: screenshotPath('desktop-supplier-backend-quote.png'), fullPage: true })
 
   await page.getByRole('button', { name: /结算台账 SET/ }).click()
   await expect(page.getByText('供应商结算台账')).toBeVisible({ timeout: 30_000 })
   await expect(page.getByTestId('settlement-selected-quotes-guide')).toBeVisible({ timeout: 30_000 })
   await expect(page.getByText('海鲜供应站B').first()).toBeVisible({ timeout: 30_000 })
-  await page.screenshot({ path: 'test-results/desktop-supplier-backend-settlement.png', fullPage: true })
+  await page.screenshot({ path: screenshotPath('desktop-supplier-backend-settlement.png'), fullPage: true })
 
   await page.getByRole('button', { name: /操作日志 LOG|操作日志/ }).click()
   await expect(page.getByText('最近操作日志')).toBeVisible({ timeout: 30_000 })
   await expect(page.getByText('海鲜供应站B').first()).toBeVisible({ timeout: 30_000 })
-  await page.screenshot({ path: 'test-results/desktop-supplier-backend-logs.png', fullPage: true })
+  await page.screenshot({ path: screenshotPath('desktop-supplier-backend-logs.png'), fullPage: true })
 })
 
 test('capture desktop supplier portal pages', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1024 })
   await clearAuthSessions(page)
+  await seedSupplierPortalFixtureData(page)
 
   await page.goto('/supplier-portal', { waitUntil: 'domcontentloaded' })
   await expect(page.getByTestId('supplier-portal-screen')).toBeVisible()
-  await page.screenshot({ path: 'test-results/desktop-supplier-portal-login.png', fullPage: true })
+  await page.screenshot({ path: screenshotPath('desktop-supplier-portal-login.png'), fullPage: true })
 
-  await page.getByPlaceholder('账号').fill(loginAccount)
-  await page.getByPlaceholder('密码').fill(loginPassword)
+  await page.getByPlaceholder('账号').fill('demo-veg-a')
+  await page.getByPlaceholder('密码').fill('demo123456')
   const loginResponse = page.waitForResponse((response) => response.url().includes('/api/auth/login') && response.status() === 200)
   await page.getByTestId('auth-login-button').click()
   await loginResponse
-  await expect(page.getByTestId('auth-session-status')).toContainText('系统管理员', { timeout: 30_000 })
-  await page.screenshot({ path: 'test-results/desktop-supplier-portal-panel.png', fullPage: true })
+  await expect(page.getByTestId('auth-session-status')).toContainText('鲜蔬直采A', { timeout: 30_000 })
+  await expect(page.getByTestId('auth-session-status')).toContainText('当前供应商：鲜蔬直采A')
+  await expect(page.getByTestId('supplier-admin-panel')).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByText('系统管理员')).toHaveCount(0)
+  await expect(page.getByText('海鲜供应站B')).toHaveCount(0)
+  await page.screenshot({ path: screenshotPath('desktop-supplier-portal-panel.png'), fullPage: true })
+  await page.screenshot({ path: screenshotPath('desktop-supplier-portal-supplier-panel.png'), fullPage: true })
 })
 
 test('capture mobile landing and workflow screens', async ({ page, request }) => {
@@ -579,6 +837,12 @@ test('capture mobile landing and workflow screens', async ({ page, request }) =>
       trend_meta_label: '上海美菜网 5.58',
     },
   ]
+  await page.route('https://example.test/shanghai-coriander.jpg', async (route) => {
+    await route.fulfill({
+      contentType: 'image/svg+xml',
+      body: '<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80"><rect width="80" height="80" fill="#dcfce7"/><circle cx="40" cy="40" r="24" fill="#16a34a"/></svg>',
+    })
+  })
 
   await page.route('**/api/market/summary**', async (route) => {
     await route.fulfill({
@@ -642,21 +906,30 @@ test('capture mobile landing and workflow screens', async ({ page, request }) =>
 
   await page.goto('/', { waitUntil: 'domcontentloaded' })
   await expect(page.getByTestId('sales-landing-view')).toBeVisible()
-  await page.screenshot({ path: 'test-results/mobile-landing-first-screen.png', fullPage: false })
+  await page.screenshot({ path: screenshotPath('mobile-landing-first-screen.png'), fullPage: false })
 
   await page.getByRole('button', { name: '账号登录' }).click()
   await expect(page.getByRole('dialog', { name: '账号登录' })).toBeVisible()
-  await page.screenshot({ path: 'test-results/mobile-procurement-login-sheet.png', fullPage: false })
+  await page.screenshot({ path: screenshotPath('mobile-procurement-login-sheet.png'), fullPage: false })
 
   await page.keyboard.press('Escape')
   await seedProcurementSession(page, request, { province: '上海市', city: '上海市', scope: '上海市场' })
   await page.goto('/', { waitUntil: 'domcontentloaded' })
   await expect(page.getByTestId('sales-landing-view')).toBeVisible()
-  await page.screenshot({ path: 'test-results/mobile-landing-authenticated.png', fullPage: false })
+  await page.screenshot({ path: screenshotPath('mobile-landing-authenticated.png'), fullPage: false })
+
+  await page.getByRole('button', { name: /当前账号：/ }).click()
+  await expect(page.getByRole('dialog', { name: '账号信息' })).toBeVisible()
+  await page.screenshot({ path: screenshotPath('mobile-account-sheet.png'), fullPage: false })
+  await page.getByRole('button', { name: '切换地区' }).click()
+  await expect(page.getByText('进入页面时按账号默认地区展示，也可切换其他已抓取地区')).toBeVisible()
+  await expect(page.getByRole('button', { name: '全国' })).toBeEnabled()
+  await page.getByRole('button', { name: '全国' }).click()
+  await expect(page.getByRole('button', { name: '全国' }).first()).toBeVisible()
 
   await page.getByTestId('enter-workspace-button').click()
   await expect(page.getByTestId('market-mobile-card').first()).toBeVisible({ timeout: 30_000 })
-  await page.screenshot({ path: 'test-results/mobile-market-summary-workspace.png', fullPage: false })
+  await page.screenshot({ path: screenshotPath('mobile-market-summary-workspace.png'), fullPage: false })
 
   await page.getByTestId('market-mobile-card').first().click()
   await expect(page.getByLabel('趋势模式切换')).toBeVisible({ timeout: 30_000 })
@@ -664,7 +937,7 @@ test('capture mobile landing and workflow screens', async ({ page, request }) =>
   await expect(page.locator('.trend-content-shell')).toBeVisible({ timeout: 30_000 })
   await expect(page.locator('.trend-mobile-detail-hero')).toBeVisible({ timeout: 30_000 })
   await expect(page.locator('.trend-mobile-chart-title')).toBeVisible({ timeout: 30_000 })
-  await page.screenshot({ path: 'test-results/mobile-trend-workspace.png', fullPage: false })
+  await page.screenshot({ path: screenshotPath('mobile-trend-workspace.png'), fullPage: false })
 
   await page.locator('.market-mobile-bottom-item').filter({ hasText: '菜价' }).click()
   await expect(page.getByTestId('market-mobile-list')).toBeVisible({ timeout: 30_000 })
@@ -673,26 +946,33 @@ test('capture mobile landing and workflow screens', async ({ page, request }) =>
   await page.locator('.market-mobile-bottom-item').filter({ hasText: '提醒' }).click()
   await expect(page.getByText('价格提醒').first()).toBeVisible()
   await waitForMobileRouteReady(page)
-  await page.screenshot({ path: 'test-results/mobile-alerts-workspace.png', fullPage: false })
+  await page.screenshot({ path: screenshotPath('mobile-alerts-workspace.png'), fullPage: false })
 
   await page.locator('.market-mobile-bottom-item').filter({ hasText: '采购' }).click()
   await expect(page.getByLabel('菜单文本输入')).toBeVisible()
   await waitForMobileRouteReady(page)
-  await page.screenshot({ path: 'test-results/mobile-menu-workspace.png', fullPage: false })
+  await page.screenshot({ path: screenshotPath('mobile-menu-workspace.png'), fullPage: false })
 })
 
 test('capture mobile supplier portal pages', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
+  await clearAuthSessions(page)
+  await seedSupplierPortalFixtureData(page)
 
   await page.goto('/supplier-portal?mode=supplier-portal', { waitUntil: 'domcontentloaded' })
   await expect(page.getByTestId('supplier-portal-screen')).toBeVisible()
-  await page.screenshot({ path: 'test-results/mobile-supplier-portal-login.png', fullPage: false })
+  await page.screenshot({ path: screenshotPath('mobile-supplier-portal-login.png'), fullPage: false })
 
-  await page.getByPlaceholder('账号').fill(loginAccount)
-  await page.getByPlaceholder('密码').fill(loginPassword)
+  await page.getByPlaceholder('账号').fill('demo-veg-a')
+  await page.getByPlaceholder('密码').fill('demo123456')
   const loginResponse = page.waitForResponse((response) => response.url().includes('/api/auth/login') && response.status() === 200)
   await page.getByTestId('auth-login-button').click()
   await loginResponse
-  await expect(page.getByTestId('auth-session-status')).toContainText('系统管理员', { timeout: 30_000 })
-  await page.screenshot({ path: 'test-results/mobile-supplier-portal-panel.png', fullPage: true })
+  await expect(page.getByTestId('auth-session-status')).toContainText('鲜蔬直采A', { timeout: 30_000 })
+  await expect(page.getByTestId('auth-session-status')).toContainText('当前供应商：鲜蔬直采A')
+  await expect(page.getByTestId('supplier-admin-panel')).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByText('系统管理员')).toHaveCount(0)
+  await expect(page.getByText('海鲜供应站B')).toHaveCount(0)
+  await page.screenshot({ path: screenshotPath('mobile-supplier-portal-panel.png'), fullPage: true })
+  await page.screenshot({ path: screenshotPath('mobile-supplier-portal-supplier-panel.png'), fullPage: true })
 })

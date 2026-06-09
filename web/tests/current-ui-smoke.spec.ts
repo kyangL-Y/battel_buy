@@ -102,7 +102,7 @@ test.describe('当前采购端全界面冒烟', () => {
     await expect(page.getByTestId('pcw-menu-workspace')).toBeVisible()
 
     await page.locator('[data-section-id="settings"]').click()
-    await expect(page.getByRole('heading', { name: '数据同步设置' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: '同步、来源、策略、提醒统一管理' })).toBeVisible()
     await expectNoHorizontalOverflow(page)
   })
 

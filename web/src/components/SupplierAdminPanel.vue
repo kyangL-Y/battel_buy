@@ -295,7 +295,7 @@
               <div class="supplier-my-settlement-row-head">
                 <div class="supplier-my-settlement-row-title">
                   <strong>{{ item.settlement_title }}</strong>
-                  <small>{{ item.record_count }} 条报价</small>
+                  <small>{{ getSettlementRecordCount(item) }} 条报价</small>
                 </div>
                 <span :class="['supplier-status-chip', getSettlementStatusClass(item.status)]">
                   {{ getSettlementStatusLabel(item.status) }}
@@ -316,7 +316,7 @@
                 </article>
                 <article>
                   <span>未付</span>
-                  <strong>{{ formatPrice(item.pending_amount) }}</strong>
+                  <strong>{{ formatPrice(getSettlementPendingAmount(item)) }}</strong>
                 </article>
               </div>
               <div class="supplier-my-settlement-row-note">
@@ -338,7 +338,7 @@
                 <div class="supplier-my-settlement-detail-heading">
                   <span>当前结算单</span>
                   <strong>{{ focusedSettlement.settlement_title }}</strong>
-                  <small>{{ getSettlementStatusLabel(focusedSettlement.status) }} · {{ focusedSettlement.record_count }} 条报价</small>
+                  <small>{{ getSettlementStatusLabel(focusedSettlement.status) }} · {{ getSettlementRecordCount(focusedSettlement) }} 条报价</small>
                 </div>
                 <div class="supplier-my-settlement-detail-head-side">
                   <div class="supplier-my-settlement-detail-progress-pill">
@@ -351,7 +351,7 @@
               <div class="supplier-my-settlement-detail-summary">
                 <div class="total">
                   <span>未付金额</span>
-                  <strong>{{ formatPrice(focusedSettlement.pending_amount) }}</strong>
+                  <strong>{{ formatPrice(getSettlementPendingAmount(focusedSettlement)) }}</strong>
                   <small>{{ focusedSettlement.payment_due_date ? `应付 ${formatTime(focusedSettlement.payment_due_date)}` : '未设置应付日期' }}</small>
                 </div>
                 <div>
@@ -379,11 +379,11 @@
                   </article>
                   <article>
                     <span>剩余</span>
-                    <strong>{{ formatPrice(focusedSettlement.pending_amount) }}</strong>
+                    <strong>{{ formatPrice(getSettlementPendingAmount(focusedSettlement)) }}</strong>
                   </article>
                   <article>
                     <span>记录</span>
-                    <strong>{{ focusedSettlement.record_count }} 条</strong>
+                    <strong>{{ getSettlementRecordCount(focusedSettlement) }} 条</strong>
                   </article>
                 </div>
               </div>
@@ -779,7 +779,20 @@
               <span class="supplier-workbench-chip">{{ formatTime(selectedSupplier.latest_quoted_at) }}</span>
             </div>
           </div>
-          <div v-if="shouldShowQuoteEntryFields && productCompareSummary" class="supplier-compare-summary">
+          <div v-if="shouldShowQuoteEntryFields" class="supplier-form-grid supplier-quote-product-grid">
+            <label class="supplier-form-field supplier-form-field-full">
+              <span>先选择本次报价商品</span>
+              <el-select :model-value="selectedProductKey" filterable placeholder="先选择本次报价商品" @change="handleProductChange">
+                <el-option
+                  v-for="item in productOptions"
+                  :key="item.price_identity_key"
+                  :label="item.price_identity_label"
+                  :value="item.price_identity_key"
+                />
+              </el-select>
+            </label>
+          </div>
+          <div v-if="shouldShowQuoteValueFields && productCompareSummary" class="supplier-compare-summary">
             <article class="supplier-compare-card">
               <span>公开最低价</span>
               <strong>{{ formatPrice(productCompareSummary.market_lowest_price) }}</strong>
@@ -796,21 +809,10 @@
               <small>{{ selectedSupplierComparisonLabel }}</small>
             </article>
           </div>
-          <div v-if="shouldShowQuoteEntryFields" class="supplier-form-grid">
-            <label class="supplier-form-field supplier-form-field-full">
-              <span>先选择本次报价商品</span>
-              <el-select :model-value="selectedProductKey" filterable placeholder="先选择本次报价商品" @change="handleProductChange">
-                <el-option
-                  v-for="item in productOptions"
-                  :key="item.price_identity_key"
-                  :label="item.price_identity_label"
-                  :value="item.price_identity_key"
-                />
-              </el-select>
-            </label>
+          <div v-if="shouldShowQuoteValueFields" class="supplier-form-grid">
             <label class="supplier-form-field">
               <span>报价</span>
-              <el-input-number ref="quotePriceInputRef" v-model="quoteForm.quote_price" :min="0" :precision="2" :step="0.1" controls-position="right" />
+              <el-input-number ref="quotePriceInputRef" v-model="quoteForm.quote_price" :min="0" :precision="2" :step="0.1" :controls="false" />
             </label>
             <label class="supplier-form-field">
               <span>单位</span>
@@ -818,11 +820,11 @@
             </label>
             <label class="supplier-form-field">
               <span>箱价</span>
-              <el-input-number v-model="quoteForm.box_price" :min="0" :precision="2" :step="0.5" controls-position="right" />
+              <el-input-number v-model="quoteForm.box_price" :min="0" :precision="2" :step="0.5" :controls="false" />
             </label>
             <label class="supplier-form-field">
               <span>含税价</span>
-              <el-input-number v-model="quoteForm.tax_price" :min="0" :precision="2" :step="0.5" controls-position="right" />
+              <el-input-number v-model="quoteForm.tax_price" :min="0" :precision="2" :step="0.5" :controls="false" />
             </label>
             <label class="supplier-form-field">
               <span>库存状态</span>
@@ -833,11 +835,11 @@
               <el-input v-model="operatorName" placeholder="例如：刘洋 / 老王 / 采购部小李" />
             </label>
           </div>
-          <label v-if="shouldShowQuoteEntryFields" class="supplier-form-field supplier-form-field-full">
+          <label v-if="shouldShowQuoteValueFields" class="supplier-form-field supplier-form-field-full">
             <span>报价备注</span>
             <el-input v-model="quoteForm.remarks" type="textarea" :rows="mobile ? 3 : 2" placeholder="例如：今天早市价，整箱可送" />
           </label>
-          <div v-if="shouldShowQuoteEntryFields" class="supplier-form-actions">
+          <div v-if="shouldShowQuoteValueFields" class="supplier-form-actions">
             <div class="supplier-inline-tip">
               <strong>{{ selectedSupplier?.supplier_name || '请先选择或创建供应商' }}</strong>
               <span>{{ selectedProductLabelResolved || selectedProductKey || '请选择商品' }}</span>
@@ -1189,7 +1191,7 @@
                 <div class="supplier-my-settlement-row-head">
                   <div class="supplier-my-settlement-row-title">
                     <strong>{{ item.settlement_title }}</strong>
-                    <small>{{ item.record_count }} 条报价</small>
+                    <small>{{ getSettlementRecordCount(item) }} 条报价</small>
                   </div>
                   <span :class="['supplier-status-chip', getSettlementStatusClass(item.status)]">
                     {{ getSettlementStatusLabel(item.status) }}
@@ -1210,7 +1212,7 @@
                   </article>
                   <article>
                     <span>未付</span>
-                    <strong>{{ formatPrice(item.pending_amount) }}</strong>
+                    <strong>{{ formatPrice(getSettlementPendingAmount(item)) }}</strong>
                   </article>
                 </div>
                 <div class="supplier-my-settlement-row-note">
@@ -1232,7 +1234,7 @@
                   <div class="supplier-my-settlement-detail-heading">
                     <span>当前结算单</span>
                     <strong>{{ focusedSettlement.settlement_title }}</strong>
-                    <small>{{ getSettlementStatusLabel(focusedSettlement.status) }} · {{ focusedSettlement.record_count }} 条报价</small>
+                    <small>{{ getSettlementStatusLabel(focusedSettlement.status) }} · {{ getSettlementRecordCount(focusedSettlement) }} 条报价</small>
                   </div>
                   <div class="supplier-my-settlement-detail-head-side">
                     <div class="supplier-my-settlement-detail-progress-pill">
@@ -1246,16 +1248,16 @@
                 <div class="supplier-my-settlement-detail-summary">
                   <div class="total">
                     <span>未付金额</span>
-                    <strong>{{ formatPrice(focusedSettlement.pending_amount) }}</strong>
+                    <strong class="supplier-settlement-amount">{{ formatPrice(getSettlementPendingAmount(focusedSettlement)) }}</strong>
                     <small>{{ focusedSettlement.payment_due_date ? `应付 ${formatTime(focusedSettlement.payment_due_date)}` : '未设置应付日期' }}</small>
                   </div>
                   <div>
                     <span>结算总额</span>
-                    <strong>{{ formatPrice(focusedSettlement.total_amount) }}</strong>
+                    <strong class="supplier-settlement-amount">{{ formatPrice(focusedSettlement.total_amount) }}</strong>
                   </div>
                   <div>
                     <span>已付金额</span>
-                    <strong>{{ formatPrice(focusedSettlement.paid_amount) }}</strong>
+                    <strong class="supplier-settlement-amount">{{ formatPrice(focusedSettlement.paid_amount) }}</strong>
                   </div>
                 </div>
 
@@ -1271,15 +1273,15 @@
                   <div class="supplier-my-settlement-detail-progress-legend">
                     <article>
                       <span>已付</span>
-                      <strong>{{ formatPrice(focusedSettlement.paid_amount) }}</strong>
+                      <strong class="supplier-settlement-amount">{{ formatPrice(focusedSettlement.paid_amount) }}</strong>
                     </article>
                     <article>
                       <span>剩余</span>
-                      <strong>{{ formatPrice(focusedSettlement.pending_amount) }}</strong>
+                      <strong class="supplier-settlement-amount">{{ formatPrice(getSettlementPendingAmount(focusedSettlement)) }}</strong>
                     </article>
                     <article>
                       <span>记录</span>
-                      <strong>{{ focusedSettlement.record_count }} 条</strong>
+                      <strong>{{ getSettlementRecordCount(focusedSettlement) }} 条</strong>
                     </article>
                   </div>
                 </div>
@@ -1306,7 +1308,7 @@
                 <div class="supplier-admin-settlement-edit-panel">
                   <label class="supplier-form-field">
                     <span>已付金额</span>
-                    <el-input-number v-model="focusedSettlement.paid_amount" size="small" :min="0" :precision="2" :step="1" controls-position="right" :disabled="!isAdminSession" />
+                    <el-input-number v-model="focusedSettlement.paid_amount" size="small" :min="0" :precision="2" :step="1" :controls="false" :disabled="!isAdminSession" />
                   </label>
                   <label class="supplier-form-field">
                     <span>付款日期</span>
@@ -1620,6 +1622,23 @@
                   查看详情
                 </el-button>
               </div>
+            </article>
+          </div>
+          <div v-if="isLogsWorkspace && filteredQuoteActionLogs.length && filteredQuoteActionLogs.length < 3" class="supplier-action-log-support-grid">
+            <article>
+              <span>审计范围</span>
+              <strong>{{ selectedSupplier?.supplier_name || '当前供应商' }}</strong>
+              <small>操作日志按供应商和当前筛选条件归集。</small>
+            </article>
+            <article>
+              <span>可追踪动作</span>
+              <strong>导入 / 导出 / 作废 / 结算</strong>
+              <small>报价和结算动作都会留在此处便于复核。</small>
+            </article>
+            <article>
+              <span>下一步</span>
+              <strong>同步或放宽筛选</strong>
+              <small>日志过少时可同步数据或清空筛选条件。</small>
             </article>
           </div>
           <div v-if="quoteActionTotal" class="supplier-history-pagination">
@@ -1974,7 +1993,7 @@
         <div class="supplier-settlement-summary">
           <span>总额 {{ formatPrice(activeSettlementDetail.item.total_amount) }}</span>
           <span>已付 {{ formatPrice(activeSettlementDetail.item.paid_amount) }}</span>
-          <span>未付 {{ formatPrice(activeSettlementDetail.item.pending_amount) }}</span>
+          <span>未付 {{ formatPrice(getSettlementPendingAmount(activeSettlementDetail.item)) }}</span>
           <span>{{ getSettlementStatusLabel(activeSettlementDetail.item.status) }}</span>
         </div>
         <div class="supplier-action-log-detail-grid">
@@ -2895,6 +2914,7 @@ const showMobileQuoteReadinessGate = computed(
   () => props.mobile && isEmbeddedBackendMode.value && isQuoteWorkspace.value && showQuoteReadinessCard.value,
 )
 const shouldShowQuoteEntryFields = computed(() => !showMobileQuoteReadinessGate.value)
+const shouldShowQuoteValueFields = computed(() => shouldShowQuoteEntryFields.value && Boolean(selectedProductKey.value))
 const quoteReadinessTitle = computed(() => {
   const pendingCount = quoteReadinessItems.value.filter((item) => !item.ready).length
   return pendingCount ? `${pendingCount} 项未就绪` : '可以提交报价'
@@ -2933,7 +2953,7 @@ const settlementPagePaidAmount = computed(
   () => settlementRows.value.reduce((sum, item) => sum + Number(item.paid_amount || 0), 0),
 )
 const settlementPagePendingAmount = computed(
-  () => settlementRows.value.reduce((sum, item) => sum + Number(item.pending_amount || 0), 0),
+  () => settlementRows.value.reduce((sum, item) => sum + Number(getSettlementPendingAmount(item) || 0), 0),
 )
 const settlementPagePendingCount = computed(
   () => settlementRows.value.filter((item) => String(item.status || 'pending').trim() === 'pending').length,
@@ -3393,6 +3413,21 @@ function formatPrice(value?: number | null) {
   return value == null || Number.isNaN(Number(value)) ? '-' : `${Number(value).toFixed(2)} 元`
 }
 
+function getSettlementPendingAmount(item: SupplierSettlementItem) {
+  const directAmount = Number(item.pending_amount)
+  if (Number.isFinite(directAmount)) return Math.max(0, directAmount)
+  const totalAmount = Number(item.total_amount)
+  const paidAmount = Number(item.paid_amount || 0)
+  if (!Number.isFinite(totalAmount)) return null
+  return Math.max(0, totalAmount - paidAmount)
+}
+
+function getSettlementRecordCount(item: SupplierSettlementItem) {
+  const directCount = Number(item.record_count)
+  if (Number.isFinite(directCount) && directCount >= 0) return Math.trunc(directCount)
+  return Array.isArray(item.quote_record_ids) ? item.quote_record_ids.length : 0
+}
+
 function formatTime(value?: string | null) {
   const text = String(value || '').trim()
   if (!text) return '暂无'
@@ -3825,7 +3860,7 @@ function getSettlementFollowUpLabel(item: SupplierSettlementItem) {
   const normalizedStatus = String(item.status || 'pending').trim()
   if (normalizedStatus === 'paid') return '已完成付款'
   if (normalizedStatus === 'cancelled') return '当前结算单已取消'
-  if (normalizedStatus === 'partial') return `剩余 ${formatPrice(item.pending_amount)} 待付`
+  if (normalizedStatus === 'partial') return `剩余 ${formatPrice(getSettlementPendingAmount(item))} 待付`
   return item.payment_due_date ? `请在 ${formatTime(item.payment_due_date)} 前完成付款` : '等待管理员确认付款时间'
 }
 
@@ -3838,7 +3873,7 @@ function getSettlementFollowUpDescription(item: SupplierSettlementItem) {
     return '该结算单已被取消，如需继续处理，请联系管理员重新生成结算单。'
   }
   if (normalizedStatus === 'partial') {
-    return `本单仍有 ${formatPrice(item.pending_amount)} 未付，建议按照账期继续跟进剩余款项。`
+    return `本单仍有 ${formatPrice(getSettlementPendingAmount(item))} 未付，建议按照账期继续跟进剩余款项。`
   }
   return item.payment_due_date
     ? `当前仍处于待付款状态，应付日期为 ${formatTime(item.payment_due_date)}，请尽快安排付款。`
@@ -4993,7 +5028,7 @@ function buildSettlementExportRows(rows: SupplierSettlementItem[]) {
     结算单标题: item.settlement_title,
     供应商: item.supplier_name,
     账期: formatSettlementPeriod(item),
-    报价条数: item.record_count,
+    报价条数: getSettlementRecordCount(item),
     总金额: item.total_amount,
     已付金额: item.paid_amount,
     未付金额: item.pending_amount,
@@ -7176,7 +7211,7 @@ void reloadAll()
 
 .supplier-admin-panel :deep(.el-input-number .el-input__wrapper) {
   padding-left: 12px;
-  padding-right: 34px;
+  padding-right: 12px;
 }
 
 .supplier-admin-layout {
@@ -8224,6 +8259,41 @@ void reloadAll()
   line-height: 1.3;
 }
 
+.supplier-action-log-support-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.supplier-action-log-support-grid article {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  min-height: 86px;
+  padding: 12px 14px;
+  border: 1px solid rgba(226, 232, 240, 0.92);
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.supplier-action-log-support-grid span,
+.supplier-action-log-support-grid small {
+  min-width: 0;
+  color: var(--ink-500);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.supplier-action-log-support-grid strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink-900);
+  font-size: 14px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .supplier-action-log-filter-grid.compact-workspace {
   padding: 12px 14px;
   border: 1px solid rgba(148, 163, 184, 0.14);
@@ -8815,12 +8885,12 @@ void reloadAll()
 }
 
 .supplier-admin-panel.layout-quote-focus .quote-history-grid {
-  grid-template-columns: minmax(260px, 1.2fr) minmax(160px, 0.62fr) minmax(300px, 1.18fr) minmax(128px, 0.42fr);
+  grid-template-columns: minmax(220px, 1.1fr) minmax(132px, 0.58fr) minmax(220px, 1fr) minmax(104px, 0.38fr);
 }
 
 .supplier-admin-panel.layout-quote-focus .supplier-quote-main {
-  grid-template-columns: minmax(260px, 1.2fr) minmax(160px, 0.62fr) minmax(300px, 1.18fr) minmax(128px, 0.42fr);
-  min-width: 760px;
+  grid-template-columns: minmax(220px, 1.1fr) minmax(132px, 0.58fr) minmax(220px, 1fr) minmax(104px, 0.38fr);
+  min-width: 0;
 }
 
 .supplier-settlement-main {
@@ -9133,7 +9203,7 @@ void reloadAll()
 }
 
 .supplier-admin-settlement-layout {
-  grid-template-columns: minmax(0, 1.06fr) minmax(420px, 0.94fr);
+  grid-template-columns: minmax(0, 1fr) minmax(460px, 0.98fr);
 }
 
 .supplier-admin-settlement-list {
@@ -9148,6 +9218,7 @@ void reloadAll()
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
+  margin-top: auto;
   padding: 13px 14px;
   border-radius: 14px;
   background: rgba(248, 250, 252, 0.96);
@@ -9165,6 +9236,10 @@ void reloadAll()
 .supplier-admin-settlement-edit-panel :deep(.el-input-number),
 .supplier-admin-settlement-edit-panel :deep(.el-date-editor) {
   width: 100%;
+}
+
+.supplier-admin-settlement-edit-panel :deep(.el-input-number .el-input__wrapper) {
+  padding-right: 12px;
 }
 
 .supplier-admin-settlement-edit-actions {
@@ -9531,6 +9606,28 @@ void reloadAll()
   line-height: 1;
 }
 
+.supplier-settlement-amount {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
+
+.supplier-admin-settlement-detail .supplier-my-settlement-detail-summary {
+  grid-template-columns: 1fr;
+}
+
+.supplier-admin-settlement-detail .supplier-my-settlement-detail-summary div {
+  min-height: 68px;
+}
+
+.supplier-admin-settlement-detail .supplier-my-settlement-detail-progress-legend {
+  grid-template-columns: repeat(3, minmax(92px, 1fr));
+}
+
+.supplier-admin-settlement-detail .supplier-my-settlement-detail-progress-legend strong {
+  font-size: 15px;
+}
+
 .supplier-my-settlement-detail-summary div.total strong {
   color: #dc2626;
 }
@@ -9627,7 +9724,8 @@ void reloadAll()
   .supplier-my-settlement-detail-grid,
   .supplier-my-settlement-detail-amounts,
   .supplier-my-settlement-filters,
-  .supplier-admin-settlement-edit-panel {
+  .supplier-admin-settlement-edit-panel,
+  .supplier-action-log-support-grid {
     grid-template-columns: 1fr;
   }
 
@@ -10430,7 +10528,7 @@ void reloadAll()
 }
 
 .supplier-admin-panel.embedded .supplier-history-grid-shell {
-  overflow: hidden auto;
+  overflow: auto;
 }
 
 .supplier-admin-panel.embedded .supplier-history-grid-shell .supplier-datagrid-head {
@@ -10546,6 +10644,58 @@ void reloadAll()
 .supplier-admin-panel.layout-quote-focus.embedded .supplier-form-card > .supplier-column-head.compact > strong {
   font-size: 16px;
   line-height: 1.2;
+}
+
+.supplier-admin-panel.layout-quote-focus.embedded .supplier-quote-selection-alert {
+  padding: 9px 10px;
+  border-radius: 10px;
+}
+
+.supplier-admin-panel.layout-quote-focus.embedded .supplier-quote-readiness-card {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  padding: 10px;
+  border-radius: 12px;
+}
+
+.supplier-admin-panel.layout-quote-focus.embedded .supplier-quote-readiness-copy {
+  gap: 2px;
+}
+
+.supplier-admin-panel.layout-quote-focus.embedded .supplier-quote-readiness-copy p {
+  display: none;
+}
+
+.supplier-admin-panel.layout-quote-focus.embedded .supplier-quote-readiness-copy strong {
+  font-size: 14px;
+}
+
+.supplier-admin-panel.layout-quote-focus.embedded .supplier-quote-readiness-list {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.supplier-admin-panel.layout-quote-focus.embedded .supplier-quote-readiness-item {
+  gap: 2px;
+  min-height: 64px;
+  padding: 8px;
+  border-radius: 10px;
+}
+
+.supplier-admin-panel.layout-quote-focus.embedded .supplier-quote-readiness-item small {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.supplier-admin-panel.layout-quote-focus.embedded .supplier-quote-readiness-actions {
+  gap: 6px;
+}
+
+.supplier-admin-panel.layout-quote-focus.embedded .supplier-quote-readiness-actions :deep(.el-button) {
+  min-height: 28px;
+  padding-inline: 9px;
 }
 
 .supplier-admin-panel.layout-quote-focus.embedded .supplier-import-actions {

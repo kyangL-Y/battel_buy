@@ -91,6 +91,50 @@ export interface GlobalAlertRuleItem {
   group_name?: string | null
 }
 
+export interface SettingsSnapshotSourceItem {
+  source_url: string
+  source_name?: string | null
+  configured_name?: string | null
+  enabled?: boolean | null
+  market_scope?: string | null
+  market_category?: string | null
+  notes?: string | null
+  preferred_fetch_mode?: 'requests' | 'playwright' | 'api' | null
+  strategy?: string | null
+  timeout_seconds?: number | null
+  retry_count?: number | null
+  request_delay_seconds?: number | null
+  blocked_status_codes?: number[] | null
+  verify_ssl?: boolean | null
+  api_strategy?: string | null
+}
+
+export interface SettingsSnapshotDocument {
+  schema: 'battel.settings.snapshot'
+  version: 1
+  generated_at: string
+  summary: {
+    source_count: number
+    alert_rule_count: number
+    selected_source_name?: string | null
+  }
+  schedule: {
+    enabled: boolean
+    mode: 'interval' | 'daily_time'
+    daily_run_time?: string | null
+    interval_seconds: number
+    fetch_mode?: 'requests' | 'playwright' | null
+    target_scope?: 'all_saved' | 'province' | 'city' | null
+    target_province?: string | null
+    target_city?: string | null
+  }
+  source_coverage: SettingsSnapshotSourceItem[]
+  selected_source_url?: string | null
+  selected_source_name?: string | null
+  selected_source_strategy?: SettingsSnapshotSourceItem | null
+  alert_rules: GlobalAlertRuleItem[]
+}
+
 export interface SettingsChangeLogItem {
   id: string
   changed_at: string
@@ -292,6 +336,48 @@ export interface MenuPlanRow {
   remarks?: string | null
 }
 
+export interface ProcurementPlanRecordItem {
+  id: number
+  plan_title: string
+  menu_text?: string | null
+  diners: number
+  tables: number
+  preferred_province?: string | null
+  preferred_city?: string | null
+  preferred_location?: string | null
+  ingredient_items: Record<string, any>[]
+  procurement_plan: MenuPlanRow[]
+  row_count: number
+  matched_count: number
+  pending_count: number
+  total_cost?: number | null
+  created_by_user_id?: number | null
+  created_by?: string | null
+  created_at?: string | null
+  updated_at?: string | null
+}
+
+export interface ProcurementPlanSavePayload {
+  plan_title: string
+  menu_text?: string | null
+  diners: number
+  tables: number
+  preferred_province?: string | null
+  preferred_city?: string | null
+  preferred_location?: string | null
+  ingredient_items: Record<string, any>[]
+  procurement_plan: MenuPlanRow[]
+  total_cost?: number | null
+}
+
+export interface ProcurementPlanRecordResponse {
+  item: ProcurementPlanRecordItem
+}
+
+export interface ProcurementPlanRecordListResponse {
+  items: ProcurementPlanRecordItem[]
+}
+
 export interface CrawlStatusItem {
   is_running: boolean
   last_run_source?: string | null
@@ -311,6 +397,9 @@ export interface CrawlStatusItem {
   last_failed_count?: number | null
   target_source_url?: string | null
   target_source_name?: string | null
+  target_scope?: 'all_saved' | 'province' | 'city' | null
+  target_province?: string | null
+  target_city?: string | null
   next_run_at?: string | null
   schedule_enabled: boolean
   schedule_mode?: 'interval' | 'daily_time' | null

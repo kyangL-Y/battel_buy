@@ -24,6 +24,9 @@ import type {
   MarketSummaryItem,
   ProductOptionItem,
   ProductTrendRow,
+  ProcurementPlanRecordListResponse,
+  ProcurementPlanRecordResponse,
+  ProcurementPlanSavePayload,
   ProcurementRecommendationResponse,
   SalesDemoContentResponse,
   SignalInsightItem,
@@ -159,6 +162,9 @@ export async function updateCrawlSchedule(payload: {
   daily_run_time?: string | null
   interval_seconds: number
   fetch_mode?: 'requests' | 'playwright'
+  target_scope?: 'all_saved' | 'province' | 'city'
+  target_province?: string
+  target_city?: string
 }) {
   return (await loadApiModule()).updateCrawlSchedule(payload)
 }
@@ -267,6 +273,18 @@ export async function fetchProcurementRecommendation(payload: {
   preferred_location?: string
 }): Promise<ProcurementRecommendationResponse> {
   return (await loadApiModule()).fetchProcurementRecommendation(payload)
+}
+
+export async function saveProcurementPlanRecord(payload: ProcurementPlanSavePayload): Promise<ProcurementPlanRecordResponse> {
+  return (await loadApiModule()).saveProcurementPlanRecord(payload)
+}
+
+export async function fetchProcurementPlanRecords(params: { limit?: number; offset?: number } = {}): Promise<ProcurementPlanRecordListResponse> {
+  return (await loadApiModule()).fetchProcurementPlanRecords(params)
+}
+
+export async function fetchProcurementPlanRecord(recordId: number): Promise<ProcurementPlanRecordResponse> {
+  return (await loadApiModule()).fetchProcurementPlanRecord(recordId)
 }
 
 export async function fetchSalesDecisionContent(scene?: string): Promise<SalesDemoContentResponse> {

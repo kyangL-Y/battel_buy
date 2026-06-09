@@ -31,7 +31,9 @@
       <article><span>账号总数</span><strong>{{ users.length }}</strong></article>
       <article><span>管理员</span><strong>{{ adminCount }}</strong></article>
       <article><span>供应商账号</span><strong>{{ supplierCount }}</strong></article>
+      <article><span>采购账号</span><strong>{{ procurementCount }}</strong></article>
       <article><span>已停用</span><strong>{{ inactiveCount }}</strong></article>
+      <article><span>采购未分配</span><strong>{{ unassignedProcurementCount }}</strong></article>
     </div>
 
     <div class="account-admin-layout">
@@ -105,7 +107,7 @@
               filterable
               placeholder="供应商账号必须绑定"
             >
-              <el-option v-for="item in suppliers" :key="item.id" :label="item.supplier_name" :value="item.id" />
+              <el-option v-for="item in activeSupplierOptions" :key="item.id" :label="item.supplier_name" :value="item.id" />
             </el-select>
           </label>
           <label v-if="accountForm.role === 'procurement'">
@@ -119,12 +121,30 @@
               collapse-tags-tooltip
               placeholder="可先不选，后续再分配"
             >
-              <el-option v-for="item in suppliers" :key="`procurement-supplier-${item.id}`" :label="item.supplier_name" :value="item.id" />
+              <el-option
+                v-for="item in activeSupplierOptions"
+                :key="`procurement-supplier-${item.id}`"
+                :label="item.supplier_name"
+                :value="item.id"
+              />
             </el-select>
           </label>
           <label>
             <span>默认行情地区</span>
-            <el-input v-model="accountForm.market_scope" placeholder="例如：南京、南京市场、河南本地市场、全国" />
+            <el-select
+              v-model="accountForm.market_scope"
+              clearable
+              filterable
+              :loading="locationLoading"
+              placeholder="选择全国、省份或城市"
+            >
+              <el-option
+                v-for="item in marketScopeOptions"
+                :key="`${item.section}-${item.value}`"
+                :label="item.label"
+                :value="item.value"
+              />
+            </el-select>
           </label>
           <label>
             <span>{{ selectedUserId ? '重置密码' : '初始密码' }}</span>
@@ -181,6 +201,7 @@ import {
   deleteAuthUser,
   extractApiErrorDetail,
   fetchAuthUsers,
+  fetchLocationOptions,
   fetchSuppliers,
   updateAuthUser,
 } from '../lazyApi'
@@ -193,8 +214,17 @@ const props = defineProps<{
 const ACCOUNT_USERNAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.@-]{2,63}$/
 const MIN_ACCOUNT_PASSWORD_LENGTH = 8
 
+type MarketScopeOption = {
+  value: string
+  label: string
+  section: 'all' | 'province' | 'city' | 'custom'
+}
+
 const users = ref<AuthUserItem[]>([])
 const suppliers = ref<SupplierItem[]>([])
+const locationLoading = ref(false)
+const locationProvinces = ref<string[]>([])
+const provinceCityMap = ref<Record<string, string[]>>({})
 const loading = ref(false)
 const saving = ref(false)
 const actionUserId = ref<number | null>(null)
@@ -218,7 +248,42 @@ const currentUserId = computed(() => props.currentUserId ?? null)
 const selectedUser = computed(() => users.value.find((item) => item.id === selectedUserId.value) || null)
 const adminCount = computed(() => users.value.filter((item) => item.role === 'admin').length)
 const supplierCount = computed(() => users.value.filter((item) => item.role === 'supplier').length)
+const procurementCount = computed(() => users.value.filter((item) => item.role === 'procurement').length)
 const inactiveCount = computed(() => users.value.filter((item) => item.is_active === false).length)
+const unassignedProcurementCount = computed(() =>
+  users.value.filter((item) => item.role === 'procurement' && !(item.procurement_supplier_ids || []).length).length,
+)
+const marketScopeOptions = computed(() => {
+  const scopeOptions: MarketScopeOption[] = []
+  const usedValues = new Set<string>()
+
+  const appendScopeOption = (option: MarketScopeOption) => {
+    const scopeValue = option.value.trim()
+    if (!scopeValue || usedValues.has(scopeValue)) return
+    usedValues.add(scopeValue)
+    scopeOptions.push({ ...option, value: scopeValue })
+  }
+
+  appendScopeOption({ value: '全国', label: '全国', section: 'all' })
+
+  for (const provinceName of locationProvinces.value) {
+    appendScopeOption({ value: provinceName, label: provinceName, section: 'province' })
+    for (const cityName of provinceCityMap.value[provinceName] || []) {
+      const cityLabel = cityName === provinceName ? cityName : `${provinceName} / ${cityName}`
+      appendScopeOption({ value: cityName, label: cityLabel, section: 'city' })
+    }
+  }
+
+  const currentScope = accountForm.market_scope.trim()
+  if (currentScope && !usedValues.has(currentScope)) {
+    appendScopeOption({ value: currentScope, label: `${currentScope}（历史值）`, section: 'custom' })
+  }
+
+  return scopeOptions
+})
+const activeSupplierOptions = computed(() =>
+  suppliers.value.filter((item) => item.is_active !== false),
+)
 
 function roleLabel(role: AuthUserRole) {
   if (role === 'admin') return '管理员'
@@ -244,6 +309,20 @@ function accountScopeLabel(item: AuthUserItem) {
 function formatTime(value?: string | null) {
   if (!value) return '暂无登录'
   return String(value).replace('T', ' ').slice(0, 16)
+}
+
+function normalizeLocationNames(names?: string[]) {
+  return Array.from(new Set((names || []).map((name) => String(name || '').trim()).filter(Boolean)))
+}
+
+function normalizeProvinceCityOptions(options: Record<string, string[]> = {}) {
+  const provinceOptions: Record<string, string[]> = {}
+  for (const [provinceName, cityNames] of Object.entries(options)) {
+    const normalizedProvince = String(provinceName || '').trim()
+    if (!normalizedProvince) continue
+    provinceOptions[normalizedProvince] = normalizeLocationNames(cityNames)
+  }
+  return provinceOptions
 }
 
 function handleRoleChange() {
@@ -290,6 +369,17 @@ function validateBeforeSave() {
     ElMessage.warning('供应商账号必须绑定供应商')
     return false
   }
+  if (accountForm.role === 'supplier' && !activeSupplierOptions.value.some((item) => item.id === accountForm.supplier_id)) {
+    ElMessage.warning('只能绑定启用中的供应商')
+    return false
+  }
+  if (
+    accountForm.role === 'procurement'
+    && accountForm.procurement_supplier_ids.some((supplierId) => !activeSupplierOptions.value.some((item) => item.id === supplierId))
+  ) {
+    ElMessage.warning('采购账号只能分配启用中的供应商')
+    return false
+  }
   if (!selectedUserId.value && !password) {
     ElMessage.warning('新建账号必须填写初始密码')
     return false
@@ -319,6 +409,7 @@ async function loadAll() {
         keyword: keyword.value.trim() || undefined,
       }),
       fetchSuppliers(false),
+      loadLocationOptions(),
     ])
     users.value = userData.items || []
     suppliers.value = supplierData.items || []
@@ -334,6 +425,21 @@ async function loadAll() {
     ElMessage.error(extractApiErrorDetail(error) || '账号列表读取失败')
   } finally {
     loading.value = false
+  }
+}
+
+async function loadLocationOptions() {
+  if (locationLoading.value || locationProvinces.value.length) return
+  locationLoading.value = true
+  try {
+    const locationResponse = await fetchLocationOptions()
+    locationProvinces.value = normalizeLocationNames(locationResponse.provinces)
+    provinceCityMap.value = normalizeProvinceCityOptions(locationResponse.province_city_map)
+  } catch {
+    locationProvinces.value = []
+    provinceCityMap.value = {}
+  } finally {
+    locationLoading.value = false
   }
 }
 
@@ -541,6 +647,9 @@ onMounted(async () => {
   display: grid;
   align-content: start;
   gap: 10px;
+  max-height: min(720px, calc(100vh - 300px));
+  min-height: 320px;
+  overflow: auto;
   padding: 14px;
   border-right: 1px solid #e2e8f0;
   background: #f8fafc;
@@ -609,6 +718,11 @@ onMounted(async () => {
   display: grid;
   align-content: start;
   gap: 14px;
+  position: sticky;
+  top: 14px;
+  max-height: min(720px, calc(100vh - 300px));
+  min-height: 320px;
+  overflow: auto;
   padding: 18px;
 }
 
@@ -669,8 +783,18 @@ onMounted(async () => {
   }
 
   .account-admin-list {
+    max-height: none;
+    min-height: 0;
+    overflow: visible;
     border-right: 0;
     border-bottom: 1px solid #e2e8f0;
+  }
+
+  .account-admin-detail {
+    position: static;
+    max-height: none;
+    min-height: 0;
+    overflow: visible;
   }
 }
 </style>

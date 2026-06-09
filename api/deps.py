@@ -328,6 +328,8 @@ def get_current_user(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="账号不存在或已失效")
     if not user.get("is_active"):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="当前账号已停用")
+    if is_supplier_user(user) and not bool((user.get("supplier_profile") or {}).get("is_active")):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="绑定供应商已停用")
     return user
 
 

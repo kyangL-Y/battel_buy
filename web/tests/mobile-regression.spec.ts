@@ -736,6 +736,89 @@ test('移动端单品选择框展示当前接口返回商品', async ({ page }) 
 })
 
 
+test('移动端趋势商品候选聚焦后加载当前地址全部商品', async ({ page }) => {
+  await seedProcurementSession(page)
+  const productOptionLimits: string[] = []
+  const loadedProducts = Array.from({ length: 40 }, (_, index) => ({
+    price_identity_key: `loaded-${index}|kg`,
+    price_identity_label: `已加载商品 ${index} | 公斤`,
+    site_count: 2,
+    price_observation_count: 2,
+  }))
+  const remoteOnlyProduct = {
+    price_identity_key: 'remote-only|kg',
+    price_identity_label: '远端全量商品 | 公斤',
+    site_count: 2,
+    price_observation_count: 2,
+  }
+  await page.route('**/api/product/options**', async (route) => {
+    const url = new URL(route.request().url())
+    const limit = url.searchParams.get('limit') || ''
+    productOptionLimits.push(limit)
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        items: limit === '0'
+          ? [remoteOnlyProduct, ...loadedProducts]
+          : loadedProducts,
+        total: 41,
+        limit: Number(limit || 300),
+        offset: Number(url.searchParams.get('offset') || 0),
+        has_more: limit !== '0',
+      }),
+    })
+  })
+  await page.route('**/api/product/*/summary**', async (route) => {
+    const key = decodeURIComponent(route.request().url().split('/api/product/')[1]?.split('/summary')[0] || '')
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        item: {
+          price_identity_key: key,
+          product_name: key === remoteOnlyProduct.price_identity_key ? remoteOnlyProduct.price_identity_label : loadedProducts[0].price_identity_label,
+          site_count: 2,
+          market_count: 2,
+        },
+      }),
+    })
+  })
+  await page.route('**/api/product/*/trend**', async (route) => {
+    const key = decodeURIComponent(route.request().url().split('/api/product/')[1]?.split('/trend')[0] || '')
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        mode: 'cross_market',
+        items: [
+          {
+            price_identity_key: key,
+            product_name: key,
+            trend_series_key: 'market-a',
+            trend_series_name: '市场 A',
+            market_name: '市场 A',
+            current_price: 12.5,
+            captured_at: '2026-05-17T08:00:00',
+          },
+        ],
+      }),
+    })
+  })
+  await page.route('**/api/product/*/supplier-quotes**', async (route) => {
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [], summary: null }) })
+  })
+
+  await page.goto('/?mode=workspace&tab=trend', { waitUntil: 'domcontentloaded' })
+  const productSelect = page.getByTestId('trend-product-native-select')
+  await expect(productSelect).toBeVisible({ timeout: 15_000 })
+  await expect(productSelect.locator('option', { hasText: remoteOnlyProduct.price_identity_label })).toHaveCount(0)
+
+  await productSelect.dispatchEvent('pointerdown')
+  await expect.poll(() => productOptionLimits.includes('0')).toBeTruthy()
+  await expect(productSelect.locator('option', { hasText: remoteOnlyProduct.price_identity_label })).toHaveCount(1)
+  await productSelect.selectOption(remoteOnlyProduct.price_identity_key)
+  await expect(page.locator('.trend-mobile-current-product')).toContainText('远端全量商品', { timeout: 15_000 })
+})
+
+
 test('移动端切换到新商品趋势时清理旧版 product 深链参数，避免刷新回到旧商品', async ({ page }) => {
   await seedProcurementSession(page)
   await page.route('**/api/market/summary**', async (route) => {

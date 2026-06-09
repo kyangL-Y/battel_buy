@@ -76,13 +76,26 @@ from api.schemas import (
     MenuPlanResponse,
     PricingPackagesResponse,
     ProductSupplierQuotesResponse,
+    ProcurementPlanRecordItem,
+    ProcurementPlanRecordListResponse,
+    ProcurementPlanRecordResponse,
+    ProcurementPlanSaveRequest,
     ProcurementRecommendationResponse,
     SalesDemoContentResponse,
     SignalInsightItem,
     SignalOverviewResponse,
     SourceConfigUpdateRequest,
     GlobalAlertRulesUpdateRequest,
+    GlobalAlertRuleItem,
     SourceStrategyUpdateRequest,
+    SettingsSnapshotApplyRequest,
+    SettingsSnapshotPreviewRequest,
+    SettingsSnapshotPreviewResponse,
+    SettingsSnapshotResponse,
+    SettingsSnapshotSchedule,
+    SettingsSnapshotSourceCoverageItem,
+    SettingsSnapshotSourceStrategyItem,
+    SettingsSnapshotSummary,
     SupplierCreateRequest,
     SupplierItem,
     SupplierListResponse,
@@ -126,6 +139,7 @@ from services.site_rule_registry import load_site_rules, save_site_rules
 from utils.config_loader import load_json_config
 from utils.config_loader import BASE_DIR as CONFIG_BASE_DIR
 from utils.config_loader import save_json_config
+from utils.config_loader import load_runtime_config, save_runtime_config
 from utils.location_catalog import match_standard_city, match_standard_province
 from utils.source_config import get_source_name, get_source_tier, is_source_enabled
 
@@ -317,6 +331,18 @@ def _fetch_ip_location_suggestion(ip_address_text: str) -> dict | None:
     return _build_location_suggestion(raw_location, "ip_geolocation", "IP 归属地", 0.58)
 
 
+QUERY_CITY_CANONICAL_NAMES = {
+    "上海": "上海市",
+    "上海市": "上海市",
+    "南京": "南京市",
+    "南京市": "南京市",
+    "烟台": "烟台市",
+    "烟台市": "烟台市",
+    "郑州": "郑州市",
+    "郑州市": "郑州市",
+}
+
+
 def _normalize_market_scope_value(value: str | None, kind: str) -> str:
     normalized_value = str(value or "").strip()
     if not normalized_value:
@@ -324,7 +350,8 @@ def _normalize_market_scope_value(value: str | None, kind: str) -> str:
     if kind == "province":
         return match_standard_province(normalized_value) or normalized_value
     matched_city, _ = match_standard_city(normalized_value)
-    return matched_city or normalized_value
+    city_name = matched_city or normalized_value
+    return QUERY_CITY_CANONICAL_NAMES.get(city_name, city_name)
 
 
 def _resolve_procurement_location_scope(
@@ -334,16 +361,9 @@ def _resolve_procurement_location_scope(
 ) -> tuple[str, str]:
     requested_province = _normalize_market_scope_value(province, "province")
     requested_city = _normalize_market_scope_value(city, "city")
-    if not is_procurement_user(current_user):
-        return requested_province, requested_city
-
-    scoped_province = _normalize_market_scope_value(current_user.get("default_province"), "province")
-    scoped_city = _normalize_market_scope_value(current_user.get("default_city"), "city")
-    if scoped_province and requested_province and requested_province != scoped_province:
-        raise HTTPException(status_code=403, detail="当前采购账号无权访问该省份行情")
-    if scoped_city and requested_city and requested_city != scoped_city:
-        raise HTTPException(status_code=403, detail="当前采购账号无权访问该城市行情")
-    return scoped_province or requested_province, scoped_city or requested_city
+    # 默认地址只用于账号信息展示，不再作为行情查询范围的硬约束。
+    # 真正的筛选只取请求里显式传入的省市。
+    return requested_province, requested_city
 
 
 @lru_cache(maxsize=64)
@@ -1035,6 +1055,53 @@ def _build_fast_product_options_page(
     return page
 
 
+def _build_keyword_product_options_page(
+    *,
+    province: str | None,
+    city: str | None,
+    keyword: str,
+    source_name: str | None,
+    liancai_top_category: str | None,
+    liancai_subcategory: str | None,
+    liancai_keyword: str | None,
+    liancai_brand: str | None,
+    limit: int,
+    offset: int,
+) -> dict:
+    raw_rows = _fetch_latest_product_rows(
+        province=province,
+        city=city,
+        keyword=keyword,
+        source_name=source_name,
+        liancai_top_category=liancai_top_category,
+        liancai_subcategory=liancai_subcategory,
+        liancai_keyword=liancai_keyword,
+        liancai_brand=liancai_brand,
+        limit=1000,
+        offset=0,
+    )
+    has_unloaded_rows = len(raw_rows) > 1000
+    latest_df = pd.DataFrame(raw_rows[:1000])
+    options_df = build_single_product_selector_options(
+        latest_df,
+        selected_province=province or None,
+        selected_city=city or None,
+    )
+    option_rows = tuple(_sanitize_dataframe(options_df))
+    filtered_rows = _filter_product_option_items(option_rows, keyword)
+    total = None if has_unloaded_rows else len(filtered_rows)
+    normalized_offset = max(int(offset or 0), 0)
+    start = min(normalized_offset, len(filtered_rows))
+    end = len(filtered_rows) if limit == 0 else min(start + limit, len(filtered_rows))
+    return {
+        "items": list(filtered_rows[start:end]),
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "has_more": has_unloaded_rows or end < len(filtered_rows),
+    }
+
+
 @lru_cache(maxsize=32)
 def _cached_product_options_payload(
     cache_bucket: int,
@@ -1045,7 +1112,7 @@ def _cached_product_options_payload(
     liancai_subcategory: str,
     liancai_keyword: str,
     liancai_brand: str,
-) -> tuple[dict, ...]:
+    ) -> tuple[dict, ...]:
     summary_rows = _cached_market_summary_payload(
         cache_bucket,
         province,
@@ -1058,18 +1125,53 @@ def _cached_product_options_payload(
         liancai_brand,
     )
     options_df = pd.DataFrame(list(summary_rows))
+    if province or city:
+        latest_df = get_latest_df()
+        latest_df = _filter_by_source_name(latest_df, source_name or None)
+        latest_df = _filter_by_liancai_category(
+            latest_df,
+            liancai_top_category=liancai_top_category or None,
+            liancai_subcategory=liancai_subcategory or None,
+            liancai_keyword=liancai_keyword or None,
+            liancai_brand=liancai_brand or None,
+        )
+        explicit_options_df = build_single_product_selector_options(
+            latest_df,
+            selected_province=province or None,
+            selected_city=city or None,
+        )
+        if not explicit_options_df.empty:
+            options_df = explicit_options_df
     if not options_df.empty:
         options_df = options_df.rename(columns={"product_name": "price_identity_label"}).copy()
-        if "price_observation_count" not in options_df.columns:
-            options_df["price_observation_count"] = pd.to_numeric(
-                options_df.get("market_count", options_df.get("site_count")),
-                errors="coerce",
-            )
-        if "site_count" not in options_df.columns:
-            options_df["site_count"] = pd.to_numeric(options_df.get("market_count"), errors="coerce")
-        if "latest_captured_at" not in options_df.columns:
-            options_df["latest_captured_at"] = pd.NA
-        for column in [
+    if "price_observation_count" not in options_df.columns:
+        options_df["price_observation_count"] = pd.to_numeric(
+            options_df.get("market_count", options_df.get("site_count")),
+            errors="coerce",
+        )
+    if "site_count" not in options_df.columns:
+        options_df["site_count"] = pd.to_numeric(options_df.get("market_count"), errors="coerce")
+    if "latest_captured_at" not in options_df.columns:
+        options_df["latest_captured_at"] = pd.NA
+    for column in [
+        "price_identity_key",
+        "price_identity_label",
+        "site_count",
+        "price_observation_count",
+        "latest_captured_at",
+        "location_priority",
+        "source_name",
+        "source_category",
+        "liancai_top_category",
+        "liancai_subcategory",
+        "liancai_keyword",
+        "liancai_brand_name",
+        "image_url",
+    ]:
+        if column not in options_df.columns:
+            options_df[column] = None
+    options_df = options_df[
+        [
             "price_identity_key",
             "price_identity_label",
             "site_count",
@@ -1083,40 +1185,22 @@ def _cached_product_options_payload(
             "liancai_keyword",
             "liancai_brand_name",
             "image_url",
-        ]:
-            if column not in options_df.columns:
-                options_df[column] = None
-        options_df = options_df[
-            [
-                "price_identity_key",
-                "price_identity_label",
-                "site_count",
-                "price_observation_count",
-                "latest_captured_at",
-                "location_priority",
-                "source_name",
-                "source_category",
-                "liancai_top_category",
-                "liancai_subcategory",
-                "liancai_keyword",
-                "liancai_brand_name",
-                "image_url",
-            ]
-        ].copy()
-        options_df = options_df[
-            options_df["price_identity_key"].fillna("").astype(str).str.strip().ne("")
-            & options_df["price_identity_label"].fillna("").astype(str).str.strip().ne("")
-        ].copy()
-        options_df["latest_captured_at"] = pd.to_datetime(options_df["latest_captured_at"], errors="coerce")
-        # Disk-cache JSON turns tuple priorities into lists; pandas cannot sort list values.
-        options_df["location_priority_sort_key"] = options_df["location_priority"].map(
-            lambda priority: tuple(priority) if isinstance(priority, list) else priority
-        )
-        options_df = options_df.sort_values(
-            ["location_priority_sort_key", "latest_captured_at", "price_identity_label"],
-            ascending=[True, False, True],
-            na_position="last",
-        ).drop(columns=["location_priority", "location_priority_sort_key"])
+        ]
+    ].copy()
+    options_df = options_df[
+        options_df["price_identity_key"].fillna("").astype(str).str.strip().ne("")
+        & options_df["price_identity_label"].fillna("").astype(str).str.strip().ne("")
+    ].copy()
+    options_df["latest_captured_at"] = pd.to_datetime(options_df["latest_captured_at"], errors="coerce")
+    # Disk-cache JSON turns tuple priorities into lists; pandas cannot sort list values.
+    options_df["location_priority_sort_key"] = options_df["location_priority"].map(
+        lambda priority: tuple(priority) if isinstance(priority, list) else priority
+    )
+    options_df = options_df.sort_values(
+        ["location_priority_sort_key", "latest_captured_at", "price_identity_label"],
+        ascending=[True, False, True],
+        na_position="last",
+    ).drop(columns=["location_priority", "location_priority_sort_key"])
     if options_df.empty:
         latest_df = get_latest_df()
         latest_df = _filter_by_source_name(latest_df, source_name or None)
@@ -1470,10 +1554,14 @@ def _validate_procurement_supplier_ids(supplier_ids: list[int], existing_user_id
     if not supplier_ids:
         return
     supplier_rows = _sanitize_dataframe(get_db().get_suppliers(active_only=False))
-    existing_ids = {int(item.get("id") or 0) for item in supplier_rows}
+    existing_ids = {
+        int(item.get("id") or 0)
+        for item in supplier_rows
+        if bool(item.get("is_active")) is True
+    }
     missing_ids = [supplier_id for supplier_id in supplier_ids if supplier_id not in existing_ids]
     if missing_ids:
-        raise HTTPException(status_code=400, detail=f"存在未找到的供应商 ID: {', '.join(str(item) for item in missing_ids)}")
+        raise HTTPException(status_code=400, detail=f"存在未找到或已停用的供应商 ID: {', '.join(str(item) for item in missing_ids)}")
 
     current_user_id = int(existing_user_id or 0)
     ownership_rows = _sanitize_dataframe(get_db().get_procurement_user_supplier_mappings(supplier_ids))
@@ -1485,6 +1573,20 @@ def _validate_procurement_supplier_ids(supplier_ids: list[int], existing_user_id
     if conflicting_supplier_ids:
         joined_ids = ", ".join(str(item) for item in conflicting_supplier_ids)
         raise HTTPException(status_code=400, detail=f"以下供应商已绑定其他采购账号: {joined_ids}")
+
+
+def _get_active_supplier_row_or_raise(supplier_id: int | None) -> dict:
+    normalized_supplier_id = int(supplier_id or 0)
+    if normalized_supplier_id <= 0:
+        raise HTTPException(status_code=400, detail="供应商不存在或已停用")
+    db = get_db()
+    if not hasattr(db, "get_suppliers"):
+        return {"id": normalized_supplier_id, "is_active": True}
+    supplier_rows = _sanitize_dataframe(db.get_suppliers(active_only=False))
+    supplier_row = next((item for item in supplier_rows if int(item.get("id") or 0) == normalized_supplier_id), None)
+    if not supplier_row or not bool(supplier_row.get("is_active")):
+        raise HTTPException(status_code=400, detail="供应商不存在或已停用")
+    return supplier_row
 
 
 def _require_procurement_or_admin(current_user: dict) -> None:
@@ -1513,10 +1615,16 @@ def _visible_supplier_ids_for_price_read(current_user: dict) -> list[int] | None
 
 def _resolve_supplier_quote_write_supplier_id(current_user: dict, requested_supplier_id: int | None) -> int | None:
     if is_admin_user(current_user):
+        if requested_supplier_id is not None:
+            _get_active_supplier_row_or_raise(requested_supplier_id)
         return requested_supplier_id
     if is_procurement_user(current_user):
-        return ensure_supplier_access(current_user, int(requested_supplier_id or 0))
-    return ensure_supplier_access(current_user, int(current_user.get("supplier_id") or 0))
+        supplier_id = ensure_supplier_access(current_user, int(requested_supplier_id or 0))
+        _get_active_supplier_row_or_raise(supplier_id)
+        return supplier_id
+    supplier_id = ensure_supplier_access(current_user, int(current_user.get("supplier_id") or 0))
+    _get_active_supplier_row_or_raise(supplier_id)
+    return supplier_id
 
 
 def _find_supplier_row_by_name(supplier_name: str) -> dict | None:
@@ -1551,6 +1659,7 @@ def _ensure_account_username_available(username: str, existing_user_id: int | No
 def _ensure_supplier_account_available(supplier_id: int | None, existing_user_id: int | None = None) -> None:
     if supplier_id is None:
         return
+    _get_active_supplier_row_or_raise(supplier_id)
     existing_rows = get_db().get_auth_user_by_supplier_id(int(supplier_id))
     if existing_rows.empty:
         return
@@ -1752,6 +1861,21 @@ def _parse_supplier_settlement_record_ids(value: object) -> list[int]:
     return normalized_ids
 
 
+def _parse_json_list(value: object) -> list[dict]:
+    if isinstance(value, list):
+        raw_items = value
+    else:
+        text = str(value or "").strip()
+        if not text:
+            return []
+        try:
+            parsed = json.loads(text)
+        except json.JSONDecodeError:
+            return []
+        raw_items = parsed if isinstance(parsed, list) else []
+    return [item for item in raw_items if isinstance(item, dict)]
+
+
 def _normalize_supplier_settlement_status(value: object) -> str:
     status = str(value or "pending").strip().lower()
     if status in {"pending", "partial", "paid", "cancelled"}:
@@ -1781,6 +1905,29 @@ def _build_supplier_settlement_item(row: dict) -> dict:
         "payment_due_date": row.get("payment_due_date"),
         "payment_date": row.get("payment_date"),
         "remarks": row.get("remarks"),
+        "created_by": row.get("created_by"),
+        "created_at": row.get("created_at"),
+        "updated_at": row.get("updated_at"),
+    }
+
+
+def _build_procurement_plan_record_item(row: dict) -> dict:
+    return {
+        "id": int(row.get("id") or 0),
+        "plan_title": str(row.get("plan_title") or "").strip(),
+        "menu_text": row.get("menu_text"),
+        "diners": int(row.get("diners") or 0),
+        "tables": int(row.get("tables") or 0),
+        "preferred_province": row.get("preferred_province"),
+        "preferred_city": row.get("preferred_city"),
+        "preferred_location": row.get("preferred_location"),
+        "ingredient_items": _parse_json_list(row.get("ingredient_items")),
+        "procurement_plan": _parse_json_list(row.get("procurement_plan")),
+        "row_count": int(row.get("row_count") or 0),
+        "matched_count": int(row.get("matched_count") or 0),
+        "pending_count": int(row.get("pending_count") or 0),
+        "total_cost": _normalize_float(row.get("total_cost")),
+        "created_by_user_id": int(row.get("created_by_user_id")) if row.get("created_by_user_id") is not None else None,
         "created_by": row.get("created_by"),
         "created_at": row.get("created_at"),
         "updated_at": row.get("updated_at"),
@@ -2361,6 +2508,293 @@ def _save_global_alert_rules(payload: GlobalAlertRulesUpdateRequest) -> list[dic
     return _serialize_global_alert_rules()
 
 
+def _build_snapshot_strategy_item(rule: dict) -> SettingsSnapshotSourceStrategyItem:
+    blocked_codes = rule.get("blocked_status_codes")
+    return SettingsSnapshotSourceStrategyItem(
+        source_name=str(rule.get("site_name") or "").strip(),
+        preferred_fetch_mode=str(rule.get("preferred_fetch_mode") or "").strip() or None,
+        strategy=str(rule.get("strategy") or "").strip() or None,
+        timeout_seconds=int(rule.get("timeout_seconds") or 0) or None,
+        retry_count=int(rule.get("retry_count") or 0) if rule.get("retry_count") is not None else None,
+        request_delay_seconds=float(rule.get("request_delay_seconds") or 0) or None,
+        blocked_status_codes=[
+            int(code)
+            for code in blocked_codes
+            if str(code).strip()
+        ] if isinstance(blocked_codes, list) else [],
+        verify_ssl=None if rule.get("verify_ssl") is None else bool(rule.get("verify_ssl")),
+        api_strategy=str(rule.get("api_strategy") or "").strip() or None,
+    )
+
+
+def _build_settings_snapshot() -> SettingsSnapshotResponse:
+    runtime_config = load_runtime_config(CONFIG_BASE_DIR / "config" / "runtime.json")
+    configured_sources = load_json_config(CONFIG_BASE_DIR / "config" / "products.json")
+    site_rules = load_site_rules(CONFIG_BASE_DIR / "config" / "sites.json")
+    alert_rules = _serialize_global_alert_rules()
+
+    source_rule_map = {
+        str(item.get("site_name") or "").strip(): item
+        for item in site_rules
+        if isinstance(item, dict) and str(item.get("site_name") or "").strip()
+    }
+
+    source_items: list[SettingsSnapshotSourceCoverageItem] = []
+    selected_source_url: str | None = None
+    selected_source_name: str | None = None
+    selected_source_strategy: SettingsSnapshotSourceStrategyItem | None = None
+
+    if isinstance(configured_sources, list):
+        for item in configured_sources:
+            if not isinstance(item, dict):
+                continue
+            source_url = str(item.get("url") or "").strip()
+            source_name = get_source_name(item, fallback=_infer_source_site_name(source_url))
+            source_rule = source_rule_map.get(source_name)
+            source_items.append(
+                SettingsSnapshotSourceCoverageItem(
+                    source_url=source_url,
+                    source_name=source_name,
+                    configured_name=str(item.get("product_name") or "").strip() or None,
+                    enabled=is_source_enabled(item),
+                    market_scope=str(item.get("market_scope") or "").strip() or None,
+                    market_category=str(item.get("market_category") or "").strip() or None,
+                    market_subcategory=str(item.get("category") or "").strip() or None,
+                    channel=str(item.get("channel") or "").strip() or None,
+                    notes=str(item.get("notes") or "").strip() or None,
+                )
+            )
+            if selected_source_url is None:
+                selected_source_url = source_url
+                selected_source_name = source_name
+                if source_rule:
+                    selected_source_strategy = _build_snapshot_strategy_item(source_rule)
+
+    schedule_config = runtime_config.get("schedule", {})
+    if not isinstance(schedule_config, dict):
+        schedule_config = {}
+    schedule_mode = str(schedule_config.get("mode") or "interval").strip()
+    if schedule_mode not in {"interval", "daily_time"}:
+        schedule_mode = "interval"
+    fetch_mode = str(schedule_config.get("fetch_mode") or "").strip()
+    if fetch_mode not in {"requests", "playwright"}:
+        fetch_mode = None
+
+    return SettingsSnapshotResponse(
+        generated_at=datetime.now().astimezone().isoformat(),
+        summary=SettingsSnapshotSummary(
+            source_count=len(source_items),
+            strategy_count=len(site_rules),
+            alert_rule_count=len(alert_rules),
+        ),
+        schedule=SettingsSnapshotSchedule(
+            enabled=bool(schedule_config.get("enabled")),
+            mode=schedule_mode,
+            daily_run_time=str(schedule_config.get("daily_run_time") or "03:30"),
+            interval_seconds=int(schedule_config.get("interval_seconds") or 86400),
+            fetch_mode=fetch_mode,
+            target_scope=str(schedule_config.get("target_scope") or "").strip() or None,
+            target_province=str(schedule_config.get("target_province") or "").strip() or None,
+            target_city=str(schedule_config.get("target_city") or "").strip() or None,
+        ),
+        source_coverage=source_items,
+        source_strategies=[_build_snapshot_strategy_item(rule) for rule in site_rules if isinstance(rule, dict) and str(rule.get("site_name") or "").strip()],
+        selected_source_url=selected_source_url,
+        selected_source_name=selected_source_name,
+        selected_source_strategy=selected_source_strategy,
+        alert_rules=[GlobalAlertRuleItem(**item) for item in alert_rules],
+    )
+
+
+def _normalize_settings_snapshot(payload: SettingsSnapshotPreviewRequest) -> SettingsSnapshotPreviewResponse:
+    schedule = payload.schedule
+    normalized_mode = str(schedule.mode or "interval").strip() if hasattr(schedule, "mode") else "interval"
+    if normalized_mode not in {"interval", "daily_time"}:
+        normalized_mode = "interval"
+    normalized_fetch_mode = str(schedule.fetch_mode or "").strip() if hasattr(schedule, "fetch_mode") else ""
+    if normalized_fetch_mode not in {"requests", "playwright"}:
+        normalized_fetch_mode = None
+    normalized_target_scope = str(schedule.target_scope or "all_saved").strip() if hasattr(schedule, "target_scope") else "all_saved"
+    if normalized_target_scope not in {"all_saved", "province", "city"}:
+        normalized_target_scope = "all_saved"
+    normalized_daily_run_time = str(schedule.daily_run_time or "03:30").strip() if hasattr(schedule, "daily_run_time") else "03:30"
+    if not re.fullmatch(r"\d{2}:\d{2}", normalized_daily_run_time):
+        normalized_daily_run_time = "03:30"
+    normalized_interval_seconds = int(schedule.interval_seconds or 86400) if hasattr(schedule, "interval_seconds") else 86400
+    if normalized_interval_seconds < 60:
+        normalized_interval_seconds = 86400
+
+    source_items: list[SettingsSnapshotSourceCoverageItem] = []
+    for item in payload.source_coverage:
+        source_url = str(item.source_url or "").strip()
+        if not source_url:
+            raise HTTPException(status_code=400, detail="快照来源配置缺少 source_url")
+        source_items.append(
+            SettingsSnapshotSourceCoverageItem(
+                source_url=source_url,
+                source_name=str(item.source_name or "").strip() or None,
+                configured_name=str(item.configured_name or "").strip() or None,
+                enabled=bool(item.enabled),
+                market_scope=str(item.market_scope or "").strip() or None,
+                market_category=str(item.market_category or "").strip() or None,
+                market_subcategory=str(item.market_subcategory or "").strip() or None,
+                channel=str(item.channel or "").strip() or None,
+                notes=str(item.notes or "").strip() or None,
+            )
+        )
+
+    strategy_items: list[SettingsSnapshotSourceStrategyItem] = []
+    for item in payload.source_strategies:
+        source_name = str(item.source_name or "").strip()
+        if not source_name:
+            raise HTTPException(status_code=400, detail="快照抓取策略缺少 source_name")
+        strategy_items.append(
+            SettingsSnapshotSourceStrategyItem(
+                source_name=source_name,
+                preferred_fetch_mode=item.preferred_fetch_mode,
+                strategy=str(item.strategy or "").strip() or None,
+                timeout_seconds=item.timeout_seconds,
+                retry_count=item.retry_count,
+                request_delay_seconds=item.request_delay_seconds,
+                blocked_status_codes=[int(code) for code in item.blocked_status_codes if str(code).strip()],
+                verify_ssl=item.verify_ssl,
+                api_strategy=str(item.api_strategy or "").strip() or None,
+            )
+        )
+
+    alert_rules: list[GlobalAlertRuleItem] = []
+    for item in payload.alert_rules:
+        target_name = str(item.target_name or "").strip()
+        if not target_name:
+            raise HTTPException(status_code=400, detail="快照预警规则缺少 target_name")
+        alert_rules.append(
+            GlobalAlertRuleItem(
+                target_name=target_name,
+                threshold=float(item.threshold),
+                note=str(item.note or "").strip() or None,
+                group_name=str(item.group_name or "").strip() or None,
+            )
+        )
+    selected_source_strategy = payload.selected_source_strategy
+    if selected_source_strategy and not str(selected_source_strategy.source_name or "").strip():
+        selected_source_strategy = None
+
+    warnings: list[str] = []
+    if not source_items:
+        warnings.append("快照里没有来源配置")
+    if not strategy_items:
+        warnings.append("快照里没有采价方案")
+
+    return SettingsSnapshotPreviewResponse(
+        generated_at=payload.generated_at,
+        summary=SettingsSnapshotSummary(
+            source_count=len(source_items),
+            strategy_count=len(strategy_items),
+            alert_rule_count=len(alert_rules),
+        ),
+        schedule=SettingsSnapshotSchedule(
+            enabled=bool(schedule.enabled),
+            mode=normalized_mode,
+            daily_run_time=normalized_daily_run_time,
+            interval_seconds=normalized_interval_seconds,
+            fetch_mode=normalized_fetch_mode,
+            target_scope=normalized_target_scope,
+            target_province=str(schedule.target_province or "").strip() or None,
+            target_city=str(schedule.target_city or "").strip() or None,
+        ),
+        source_coverage=source_items,
+        source_strategies=strategy_items,
+        selected_source_url=str(payload.selected_source_url or "").strip() or None,
+        selected_source_name=str(payload.selected_source_name or "").strip() or None,
+        selected_source_strategy=selected_source_strategy,
+        alert_rules=alert_rules,
+        warnings=warnings,
+    )
+
+
+def _apply_settings_snapshot(payload: SettingsSnapshotPreviewRequest) -> SettingsSnapshotResponse:
+    normalized = _normalize_settings_snapshot(payload)
+
+    products_path = CONFIG_BASE_DIR / "config" / "products.json"
+    existing_products = load_json_config(products_path)
+    product_rows = list(existing_products) if isinstance(existing_products, list) else []
+    product_rows_by_url = {
+        str(row.get("url") or "").strip(): row
+        for row in product_rows
+        if isinstance(row, dict) and str(row.get("url") or "").strip()
+    }
+    for item in normalized.source_coverage:
+        matched_row = product_rows_by_url.get(item.source_url)
+        if matched_row is None:
+            raise HTTPException(status_code=404, detail=f"未找到对应来源配置: {item.source_url}")
+
+    sites_path = CONFIG_BASE_DIR / "config" / "sites.json"
+    existing_sites = load_site_rules(sites_path)
+    site_rows = [dict(row) for row in existing_sites if isinstance(row, dict)]
+    site_rows_by_name = {
+        str(row.get("site_name") or "").strip(): row
+        for row in site_rows
+        if str(row.get("site_name") or "").strip()
+    }
+    for item in normalized.source_strategies:
+        matched_row = site_rows_by_name.get(item.source_name)
+        if matched_row is None:
+            raise HTTPException(status_code=404, detail=f"未找到对应抓取策略: {item.source_name}")
+
+    runtime_path = CONFIG_BASE_DIR / "config" / "runtime.json"
+    existing_runtime_config = load_runtime_config(runtime_path)
+    existing_runtime_config["schedule"] = {
+        "enabled": normalized.schedule.enabled,
+        "mode": normalized.schedule.mode,
+        "daily_run_time": normalized.schedule.daily_run_time or "03:30",
+        "interval_seconds": normalized.schedule.interval_seconds,
+        "fetch_mode": normalized.schedule.fetch_mode or "requests",
+        "target_scope": normalized.schedule.target_scope or "all_saved",
+        "target_province": normalized.schedule.target_province,
+        "target_city": normalized.schedule.target_city,
+    }
+    save_runtime_config(existing_runtime_config, runtime_path)
+
+    for item in normalized.source_coverage:
+        matched_row = product_rows_by_url[item.source_url]
+        matched_row["product_name"] = item.configured_name or item.source_name or item.source_url
+        matched_row["source_name"] = item.source_name or item.configured_name or item.source_url
+        matched_row["url"] = item.source_url
+        matched_row["enabled"] = item.enabled
+        matched_row["market_scope"] = item.market_scope
+        matched_row["market_category"] = item.market_category
+        matched_row["category"] = item.market_subcategory
+        matched_row["channel"] = item.channel
+        matched_row["notes"] = item.notes
+    save_json_config(products_path, product_rows)
+
+    for item in normalized.source_strategies:
+        matched_row = site_rows_by_name[item.source_name]
+        matched_row["site_name"] = item.source_name
+        matched_row["preferred_fetch_mode"] = item.preferred_fetch_mode
+        matched_row["strategy"] = item.strategy
+        matched_row["timeout_seconds"] = item.timeout_seconds
+        matched_row["retry_count"] = item.retry_count
+        matched_row["request_delay_seconds"] = item.request_delay_seconds
+        matched_row["blocked_status_codes"] = item.blocked_status_codes
+        matched_row["verify_ssl"] = item.verify_ssl
+        matched_row["api_strategy"] = item.api_strategy
+    save_site_rules(sites_path, site_rows)
+
+    save_alert_rules([
+        AlertRule(
+            target_name=item.target_name,
+            threshold=item.threshold,
+            note=item.note or "",
+            group_name=item.group_name,
+        )
+        for item in normalized.alert_rules
+    ])
+
+    clear_dataframe_cache()
+    return _build_settings_snapshot()
+
+
 def _infer_source_site_name(source_url: str) -> str:
     source_url = str(source_url or "")
     if "wbncp.com" in source_url:
@@ -2439,11 +2873,12 @@ def create_app() -> FastAPI:
     @app.get("/api/location/options")
     def location_options() -> dict:
         try:
-            rows = _fetch_latest_product_rows(limit=1000, offset=0)
-            latest_df = pd.DataFrame(rows[:1000])
+            location_df = get_db().get_crawled_location_records()
         except Exception:
-            latest_df = get_latest_df()
-        provinces, cities, province_city_map = get_location_options(latest_df)
+            location_df = get_latest_df()
+        if location_df.empty:
+            location_df = get_latest_df()
+        provinces, cities, province_city_map = get_location_options(location_df)
         return {"provinces": provinces, "cities": cities, "province_city_map": province_city_map}
 
     @app.get("/api/location/suggest")
@@ -2500,6 +2935,26 @@ def create_app() -> FastAPI:
         current_user: dict = Depends(require_admin_user),
     ) -> dict:
         return {"items": _save_global_alert_rules(payload)}
+
+    @app.get("/api/settings/snapshot", response_model=SettingsSnapshotResponse)
+    def get_settings_snapshot(
+        current_user: dict = Depends(require_admin_user),
+    ) -> SettingsSnapshotResponse:
+        return _build_settings_snapshot()
+
+    @app.post("/api/settings/snapshot/preview", response_model=SettingsSnapshotPreviewResponse)
+    def preview_settings_snapshot(
+        payload: SettingsSnapshotPreviewRequest,
+        current_user: dict = Depends(require_admin_user),
+    ) -> SettingsSnapshotPreviewResponse:
+        return _normalize_settings_snapshot(payload)
+
+    @app.post("/api/settings/snapshot/apply", response_model=SettingsSnapshotResponse)
+    def apply_settings_snapshot(
+        payload: SettingsSnapshotApplyRequest,
+        current_user: dict = Depends(require_admin_user),
+    ) -> SettingsSnapshotResponse:
+        return _apply_settings_snapshot(payload)
 
     @app.get("/api/market/summary")
     def market_summary(
@@ -2578,6 +3033,23 @@ def create_app() -> FastAPI:
                 limit=limit,
                 offset=offset,
             )
+
+        if str(keyword or "").strip():
+            try:
+                return _build_keyword_product_options_page(
+                    province=scoped_province,
+                    city=scoped_city,
+                    keyword=str(keyword or "").strip(),
+                    source_name=source_name,
+                    liancai_top_category=liancai_top_category,
+                    liancai_subcategory=liancai_subcategory,
+                    liancai_keyword=liancai_keyword,
+                    liancai_brand=liancai_brand,
+                    limit=limit,
+                    offset=offset,
+                )
+            except OperationalError as exc:
+                return cached_or_empty_product_options_page(exc)
 
         should_compute_full_options = bool(
             province
@@ -2783,6 +3255,8 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=401, detail="账号或密码错误")
         if not user.get("is_active"):
             raise HTTPException(status_code=403, detail="当前账号已停用")
+        if str(user.get("role") or "") == "supplier" and not bool((user.get("supplier_profile") or {}).get("is_active")):
+            raise HTTPException(status_code=403, detail="绑定供应商已停用")
         _clear_auth_failures("login", payload.username, client_key)
         token, expires_in = create_access_token(
             user_id=int(user["id"]),
@@ -2805,6 +3279,8 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=401, detail="账号或当前密码错误")
         if not user.get("is_active"):
             raise HTTPException(status_code=403, detail="当前账号已停用")
+        if str(user.get("role") or "") == "supplier" and not bool((user.get("supplier_profile") or {}).get("is_active")):
+            raise HTTPException(status_code=403, detail="绑定供应商已停用")
         _clear_auth_failures("password_reset", payload.username, client_key)
         password_hash = _hash_required_account_password(payload.new_password, "新密码不能为空")
         try:
@@ -2994,9 +3470,8 @@ def create_app() -> FastAPI:
     @app.post("/api/suppliers", response_model=SupplierItem)
     def create_supplier(
         payload: SupplierCreateRequest,
-        current_user: dict = Depends(require_authenticated_user),
+        current_user: dict = Depends(require_admin_user),
     ) -> SupplierItem:
-        _require_procurement_or_admin(current_user)
         supplier_name = str(payload.supplier_name or "").strip()
         existing_supplier_row = _find_supplier_row_by_name(supplier_name)
         if existing_supplier_row is not None:
@@ -3028,9 +3503,6 @@ def create_app() -> FastAPI:
                 )
         except ValueError as error:
             raise HTTPException(status_code=400, detail=str(error)) from error
-        if is_procurement_user(current_user):
-            scoped_supplier_ids = sorted({*get_procurement_supplier_ids(current_user), int(supplier_id)})
-            get_db().replace_procurement_user_suppliers(int(current_user.get("id") or 0), scoped_supplier_ids)
         supplier_df = get_db().get_suppliers(active_only=False)
         supplier_rows = _sanitize_dataframe(supplier_df)
         supplier_row = next((item for item in supplier_rows if int(item.get("id") or 0) == supplier_id), None)
@@ -3047,6 +3519,14 @@ def create_app() -> FastAPI:
         _require_procurement_or_admin(current_user)
         if is_procurement_user(current_user) and int(supplier_id) not in set(get_procurement_supplier_ids(current_user)):
             raise HTTPException(status_code=403, detail="当前账号无权修改该供应商")
+        if is_procurement_user(current_user) and (
+            payload.account_username
+            or payload.account_password
+            or payload.account_display_name
+            or payload.account_is_active is not None
+            or payload.is_active is not True
+        ):
+            raise HTTPException(status_code=403, detail="采购账号不能管理供应商账号或启停状态")
         existing_auth_rows = get_db().get_auth_user_by_supplier_id(supplier_id)
         existing_auth_user = existing_auth_rows.iloc[0].to_dict() if not existing_auth_rows.empty else None
         account_username = _normalize_account_username(payload.account_username)
@@ -3753,6 +4233,64 @@ def create_app() -> FastAPI:
             procurement_plan=_sanitize_dataframe(plan_df),
             total_cost=plan_df.attrs.get("total_cost") if plan_df is not None else None,
         )
+
+    @app.post("/api/procurement/plans", response_model=ProcurementPlanRecordResponse)
+    def save_procurement_plan(
+        payload: ProcurementPlanSaveRequest,
+        current_user: dict = Depends(require_procurement_or_admin_user),
+    ) -> ProcurementPlanRecordResponse:
+        try:
+            record_id = get_db().insert_procurement_plan_record(
+                plan_title=payload.plan_title,
+                menu_text=payload.menu_text,
+                diners=payload.diners,
+                tables=payload.tables,
+                preferred_province=payload.preferred_province,
+                preferred_city=payload.preferred_city,
+                preferred_location=payload.preferred_location,
+                ingredient_items=payload.ingredient_items,
+                procurement_plan=payload.procurement_plan,
+                total_cost=payload.total_cost,
+                created_by_user_id=int(current_user.get("id") or 0) or None,
+                created_by=get_actor_display_name(current_user),
+            )
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        rows = _sanitize_dataframe(get_db().get_procurement_plan_record(record_id))
+        if not rows:
+            raise HTTPException(status_code=500, detail="采购计划保存成功但返回数据缺失")
+        return ProcurementPlanRecordResponse(item=ProcurementPlanRecordItem(**_build_procurement_plan_record_item(rows[0])))
+
+    @app.get("/api/procurement/plans", response_model=ProcurementPlanRecordListResponse)
+    def list_procurement_plans(
+        limit: int = Query(default=12, ge=1, le=50),
+        offset: int = Query(default=0, ge=0),
+        current_user: dict = Depends(require_procurement_or_admin_user),
+    ) -> ProcurementPlanRecordListResponse:
+        owner_user_id = None if is_admin_user(current_user) else int(current_user.get("id") or 0)
+        rows = _sanitize_dataframe(
+            get_db().get_procurement_plan_records(
+                created_by_user_id=owner_user_id,
+                limit=limit,
+                offset=offset,
+            )
+        )
+        return ProcurementPlanRecordListResponse(
+            items=[ProcurementPlanRecordItem(**_build_procurement_plan_record_item(row)) for row in rows]
+        )
+
+    @app.get("/api/procurement/plans/{record_id}", response_model=ProcurementPlanRecordResponse)
+    def get_procurement_plan(
+        record_id: int,
+        current_user: dict = Depends(require_procurement_or_admin_user),
+    ) -> ProcurementPlanRecordResponse:
+        rows = _sanitize_dataframe(get_db().get_procurement_plan_record(record_id))
+        if not rows:
+            raise HTTPException(status_code=404, detail="采购计划不存在")
+        item = _build_procurement_plan_record_item(rows[0])
+        if not is_admin_user(current_user) and item.get("created_by_user_id") != int(current_user.get("id") or 0):
+            raise HTTPException(status_code=403, detail="当前账号无权查看该采购计划")
+        return ProcurementPlanRecordResponse(item=ProcurementPlanRecordItem(**item))
 
     @app.get("/api/signals/overview", response_model=SignalOverviewResponse)
     def signals_overview(

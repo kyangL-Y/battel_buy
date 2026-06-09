@@ -31,6 +31,7 @@ TABLE_ORDER = [
     "supplier_price_records",
     "supplier_settlement_records",
     "supplier_quote_actions",
+    "procurement_plan_records",
 ]
 
 PRODUCT_COLUMNS = {
@@ -167,6 +168,25 @@ SUPPLIER_SETTLEMENT_COLUMNS = {
     "payment_due_date": "TEXT",
     "payment_date": "TEXT",
     "remarks": "TEXT",
+    "created_by": "TEXT",
+    "updated_at": "TEXT",
+}
+
+PROCUREMENT_PLAN_COLUMNS = {
+    "plan_title": "TEXT",
+    "menu_text": "TEXT",
+    "diners": "INTEGER",
+    "tables": "INTEGER",
+    "preferred_province": "TEXT",
+    "preferred_city": "TEXT",
+    "preferred_location": "TEXT",
+    "ingredient_items": "TEXT",
+    "procurement_plan": "TEXT",
+    "row_count": "INTEGER",
+    "matched_count": "INTEGER",
+    "pending_count": "INTEGER",
+    "total_cost": "REAL",
+    "created_by_user_id": "INTEGER",
     "created_by": "TEXT",
     "updated_at": "TEXT",
 }
@@ -447,6 +467,15 @@ class Database:
                     )
                     """
                 )
+                conn.exec_driver_sql(
+                    """
+                    CREATE TABLE IF NOT EXISTS procurement_plan_records (
+                        id BIGINT PRIMARY KEY AUTO_INCREMENT,
+                        plan_title VARCHAR(255) NOT NULL,
+                        created_at VARCHAR(64) NOT NULL
+                    )
+                    """
+                )
             else:
                 conn.exec_driver_sql(
                     """
@@ -575,6 +604,15 @@ class Database:
                     )
                     """
                 )
+                conn.exec_driver_sql(
+                    """
+                    CREATE TABLE IF NOT EXISTS procurement_plan_records (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        plan_title TEXT NOT NULL,
+                        created_at TEXT NOT NULL
+                    )
+                    """
+                )
 
             self._ensure_columns(conn, "products", PRODUCT_COLUMNS)
             self._ensure_columns(conn, "price_records", PRICE_RECORD_COLUMNS)
@@ -592,6 +630,7 @@ class Database:
             self._ensure_columns(conn, "supplier_price_records", SUPPLIER_PRICE_COLUMNS)
             self._ensure_columns(conn, "supplier_quote_actions", SUPPLIER_QUOTE_ACTION_COLUMNS)
             self._ensure_columns(conn, "supplier_settlement_records", SUPPLIER_SETTLEMENT_COLUMNS)
+            self._ensure_columns(conn, "procurement_plan_records", PROCUREMENT_PLAN_COLUMNS)
             self._ensure_indexes(conn)
             self._ensure_default_admin(conn)
 
@@ -618,6 +657,7 @@ class Database:
                 "supplier_price_records",
                 "supplier_quote_actions",
                 "supplier_settlement_records",
+                "procurement_plan_records",
             ]
         }
         if "idx_price_records_product_captured_id" not in existing["price_records"]:
@@ -776,6 +816,13 @@ class Database:
                 else """
                 CREATE INDEX idx_supplier_settlements_supplier_status_created_id
                 ON supplier_settlement_records (supplier_id, status, created_at, id)
+                """
+            )
+        if "idx_procurement_plan_records_user_created_id" not in existing["procurement_plan_records"]:
+            conn.exec_driver_sql(
+                """
+                CREATE INDEX idx_procurement_plan_records_user_created_id
+                ON procurement_plan_records (created_by_user_id, created_at, id)
                 """
             )
 
@@ -1119,10 +1166,18 @@ class Database:
     def get_procurement_user_supplier_ids(self, user_id: int) -> list[int]:
         rows = self._read_sql(
             """
-            SELECT supplier_id
-            FROM procurement_user_suppliers
-            WHERE user_id = :user_id
-            ORDER BY supplier_id ASC
+            SELECT pus.supplier_id
+            FROM procurement_user_suppliers pus
+            JOIN suppliers s
+              ON s.id = pus.supplier_id
+             AND COALESCE(s.is_active, 0) = 1
+            JOIN auth_users u
+              ON u.id = pus.user_id
+             AND u.role = 'procurement'
+             AND COALESCE(u.is_active, 0) = 1
+             AND COALESCE(u.is_deleted, 0) = 0
+            WHERE pus.user_id = :user_id
+            ORDER BY pus.supplier_id ASC
             """,
             {"user_id": int(user_id)},
         )
@@ -1158,10 +1213,15 @@ class Database:
             return pd.DataFrame(columns=["user_id", "supplier_id"])
         statement = text(
             """
-            SELECT user_id, supplier_id
-            FROM procurement_user_suppliers
-            WHERE supplier_id IN :supplier_ids
-            ORDER BY supplier_id ASC, user_id ASC
+            SELECT pus.user_id, pus.supplier_id
+            FROM procurement_user_suppliers pus
+            JOIN auth_users u
+              ON u.id = pus.user_id
+             AND u.role = 'procurement'
+             AND COALESCE(u.is_active, 0) = 1
+             AND COALESCE(u.is_deleted, 0) = 0
+            WHERE pus.supplier_id IN :supplier_ids
+            ORDER BY pus.supplier_id ASC, pus.user_id ASC
             """
         ).bindparams(bindparam("supplier_ids", expanding=True))
         return self._read_sql(statement, {"supplier_ids": normalized_supplier_ids})
@@ -1202,7 +1262,7 @@ class Database:
             existing = conn.execute(
                 text(
                     """
-                    SELECT username
+                    SELECT username, role, supplier_id
                     FROM auth_users
                     WHERE id = :user_id
                       AND COALESCE(is_deleted, 0) = 0
@@ -1212,6 +1272,31 @@ class Database:
             ).mappings().fetchone()
             if existing is None:
                 return False
+            if str(existing.get("role") or "").strip() == "procurement":
+                conn.execute(
+                    text("DELETE FROM procurement_user_suppliers WHERE user_id = :user_id"),
+                    {"user_id": normalized_user_id},
+                )
+            if str(existing.get("role") or "").strip() == "supplier" and existing.get("supplier_id") is not None:
+                supplier_id = int(existing["supplier_id"])
+                conn.execute(
+                    text("DELETE FROM procurement_user_suppliers WHERE supplier_id = :supplier_id"),
+                    {"supplier_id": supplier_id},
+                )
+                conn.execute(
+                    text(
+                        """
+                        UPDATE suppliers
+                        SET is_active = 0,
+                            updated_at = :updated_at
+                        WHERE id = :supplier_id
+                        """
+                    ),
+                    {
+                        "supplier_id": supplier_id,
+                        "updated_at": now,
+                    },
+                )
             result = conn.execute(
                 text(
                     """
@@ -1727,6 +1812,26 @@ class Database:
             FROM price_records r
             JOIN products p ON p.id = r.product_id
             ORDER BY r.captured_at ASC
+            """
+        )
+
+    def get_crawled_location_records(self) -> pd.DataFrame:
+        return self._read_sql(
+            """
+            SELECT DISTINCT
+                p.province,
+                p.city,
+                p.market_name,
+                p.region_label,
+                p.site_name,
+                p.source_url
+            FROM products p
+            WHERE EXISTS (
+                SELECT 1
+                FROM price_records r
+                WHERE r.product_id = p.id
+                LIMIT 1
+            )
             """
         )
 
@@ -3331,6 +3436,108 @@ class Database:
             payment_due_date=payment_due_date,
             remarks=remarks,
             created_by=created_by,
+        )
+
+    def insert_procurement_plan_record(
+        self,
+        *,
+        plan_title: str,
+        menu_text: str | None,
+        diners: int,
+        tables: int,
+        preferred_province: str | None = None,
+        preferred_city: str | None = None,
+        preferred_location: str | None = None,
+        ingredient_items: list[dict[str, Any]] | None = None,
+        procurement_plan: list[dict[str, Any]] | None = None,
+        total_cost: float | None = None,
+        created_by_user_id: int | None = None,
+        created_by: str | None = None,
+    ) -> int:
+        normalized_title = str(plan_title or "").strip()
+        if not normalized_title:
+            raise ValueError("plan_title is required")
+        ingredient_rows = list(ingredient_items or [])
+        plan_rows = list(procurement_plan or [])
+        matched_count = sum(1 for row in plan_rows if str(row.get("price_status") or "") == "已匹配报价")
+        pending_count = sum(1 for row in plan_rows if str(row.get("price_status") or "") != "已匹配报价")
+        now = datetime.utcnow().isoformat()
+        with self.connect() as conn:
+            record_id = conn.execute(
+                text(
+                    """
+                    INSERT INTO procurement_plan_records (
+                        plan_title, menu_text, diners, tables,
+                        preferred_province, preferred_city, preferred_location,
+                        ingredient_items, procurement_plan,
+                        row_count, matched_count, pending_count, total_cost,
+                        created_by_user_id, created_by, created_at, updated_at
+                    ) VALUES (
+                        :plan_title, :menu_text, :diners, :tables,
+                        :preferred_province, :preferred_city, :preferred_location,
+                        :ingredient_items, :procurement_plan,
+                        :row_count, :matched_count, :pending_count, :total_cost,
+                        :created_by_user_id, :created_by, :created_at, :updated_at
+                    )
+                    """
+                ),
+                {
+                    "plan_title": normalized_title,
+                    "menu_text": str(menu_text or "").strip(),
+                    "diners": int(diners or 0),
+                    "tables": int(tables or 0),
+                    "preferred_province": preferred_province,
+                    "preferred_city": preferred_city,
+                    "preferred_location": preferred_location,
+                    "ingredient_items": json.dumps(ingredient_rows, ensure_ascii=False, default=str),
+                    "procurement_plan": json.dumps(plan_rows, ensure_ascii=False, default=str),
+                    "row_count": len(plan_rows),
+                    "matched_count": matched_count,
+                    "pending_count": pending_count,
+                    "total_cost": total_cost,
+                    "created_by_user_id": int(created_by_user_id) if created_by_user_id is not None else None,
+                    "created_by": created_by,
+                    "created_at": now,
+                    "updated_at": now,
+                },
+            ).lastrowid
+            return int(record_id)
+
+    def get_procurement_plan_records(
+        self,
+        *,
+        created_by_user_id: int | None = None,
+        limit: int = 12,
+        offset: int = 0,
+    ) -> pd.DataFrame:
+        conditions = []
+        params: dict[str, Any] = {
+            "limit": int(limit),
+            "offset": int(offset),
+        }
+        if created_by_user_id is not None:
+            conditions.append("created_by_user_id = :created_by_user_id")
+            params["created_by_user_id"] = int(created_by_user_id)
+        where_sql = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+        return self._read_sql(
+            f"""
+            SELECT *
+            FROM procurement_plan_records
+            {where_sql}
+            ORDER BY created_at DESC, id DESC
+            LIMIT :limit OFFSET :offset
+            """,
+            params,
+        )
+
+    def get_procurement_plan_record(self, record_id: int) -> pd.DataFrame:
+        return self._read_sql(
+            """
+            SELECT *
+            FROM procurement_plan_records
+            WHERE id = :record_id
+            """,
+            {"record_id": int(record_id)},
         )
 
     def invalidate_supplier_price_record(self, record_id: int, reason: str | None = None) -> int | None:

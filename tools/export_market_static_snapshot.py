@@ -58,8 +58,10 @@ def _facet_key(top_category: str | None, subcategory: str | None) -> str:
 
 
 def _build_location_options() -> dict:
-    latest_df = get_latest_df()
-    provinces, cities, province_city_map = get_location_options(latest_df)
+    location_df = get_db().get_crawled_location_records()
+    if location_df.empty:
+        location_df = get_latest_df()
+    provinces, cities, province_city_map = get_location_options(location_df)
     return {
         "provinces": provinces,
         "cities": cities,

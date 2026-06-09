@@ -429,11 +429,6 @@ const backendSecondaryEntries = computed(() => {
   }
   return [
     {
-      key: 'accounts' as const,
-      label: '账号管理',
-      detail: '管理账号和权限',
-    },
-    {
       key: 'logs' as const,
       label: '操作日志',
       detail: '查看留痕和导入导出记录',

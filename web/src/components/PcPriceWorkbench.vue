@@ -889,7 +889,11 @@
 
 
 
-            :data-testid="currentSection === 'trend' && entry.index === 0 ? 'pcw-trend-product-filter' : undefined"
+            :data-testid="currentSection === 'trend' && entry.index === 0
+              ? 'pcw-trend-product-filter'
+              : currentSection === 'summary' && isProductOptionSearchFilter(entry.index)
+                ? 'pcw-summary-product-filter'
+                : undefined"
 
 
 
@@ -986,7 +990,11 @@
 
 
 
-            <div v-if="activeFilterMenu === entry.index" class="pcw-filter-menu" role="menu">
+            <div
+              v-if="activeFilterMenu === entry.index"
+              :class="['pcw-filter-menu', { 'is-product-search-loading': isProductOptionSearchFilter(entry.index) && productSearchLoading }]"
+              role="menu"
+            >
 
 
 
@@ -1002,7 +1010,7 @@
 
 
 
-                v-if="(sectionFilterOptions[currentSection]?.[entry.index] || []).length > 1"
+                v-if="hasFilterSearchInput(entry.index)"
 
 
 
@@ -1059,6 +1067,12 @@
 
 
               />
+              <small
+                v-if="isProductOptionSearchFilter(entry.index) && (productSearchLoading || filterSearchText.trim())"
+                class="pcw-filter-loading"
+              >
+                {{ productSearchLoading ? `已加载 ${searchProductOptions?.length || 0} 个，继续搜索` : `全量匹配 ${searchProductOptions?.length || 0} 个` }}
+              </small>
 
 
 
@@ -1126,7 +1140,7 @@
 
 
 
-                :title="formatFilterLabel(option.value)"
+                :title="formatFilterDisplayLabel(entry.index, option.value)"
 
 
                 @click="selectFilterOption(entry.index, option.optionIndex)"
@@ -1145,7 +1159,7 @@
 
 
 
-                {{ formatFilterLabel(option.value) }}
+                {{ formatFilterDisplayLabel(entry.index, option.value) }}
 
 
 
@@ -1361,7 +1375,8 @@
 
 
 
-            <table>
+            <div class="pcw-summary-table-scroll">
+              <table>
 
 
 
@@ -1659,11 +1674,22 @@
 
                 </tr>
 
+                <tr v-if="props.summaryNextPageLoading" class="pcw-summary-loading-row" data-testid="pcw-summary-loading-row">
+                  <td colspan="7">
+                    <div class="pcw-summary-loading-state" role="status" aria-live="polite">
+                      <span></span>
+                      <strong>正在加载更多商品</strong>
+                    </div>
+                  </td>
+                </tr>
 
-
-
-
-
+                <tr v-else-if="props.summaryHasMoreRows" class="pcw-summary-load-sentinel-row">
+                  <td colspan="7">
+                    <div ref="summaryLoadMoreTrigger" class="pcw-summary-load-sentinel">
+                      <span>继续下滑加载更多商品</span>
+                    </div>
+                  </td>
+                </tr>
 
               </tbody>
 
@@ -1673,7 +1699,8 @@
 
 
 
-            </table>
+              </table>
+            </div>
 
 
 
@@ -1681,123 +1708,11 @@
 
 
 
-            <div class="pcw-pages">
-
-
-
-
-
-
-
-              <button type="button" :disabled="tablePage.summary <= 1" @click="changeTablePage('summary', -1)">‹</button>
-
-
-
-
-
-
-
-              <button
-
-
-
-
-
-
-
-                v-for="page in summaryPaginationPages"
-
-
-
-
-
-
-
-                :key="`summary-${page}`"
-
-
-
-
-
-
-
-                type="button"
-
-
-
-
-
-
-
-                :class="{ active: tablePage.summary === page }"
-
-
-
-
-
-
-
-                @click="setTablePage('summary', page)"
-
-
-
-
-
-
-
-              >
-
-
-
-
-
-
-
-                {{ page }}
-
-
-
-
-
-
-
-              </button>
-
-
-
-
-
-
-
-              <button type="button" :disabled="tablePage.summary >= summaryPageCount && !props.summaryHasMoreRows" @click="changeTablePage('summary', 1)">›</button>
-
-
-
-
-
-
-
-              <label class="pcw-page-size">
-                <span>每页</span>
-                <select :value="pageSize" @change="handlePageSizeChange">
-                  <option v-for="size in pageSizeOptions" :key="size" :value="size">{{ size }} 条</option>
-                </select>
-              </label>
-
-
-
-
-
-
-
-              <em>第 {{ tablePage.summary }} / {{ summaryPageCount }} 页</em>
-
-
-
-
-
-
-
+            <div class="pcw-summary-scroll-footer" aria-live="polite">
+              <span v-if="props.summaryLoading && !displayRowTotal">正在读取首批行情</span>
+              <span v-else-if="props.summaryNextPageLoading">正在追加下一批商品</span>
+              <span v-else-if="props.summaryHasMoreRows">已显示 {{ displayRowTotal }} 条，下滑继续加载</span>
+              <span v-else>已显示全部 {{ displayRowTotal }} 条</span>
             </div>
 
 
@@ -3058,7 +2973,7 @@
 
 
 
-                  <td><span :class="['pcw-thumb', row[4]]"></span>{{ row[0] }}</td><td>{{ row[1] }}</td><td>{{ row[2] }}</td><td>{{ row[3] }}</td>
+                  <td><span :class="['pcw-thumb', row[4]]"></span><span class="pcw-peer-name">{{ row[0] }}</span></td><td>{{ row[1] }}</td><td>{{ row[2] }}</td><td>{{ row[3] }}</td>
 
 
 
@@ -3951,7 +3866,10 @@
 
 
 
-            <div class="pcw-card-head"><h2>处理建议</h2></div>
+            <div class="pcw-card-head">
+              <h2>处理建议</h2>
+              <button v-if="!alertRecords.length && !alertRules.length" type="button" @click="openAlertSettingsPanel">新增提醒 ›</button>
+            </div>
 
 
 
@@ -3959,7 +3877,22 @@
 
 
 
-            <ul>
+            <div v-if="!alertRecords.length && !alertRules.length" class="pcw-alert-empty-actions">
+              <button type="button" @click="emit('refresh')">
+                <strong>刷新价格</strong>
+                <small>重新读取价格变化和预警状态</small>
+              </button>
+              <button type="button" @click="openAlertSettingsPanel">
+                <strong>新增提醒</strong>
+                <small>设置商品阈值和提醒规则</small>
+              </button>
+              <button type="button" @click="openActionPanel('规则配置', alertRules.map((item) => `${item.type} ${item.rule}`), 'alerts')">
+                <strong>查看规则</strong>
+                <small>核对当前规则来源和处置口径</small>
+              </button>
+            </div>
+
+            <ul v-else>
 
 
 
@@ -4376,6 +4309,9 @@
 
 
             :loading="Boolean(props.menuLoading)"
+            :saving="Boolean(props.menuSaving)"
+            :history-loading="Boolean(props.menuHistoryLoading)"
+            :plan-history="props.menuPlanHistory || []"
 
 
 
@@ -4416,6 +4352,9 @@
 
 
             @submit="emit('submit-menu')"
+            @save-plan="emit('save-menu-plan')"
+            @load-history="emit('load-menu-history')"
+            @open-plan-record="emit('open-menu-plan-record', $event)"
             @view-market="emit('menu-view-market', $event)"
             @fill-supplier-price="emit('menu-fill-supplier-price', $event)"
             @confirm-row="emit('menu-confirm-row', $event)"
@@ -4473,7 +4412,7 @@
 
 
 
-          <section v-if="isGeneratedModuleLayout && !isPurchaseModuleEmpty" class="pcw-module-command">
+          <section v-if="isGeneratedModuleLayout && currentSection !== 'settings' && !isPurchaseModuleEmpty" class="pcw-module-command">
 
 
 
@@ -4780,23 +4719,10 @@
             @update-source-config="emit('update-source-config', $event)"
             @update-source-strategy="emit('update-source-strategy', $event)"
             @update-global-alert-rules="emit('update-global-alert-rules', $event)"
+            @open-section="openWorkbenchActionSection($event)"
           />
 
-          <section v-if="currentSection === 'settings'" class="pcw-card pcw-settings-quick-panel">
-            <div class="pcw-card-head">
-              <h2>本页只保留来源配置和同步控制</h2>
-              <button type="button" @click="handleSettingsRunCrawl">立即同步 ›</button>
-            </div>
-            <div class="pcw-settings-quick-grid">
-              <article v-for="item in settingsQuickCards" :key="item.label" :class="item.tone">
-                <span>{{ item.label }}</span>
-                <strong>{{ item.value }}</strong>
-                <small>{{ item.detail }}</small>
-              </article>
-            </div>
-          </section>
-
-          <section v-else-if="currentSection === 'market'" class="pcw-market-health-board">
+          <section v-else-if="currentSection === 'market'" class="pcw-market-health-board" data-testid="pcw-market-workspace">
             <section class="pcw-card pcw-market-health-list">
               <div class="pcw-card-head">
                 <h2>来源健康巡检</h2>
@@ -7129,6 +7055,7 @@ import type {
 
 
   MenuPlanRow,
+  ProcurementPlanRecordItem,
 
 
 
@@ -7306,12 +7233,7 @@ const props = defineProps<{
 
 
   locationLabel: string
-
-
-
-
-
-
+  locationOptions?: string[]
 
   rows: MarketSummaryItem[]
 
@@ -7324,10 +7246,12 @@ const props = defineProps<{
   summaryLoading?: boolean
   summaryStatusText?: string
   summaryHasMoreRows?: boolean
+  summaryNextPageLoading?: boolean
   sourceCoverageRows?: SourceCoverageItem[]
   crawlStatus?: CrawlStatusItem | null
   summaryLiancaiFilter?: {
     source_name?: string
+    keyword?: string
     liancai_top_category?: string
     liancai_subcategory?: string
     liancai_keyword?: string
@@ -7354,6 +7278,9 @@ const props = defineProps<{
 
 
   productOptions?: ProductOptionItem[]
+  productOptionsTotal?: number
+  searchProductOptions?: ProductOptionItem[]
+  productSearchLoading?: boolean
 
 
 
@@ -7515,6 +7442,9 @@ const props = defineProps<{
 
 
   menuLoading?: boolean
+  menuSaving?: boolean
+  menuHistoryLoading?: boolean
+  menuPlanHistory?: ProcurementPlanRecordItem[]
   locationSuggestionLoading?: boolean
   globalAlertRules?: GlobalAlertRuleItem[]
   settingsChangeLogs?: SettingsChangeLogItem[]
@@ -7562,6 +7492,7 @@ const emit = defineEmits<{
 
 
   (event: 'select-product', value: string): void
+  (event: 'search-product-options', value: string): void
 
 
 
@@ -7610,6 +7541,9 @@ const emit = defineEmits<{
 
 
   (event: 'submit-menu'): void
+  (event: 'save-menu-plan'): void
+  (event: 'load-menu-history'): void
+  (event: 'open-menu-plan-record', recordId: number): void
   (event: 'menu-view-market', row: MenuPlanRow): void
   (event: 'menu-fill-supplier-price', row: MenuPlanRow): void
   (event: 'menu-confirm-row', row: MenuPlanRow): void
@@ -7634,7 +7568,7 @@ const emit = defineEmits<{
   (event: 'refresh'): void
   (event: 'open-procurement-auth'): void
   (event: 'logout-procurement-auth'): void
-  (event: 'update-summary-liancai-filter', value: { source_name?: string; liancai_top_category?: string; liancai_subcategory?: string; liancai_keyword?: string; liancai_brand?: string }): void
+  (event: 'update-summary-liancai-filter', value: { source_name?: string; keyword?: string; liancai_top_category?: string; liancai_subcategory?: string; liancai_keyword?: string; liancai_brand?: string }): void
 
 
 
@@ -7659,7 +7593,16 @@ const emit = defineEmits<{
 
   (event: 'run-crawl'): void
   (event: 'run-source-crawl', value: { source_url?: string; source_name?: string }): void
-  (event: 'update-crawl-schedule', value: { enabled: boolean; interval_seconds: number; fetch_mode?: 'requests' | 'playwright' }): void
+  (event: 'update-crawl-schedule', value: {
+    enabled: boolean
+    mode?: 'interval' | 'daily_time'
+    daily_run_time?: string | null
+    interval_seconds: number
+    fetch_mode?: 'requests' | 'playwright'
+    target_scope?: 'all_saved' | 'province' | 'city'
+    target_province?: string
+    target_city?: string
+  }): void
   (event: 'update-source-config', value: {
     source_url: string
     enabled: boolean
@@ -7818,6 +7761,24 @@ const activeFilterMenu = ref<number | null>(null)
 
 const filterSearchText = ref('')
 
+function isProductOptionSearchFilter(index: number | null) {
+  if (index == null) return false
+  if (currentSection.value === 'trend') return index === 0
+  if (currentSection.value !== 'summary') return false
+  return index === getSummaryProductFilterIndex()
+}
+
+function getSummaryProductFilterIndex() {
+  const options = sectionFilterOptions.value.summary || []
+  return options[4]?.[0] === '全部商品' ? 4 : 2
+}
+
+watch([filterSearchText, activeFilterMenu, currentSection], ([keyword, activeMenu]) => {
+  if (isProductOptionSearchFilter(activeMenu)) {
+    emit('search-product-options', keyword)
+  }
+})
+
 
 
 
@@ -7843,6 +7804,8 @@ const selectedLocationLabel = ref('')
 
 const pageSizeOptions = [8, 16, 32, 50, 100]
 const pageSize = ref(8)
+const summaryLoadMoreTrigger = ref<HTMLElement | null>(null)
+let summaryLoadMoreObserver: IntersectionObserver | null = null
 
 
 
@@ -9145,11 +9108,18 @@ function isFilterSelected(index: number) {
 
 function hasFilterChoices(index: number) {
   const options = sectionFilterOptions.value[currentSection.value]?.[index] || []
-  return options.length > 1
+  return options.length > 1 || isProductOptionSearchFilter(index)
+}
+
+function hasFilterSearchInput(index: number) {
+  const options = sectionFilterOptions.value[currentSection.value]?.[index] || []
+  return options.length > 1 || isProductOptionSearchFilter(index)
 }
 
 function getFilterButtonLabel(index: number, value: string) {
-  const label = formatFilterLabel(value)
+  const label = isProductOptionSearchFilter(index)
+    ? formatProductFilterLabel(value)
+    : formatFilterLabel(value)
   if (hasFilterChoices(index)) return label
   if (currentSection.value === 'summary' && index === 3) return '无更多细分'
   return label
@@ -9178,12 +9148,6 @@ function getFilterButtonTitle(index: number, value: string) {
 
 function handleFilterSelect(index: number) {
 
-
-
-
-
-
-
   activeFilterIndex.value = index
 
 
@@ -9200,7 +9164,7 @@ function handleFilterSelect(index: number) {
 
 
 
-  if (options.length <= 1) {
+  if (options.length <= 1 && !isProductOptionSearchFilter(index)) {
 
 
 
@@ -9313,6 +9277,16 @@ function selectFilterOption(index: number, optionIndex: number) {
       currentSelections[3] = 0
     }
   }
+  const summaryProductIndex = getSummaryProductFilterIndex()
+  const isSummaryProductSelection = currentSection.value === 'summary' && index === summaryProductIndex
+  const summaryFilterPayload = currentSection.value === 'summary' && (index >= 0 && index <= 3 || isSummaryProductSelection)
+    ? {
+        ...buildSummaryLiancaiFilterFromSelections(currentSelections),
+        ...(isSummaryProductSelection
+          ? { keyword: isNeutralFilter(formatFilterLabel(selectedOption)) ? '' : simplifyProductName(selectedOption) }
+          : {}),
+      }
+    : null
 
 
 
@@ -9378,8 +9352,8 @@ function selectFilterOption(index: number, optionIndex: number) {
 
   resetTablePage(currentSection.value)
 
-  if (currentSection.value === 'summary' && index >= 0 && index <= 3) {
-    emit('update-summary-liancai-filter', buildSummaryLiancaiFilterFromSelections(currentSelections))
+  if (summaryFilterPayload) {
+    emit('update-summary-liancai-filter', summaryFilterPayload)
   }
 
 
@@ -11749,22 +11723,10 @@ const quotesModuleView = computed<ModuleView>(() => {
     item.status === 'invalid' || item.invalidated_at ? '无效' : '有效',
     '查看记录',
   ])
-  const fallbackTrendRows = hasFocusedQuotes ? [] : trendQuoteRows.value.slice(0, 10).map((item) => [
-    item[3] || '--:--',
-    selectedProductName.value || props.selectedIdentityKey || '当前商品',
-    item[0] || '-',
-    item[2] || '-',
-    String(props.productSummary?.price_unit_basis || props.productSummary?.unit || '-'),
-    '-',
-    item[1] || '趋势报价',
-    '趋势参考',
-    '承接采购',
-  ])
-  const visibleRows = quoteRows.length ? quoteRows : fallbackTrendRows
   const description = hasFocusedQuotes
     ? `当前商品已承接 ${quotes.length} 条供应商报价，可直接进入采购确认。`
     : (hasTrendQuotes
-      ? '当前商品有趋势/今日报价，但尚未进入供应商报价台账，已先作为待承接参考展示。'
+      ? '当前商品只有行情趋势，还没有供应商报价台账记录。'
       : (summary ? `供应商报价库累计 ${summary.total_quote_count} 条，最近报价 ${summary.latest_quoted_at ? formatShortDateTime(summary.latest_quoted_at) : '暂无时间'}。` : '等待供应商报价记录同步。'))
 
   return {
@@ -11772,29 +11734,26 @@ const quotesModuleView = computed<ModuleView>(() => {
     title: '供应商报价',
     description,
     action: '去报价后台',
-    metrics: [
-      { label: '当前商品报价', value: String(quotes.length), detail: hasFocusedQuotes ? '已有供应商报价' : (hasTrendQuotes ? '可转采购参考' : '当前商品暂无报价'), tone: hasFocusedQuotes ? 'green' : 'warn' },
-      { label: '报价记录', value: String(summary?.total_quote_count || quotes.length), detail: '供应商报价库', tone: 'blue' },
-      { label: '有效记录', value: String(quotes.filter((item) => item.status !== 'invalid' && !item.invalidated_at).length), detail: '当前商品有效报价', tone: 'green' },
-      { label: '覆盖供应商', value: String(new Set(quotes.map((item) => item.supplier_id || item.supplier_name)).size), detail: '当前商品供应商', tone: 'blue' },
+  metrics: [
+      { label: '供应商报价', value: String(quotes.length), detail: hasFocusedQuotes ? '当前商品台账报价' : '当前商品暂无台账报价', tone: hasFocusedQuotes ? 'green' : 'warn' },
+      { label: '行情趋势', value: String(hasFocusedQuotes ? 0 : trendQuoteRows.value.length), detail: hasTrendQuotes && !hasFocusedQuotes ? '仅作价格核验，不计入供应商报价' : '行情趋势记录', tone: hasTrendQuotes && !hasFocusedQuotes ? 'blue' : 'green' },
+      { label: '有效报价', value: String(quotes.filter((item) => item.status !== 'invalid' && !item.invalidated_at).length), detail: '当前商品供应商有效报价', tone: 'green' },
+      { label: '供应商覆盖', value: String(new Set(quotes.map((item) => item.supplier_id || item.supplier_name)).size), detail: '当前商品供应商', tone: 'blue' },
     ],
-    tableTitle: hasFocusedQuotes ? '当前商品报价记录' : '当前商品趋势报价承接',
+    tableTitle: '当前商品报价记录',
     columns,
-    tableRows: withEmptyRows(visibleRows, columns),
+    tableRows: withEmptyRows(quoteRows, columns),
     sideTitle: '记录质量',
     sideItems: withEmptySideItems([
-      { label: '当前', title: hasFocusedQuotes ? `当前商品 ${quotes.length} 条报价` : '当前商品暂无台账报价', detail: hasTrendQuotes ? '趋势报价可先承接到采购动作' : '等待供应商提交报价', tone: hasFocusedQuotes ? 'green' : 'warn' },
+      { label: '当前', title: hasFocusedQuotes ? `当前商品 ${quotes.length} 条报价` : '当前商品暂无台账报价', detail: hasTrendQuotes ? '已有行情趋势，仍需供应商补价' : '等待供应商提交报价', tone: hasFocusedQuotes ? 'green' : 'warn' },
       { label: '有效', title: `有效记录 ${quotes.filter((item) => item.status !== 'invalid' && !item.invalidated_at).length} 条`, detail: '当前商品报价', tone: 'green' },
       { label: '同步', title: summary?.latest_quoted_at ? formatShortDateTime(summary.latest_quoted_at) : '暂无同步时间', detail: '最新报价时间', tone: 'blue' },
     ]),
     flowTitle: '报价流',
-    flow: withEmptyFlow((hasFocusedQuotes ? quotes.slice(0, 4).map((item) => ({
+    flow: withEmptyFlow(quotes.slice(0, 4).map((item) => ({
       step: item.quoted_at ? formatTimeOnly(item.quoted_at) : '同步',
       text: `${item.supplier_name || '供应商'} 报价 ${formatNumber(item.quote_price)} ${item.quote_unit || ''}`.trim(),
-    })) : trendQuoteRows.value.slice(0, 4).map((item) => ({
-      step: item[3] || '趋势',
-      text: `${selectedProductName.value || '当前商品'} ${item[0]} 报价 ${item[2]}，可转采购确认`,
-    })))),
+    }))),
   }
 })
 
@@ -11814,7 +11773,6 @@ const purchaseModuleView = computed<ModuleView>(() => {
   const quotes = focusedSupplierQuotes.value
   const validQuotes = quotes.filter((item) => item.quote_price != null && item.status !== 'invalid' && !item.invalidated_at)
   const lowestQuote = validQuotes.length ? [...validQuotes].sort((left, right) => Number(left.quote_price) - Number(right.quote_price))[0] : null
-  const trendFallbackRows = validQuotes.length ? [] : trendQuoteRows.value.slice(0, 3)
   const quotePurchaseRows = validQuotes.slice(0, 5).map((item) => [
     item.product_name || item.price_identity_label || selectedProductName.value || props.selectedIdentityKey || '-',
     formatCurrency(props.productSummary?.average_price || props.productSummary?.current_lowest_price),
@@ -11823,15 +11781,6 @@ const purchaseModuleView = computed<ModuleView>(() => {
     item.supplier_name || '-',
     item === lowestQuote ? '待确认·最低报价' : '待确认',
     '确认采购',
-  ])
-  const trendPurchaseRows = trendFallbackRows.map((item) => [
-    selectedProductName.value || props.selectedIdentityKey || '当前商品',
-    item[2] || '-',
-    item[2] || '-',
-    '-',
-    item[0] || item[1] || '-',
-    '待确认·趋势报价',
-    '补入采购',
   ])
   const recommendationRows = recommendations.slice(0, 8).map((item) => [
     item.ingredient_name || item.identity_key || '-',
@@ -11842,13 +11791,11 @@ const purchaseModuleView = computed<ModuleView>(() => {
     item.signal_level === 'high' || item.signal_level === 'critical' ? '待确认' : '观察中',
     '查看建议',
   ])
-  const tableRows = quotePurchaseRows.length ? quotePurchaseRows : (trendPurchaseRows.length ? trendPurchaseRows : recommendationRows)
+  const tableRows = quotePurchaseRows.length ? quotePurchaseRows : recommendationRows
   const columns = ['品名', '市场价(元/斤)', '建议采购价(元/斤)', '数量(斤)', '供应商', '状态', '操作']
   const description = quotePurchaseRows.length
     ? `已从当前商品报价记录生成 ${quotePurchaseRows.length} 条待确认采购动作，最低价供应商：${lowestQuote?.supplier_name || '待确认'}。`
-    : (trendPurchaseRows.length
-      ? '当前商品尚无供应商台账报价，已先承接趋势报价生成待确认采购动作。'
-      : (recommendations.length ? `已生成 ${recommendations.length} 条采购建议。` : '等待采购建议或当前商品报价同步。'))
+    : (recommendations.length ? `已生成 ${recommendations.length} 条采购建议。` : '等待采购建议或当前商品供应商报价同步。')
 
   return {
     kicker: '我的采购',
@@ -11857,11 +11804,11 @@ const purchaseModuleView = computed<ModuleView>(() => {
     action: '查看采购计划',
     metrics: [
       { label: '可采购报价', value: String(validQuotes.length), detail: validQuotes.length ? '当前能直接转采购确认的报价数' : '还没有可直接下单的报价', tone: validQuotes.length ? 'green' : 'warn' },
-      { label: '等你确认', value: String((quotePurchaseRows.length || trendPurchaseRows.length) || recommendations.filter((item) => item.signal_level === 'high' || item.signal_level === 'critical').length), detail: quotePurchaseRows.length ? '先确认这些当前报价' : '先处理高风险/趋势建议', tone: 'warn' },
+      { label: '等你确认', value: String(quotePurchaseRows.length || recommendations.filter((item) => item.signal_level === 'high' || item.signal_level === 'critical').length), detail: quotePurchaseRows.length ? '先确认这些当前报价' : '先处理高风险采购建议', tone: 'warn' },
       { label: '最低可下单价', value: lowestQuote ? formatCurrency(lowestQuote.quote_price) : '-', detail: lowestQuote?.supplier_name || '还没有供应商可下单价', tone: lowestQuote ? 'green' : 'blue' },
       { label: '当前建议成本', value: formatCurrency(sumNumbers(recommendations.map((item) => item.estimated_cost))), detail: recommendations.length ? '按推荐口径估算的总成本' : '当前没有可估算成本', tone: 'blue' },
     ],
-    tableTitle: quotePurchaseRows.length || trendPurchaseRows.length ? '当前商品待确认采购' : '采购任务列表',
+    tableTitle: quotePurchaseRows.length ? '当前商品待确认采购' : '采购任务列表',
     columns,
     tableRows: withEmptyRows(tableRows, columns),
     sideTitle: '采购建议',
@@ -12660,7 +12607,7 @@ const settingsModuleView = computed<ModuleView>(() => {
 
 
 
-    title: '数据同步设置',
+    title: '系统设置中心',
 
 
 
@@ -13122,8 +13069,9 @@ function normalizeLocationMenuKey(value?: string | null) {
 
 const locationOptions = computed(() => {
   const baseLabel = String(props.locationLabel || '').trim()
+  const sourceOptions = props.locationOptions?.length ? props.locationOptions : uniqueText(props.rows.map((row) => row.region_label))
   const seenKeys = new Set<string>()
-  return [baseLabel, ...uniqueText(props.rows.map((row) => row.region_label))]
+  return [baseLabel, ...sourceOptions]
     .map((item) => String(item || '').trim())
     .filter(Boolean)
     .filter((item) => {
@@ -13140,7 +13088,7 @@ const locationOptions = computed(() => {
 
 
 
-const displayLocationLabel = computed(() => selectedLocationLabel.value || locationOptions.value[0] || props.locationLabel || '本地市场')
+const displayLocationLabel = computed(() => selectedLocationLabel.value || props.locationLabel || locationOptions.value[0] || '本地市场')
 const primaryLocationOptions = computed(() => {
   const baseLabel = String(props.locationLabel || '').trim()
   const baseKey = normalizeLocationMenuKey(baseLabel)
@@ -13213,6 +13161,7 @@ const kpis = computed(() => {
 
 
   const latestLabel = latestDataDateLabel.value && latestDataDateLabel.value !== '-' ? latestDataDateLabel.value : ''
+  const productOptionTotal = Number(props.productOptionsTotal || 0)
 
 
 
@@ -13222,8 +13171,10 @@ const kpis = computed(() => {
 
     {
       label: '当前可选商品',
-      value: rows.length ? String(rows.length) : '先筛选',
-      detail: props.rows.length ? '按当前条件展示' : '等待行情同步',
+      value: productOptionTotal ? String(productOptionTotal) : rows.length ? String(rows.length) : '先筛选',
+      detail: productOptionTotal && rows.length && productOptionTotal !== rows.length
+        ? `已加载 ${rows.length} 个，搜索按全部商品`
+        : props.rows.length ? '按当前条件展示' : '等待行情同步',
       tone: 'blue',
     },
 
@@ -13540,6 +13491,13 @@ const sectionFilterOptions = computed<Record<SectionId, string[][]>>(() => {
   const selectedSummaryTop = formatFilterLabel((['全部种类', ...liancaiTopOptions])[summarySelections[1] || 0] || '')
   const selectedSummarySub = formatFilterLabel((['全部子类', ...liancaiSubOptions])[summarySelections[2] || 0] || '')
   const selectedSummaryFacet = parseSummaryFacetOption((['全部细分', ...liancaiFacetOptions])[summarySelections[3] || 0] || '')
+  const selectedSummaryProductKeyword = String((currentSummaryLiancaiFilter.value as any).keyword || '').trim()
+  const hasSummaryLiancaiFilters = Boolean(liancaiTopOptions.length)
+  const summaryProductFilterIndex = hasSummaryLiancaiFilters ? 4 : 2
+  const shouldUseRemoteSummaryProducts = currentSection.value === 'summary'
+    && activeFilterMenu.value === summaryProductFilterIndex
+    && filterSearchText.value.trim().length > 0
+
   const summaryProductRows = props.rows.filter((row) => {
     if (selectedSummarySource && !isNeutralFilter(selectedSummarySource)) {
       const sourceLabels = splitJoinedText(row.source_names || row.source_display_names || row.lowest_price_site).map((item) => normalizeLiancaiSourceLabel(item))
@@ -13561,7 +13519,12 @@ const sectionFilterOptions = computed<Record<SectionId, string[][]>>(() => {
     }
     return true
   })
-  const rowProducts = uniqueText((summaryProductRows.length ? summaryProductRows : props.rows).map((row) => simplifyProductName(row.product_name)), 400)
+  const rowProducts = shouldUseRemoteSummaryProducts
+    ? uniqueText((props.searchProductOptions || []).map((item) => item.price_identity_label), 400)
+    : uniqueText([
+        selectedSummaryProductKeyword,
+        ...(summaryProductRows.length ? summaryProductRows : props.rows).map((row) => simplifyProductName(row.product_name)),
+      ], 400)
 
 
 
@@ -13601,7 +13564,13 @@ const sectionFilterOptions = computed<Record<SectionId, string[][]>>(() => {
 
 
 
-  const optionProducts = uniqueText((props.productOptions || []).map((item) => item.price_identity_label), 400)
+  const shouldUseRemoteTrendProducts = currentSection.value === 'trend'
+    && activeFilterMenu.value === 0
+    && filterSearchText.value.trim().length > 0
+  const productFilterOptions = shouldUseRemoteTrendProducts
+    ? (props.searchProductOptions || [])
+    : (props.productOptions || [])
+  const optionProducts = uniqueText(productFilterOptions.map((item) => item.price_identity_label), 400)
 
 
 
@@ -13634,7 +13603,7 @@ const sourceCategories = uniqueText((props.sourceCoverageRows || []).map((item) 
 
 
 
-    summary: liancaiTopOptions.length
+    summary: hasSummaryLiancaiFilters
       ? [
           ['全部来源', ...rowSources],
           ['全部种类', ...liancaiTopOptions],
@@ -13651,7 +13620,7 @@ const sourceCategories = uniqueText((props.sourceCoverageRows || []).map((item) 
 
 
 
-    trend: [[`${selectedProductName.value || '全部商品'}⌄`, ...uniqueText([...optionProducts, ...rowProducts], 80)], ['全部来源', ...rowSources], ['最近7日']],
+    trend: [['全部商品', ...uniqueText([selectedProductName.value, ...optionProducts, ...rowProducts], shouldUseRemoteTrendProducts ? 200 : 80)], ['全部来源', ...rowSources], ['最近7日']],
 
 
 
@@ -13823,7 +13792,7 @@ function shouldKeepSectionKpi(sectionId: SectionId, item: { label: string; value
     return false
   }
   if (sectionId === 'market') {
-    return ['异常来源', '当前有返回', '已配置来源'].includes(item.label) || (!isZeroLike && item.label === '本轮报价记录')
+    return ['价格来源', '有新价格', '报价记录', '异常来源', '覆盖区域'].includes(item.label)
   }
   return !isZeroLike || ['采集状态', '自动同步', '高风险建议', '待补报价', '等你确认', '异常来源'].includes(item.label)
 }
@@ -13858,7 +13827,7 @@ function findTrendProductIdentityByFilterValue(value: string) {
 
 
 
-  const matchedOption = (props.productOptions || []).find((item) => {
+  const matchedOption = [...(props.searchProductOptions || []), ...(props.productOptions || [])].find((item) => {
 
 
 
@@ -14009,7 +13978,7 @@ const displayedTopFilters = computed(() => {
     .map((index) => ({ index, value: values[index] }))
 })
 
-const showWorkbenchFilter = computed(() => currentSection.value !== 'suppliers' && currentSection.value !== 'accounts')
+const showWorkbenchFilter = computed(() => !['suppliers', 'accounts', 'settings'].includes(currentSection.value))
 
 const topKpis = computed(() => {
   if (currentSection.value === 'suppliers' || currentSection.value === 'accounts') return []
@@ -18181,12 +18150,16 @@ function parseSummaryFacetOption(value: string) {
 
 function buildSummaryLiancaiFilterFromSelections(selections: number[]) {
   const options = sectionFilterOptions.value.summary || []
+  const hasLiancaiFilters = options[4]?.[0] === '全部商品'
   const sourceName = formatFilterLabel(options[0]?.[selections[0] || 0] || '')
+  const productIndex = hasLiancaiFilters ? 4 : 2
+  const productKeyword = formatFilterLabel(options[productIndex]?.[selections[productIndex] || 0] || '')
   const top = formatFilterLabel(options[1]?.[selections[1] || 0] || '')
-  const sub = formatFilterLabel(options[2]?.[selections[2] || 0] || '')
-  const facet = parseSummaryFacetOption(options[3]?.[selections[3] || 0] || '')
+  const sub = hasLiancaiFilters ? formatFilterLabel(options[2]?.[selections[2] || 0] || '') : ''
+  const facet = hasLiancaiFilters ? parseSummaryFacetOption(options[3]?.[selections[3] || 0] || '') : { keyword: '', brand: '' }
   return {
     source_name: isNeutralFilter(sourceName) ? '' : sourceName,
+    keyword: isNeutralFilter(productKeyword) ? '' : simplifyProductName(productKeyword),
     liancai_top_category: isNeutralFilter(top) ? '' : top,
     liancai_subcategory: isNeutralFilter(sub) ? '' : sub,
     liancai_keyword: facet.keyword,
@@ -18198,6 +18171,7 @@ const currentSummaryLiancaiFilter = computed(() => {
   const explicit = props.summaryLiancaiFilter || {}
   return {
     source_name: String(explicit.source_name || '').trim(),
+    keyword: String(explicit.keyword || '').trim(),
     liancai_top_category: String(explicit.liancai_top_category || explicit.liancaiTopCategory || '').trim(),
     liancai_subcategory: String(explicit.liancai_subcategory || explicit.liancaiSubcategory || '').trim(),
     liancai_keyword: String(explicit.liancai_keyword || explicit.liancaiKeyword || '').trim(),
@@ -18244,11 +18218,13 @@ function summaryDisplayRowMatchesLiancaiFilter(row: {
 }) {
   const active = currentSummaryLiancaiFilter.value as any
   const selectedSource = String(active.source_name || '').trim()
+  const selectedProductKeyword = String(active.keyword || '').trim()
   const selectedTop = String(active.liancai_top_category || '').trim()
   const selectedSub = String(active.liancai_subcategory || '').trim()
   const selectedKeyword = String(active.liancai_keyword || '').trim()
   const selectedBrand = String(active.liancai_brand || '').trim()
   if (selectedSource && !summarySourceMatches(String(row.source || ''), selectedSource)) return false
+  if (selectedProductKeyword && !String(row.name || '').includes(selectedProductKeyword)) return false
   if (selectedTop && !summaryCategoryMatches(String(row.category || ''), selectedTop)) return false
   if (selectedSub && String(row.subcategory || '').trim() !== selectedSub) return false
   if (selectedKeyword) {
@@ -18611,37 +18587,6 @@ const purchaseExecutionNotes = computed(() => {
   ]
 })
 
-const settingsQuickCards = computed(() => {
-  const sources = props.sourceCoverageRows || []
-  const enabledCount = sources.filter((item) => item.enabled !== false).length
-  const failedCount = sources.filter((item) => Number(item.failed_count || 0) > 0).length
-  const latestCapture = sources
-    .map((item) => item.latest_capture)
-    .filter((value): value is string => Boolean(value))
-    .sort()
-    .at(-1)
-  return [
-    {
-      label: '来源配置',
-      value: `${enabledCount}/${sources.length}`,
-      detail: sources.length ? '启用来源 / 全部来源' : '暂无来源配置',
-      tone: enabledCount ? 'green' : 'warn',
-    },
-    {
-      label: '异常来源',
-      value: String(failedCount),
-      detail: failedCount ? '优先检查失败来源策略' : '暂无失败来源',
-      tone: failedCount ? 'warn' : 'green',
-    },
-    {
-      label: '最近同步',
-      value: latestCapture ? formatMonthDay(latestCapture) : '-',
-      detail: latestCapture ? formatShortDateTime(latestCapture) : '等待同步',
-      tone: latestCapture ? 'blue' : 'warn',
-    },
-  ]
-})
-
 const marketHealthRows = computed(() => {
   const sources = props.sourceCoverageRows || []
   const rows = sources.length
@@ -18670,10 +18615,22 @@ const marketCoverageCards = computed(() => {
   const enabledCount = sources.filter((item) => item.enabled !== false).length
   const recordTotal = sources.reduce((sum, item) => sum + Number(item.price_record_count || item.market_count || item.source_item_count || 0), 0)
   const latestCapture = sources.map((item) => item.latest_capture).filter((value): value is string => Boolean(value)).sort().at(-1)
+  const fallbackSourceCount = new Set(
+    (props.rows || [])
+      .map((item) => item.source_names || item.source_display_names || item.lowest_price_site || item.highest_price_site || item.region_label)
+      .filter(Boolean),
+  ).size
+  const visibleSourceCount = sources.length || fallbackSourceCount
+  const visibleEnabledCount = sources.length ? enabledCount : fallbackSourceCount
+  const latestMarketCapture = (props.rows || [])
+    .map((item) => item.latest_captured_at)
+    .filter((value): value is string => Boolean(value))
+    .sort()
+    .at(-1)
   return [
-    { label: '启用来源', value: `${enabledCount}/${sources.length}`, detail: '来源同步状态', tone: enabledCount ? 'ok' : 'warn' },
+    { label: '可见来源', value: `${visibleEnabledCount}/${visibleSourceCount}`, detail: sources.length ? '来源同步状态' : '来自行情记录', tone: visibleSourceCount ? 'ok' : 'warn' },
     { label: '价格记录', value: String(recordTotal || props.rows.length), detail: '来源累计记录', tone: 'ok' },
-    { label: '最近同步', value: latestCapture ? formatMonthDay(latestCapture) : '-', detail: latestCapture ? formatShortDateTime(latestCapture) : '等待同步', tone: latestCapture ? 'ok' : 'warn' },
+    { label: '最近同步', value: latestCapture || latestMarketCapture ? formatMonthDay(latestCapture || latestMarketCapture) : '-', detail: latestCapture || latestMarketCapture ? formatShortDateTime(latestCapture || latestMarketCapture) : '等待同步', tone: latestCapture || latestMarketCapture ? 'ok' : 'warn' },
   ]
 })
 
@@ -19367,7 +19324,7 @@ const displayRowTotal = computed(() => filteredDisplayRows.value.length)
 
 
 
-const displayRows = computed(() => paginateRows(filteredDisplayRows.value, 'summary'))
+const displayRows = computed(() => filteredDisplayRows.value)
 
 
 
@@ -22281,6 +22238,66 @@ function withEmptyFlow(items: Array<{ step: string; text: string }>) {
 
 
 
+function requestNextSummaryPageFromScroll() {
+  if (currentSection.value !== 'summary') return
+  if (!props.summaryHasMoreRows || props.summaryNextPageLoading) return
+  emit('request-summary-next-page')
+}
+
+function formatFilterDisplayLabel(index: number, value: string) {
+  const label = formatFilterLabel(value)
+  if (currentSection.value === 'trend' && index === 0 && label === '全部商品') {
+    const productOptionTotal = Number(props.productOptionsTotal || 0)
+    const loadedCount = props.productOptions?.length || 0
+    if (productOptionTotal) return `全部商品（${productOptionTotal}）`
+    if (loadedCount) return `全部商品（已加载 ${loadedCount}）`
+  }
+  if (isProductOptionSearchFilter(index)) {
+    return formatProductFilterLabel(label)
+  }
+  return label
+}
+
+function formatProductFilterLabel(value: string) {
+  const label = formatFilterLabel(value)
+  if (!label || isNeutralFilter(label)) return label
+  return label
+    .split(/[|｜]/)
+    .map((part) => part.trim())
+    .filter((part) => part && !/^\d+$/.test(part))
+    .join(' | ')
+}
+
+function disconnectSummaryLoadMoreObserver() {
+  summaryLoadMoreObserver?.disconnect()
+  summaryLoadMoreObserver = null
+}
+
+async function connectSummaryLoadMoreObserver() {
+  disconnectSummaryLoadMoreObserver()
+  await nextTick()
+  const triggerElement = summaryLoadMoreTrigger.value
+  if (!triggerElement || currentSection.value !== 'summary' || !props.summaryHasMoreRows) return
+  summaryLoadMoreObserver = new IntersectionObserver((entries) => {
+    if (entries.some((entry) => entry.isIntersecting)) {
+      requestNextSummaryPageFromScroll()
+    }
+  }, {
+    root: null,
+    rootMargin: '0px 0px 220px 0px',
+    threshold: 0.1,
+  })
+  summaryLoadMoreObserver.observe(triggerElement)
+}
+
+watch(
+  () => [currentSection.value, props.summaryHasMoreRows, props.summaryNextPageLoading, displayRowTotal.value] as const,
+  () => {
+    void connectSummaryLoadMoreObserver()
+  },
+  { flush: 'post' },
+)
+
 onMounted(() => {
 
 
@@ -22298,6 +22315,7 @@ onMounted(() => {
 
 
   document.addEventListener('keydown', handleDocumentKeydown)
+  void connectSummaryLoadMoreObserver()
 
 
 
@@ -22338,6 +22356,7 @@ onBeforeUnmount(() => {
 
 
   document.removeEventListener('keydown', handleDocumentKeydown)
+  disconnectSummaryLoadMoreObserver()
 
 
 
@@ -29978,6 +29997,20 @@ th{height:36px;background:#f8fafc;color:#64748b;font-size:12px;font-weight:600}t
 
 .pcw-grid-summary-full .pcw-table-card {
   min-height: 0 !important;
+  display: flex;
+  flex-direction: column;
+}
+
+.pcw-summary-table-scroll {
+  max-height: min(64vh, 720px);
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.pcw-summary-table-scroll thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
 }
 
 .pcw-grid-summary-full .pcw-table-card td:nth-child(1),
@@ -30036,6 +30069,48 @@ th{height:36px;background:#f8fafc;color:#64748b;font-size:12px;font-weight:600}t
   line-height: 1.25;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.pcw-summary-loading-row td,
+.pcw-summary-load-sentinel-row td {
+  height: 56px !important;
+  background: #fbfdff;
+  text-align: center;
+}
+
+.pcw-summary-loading-state,
+.pcw-summary-load-sentinel,
+.pcw-summary-scroll-footer {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 34px;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.pcw-summary-loading-state span {
+  width: 14px;
+  height: 14px;
+  border: 2px solid #dbeafe;
+  border-top-color: #2563eb;
+  border-radius: 999px;
+  animation: pcw-summary-spin .8s linear infinite;
+}
+
+.pcw-summary-scroll-footer {
+  display: flex;
+  min-height: 46px;
+  border-top: 1px solid #edf1f6;
+  background: #fbfdff;
+}
+
+@keyframes pcw-summary-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* PC summary compact density: keep all core columns visible at 1366px. */
@@ -32086,6 +32161,44 @@ th{height:36px;background:#f8fafc;color:#64748b;font-size:12px;font-weight:600}t
   background: #fff;
 }
 
+.pcw-alert-empty-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  padding: 12px 14px 14px;
+}
+
+.pcw-alert-empty-actions button {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  min-height: 76px;
+  padding: 12px 14px;
+  border: 1px solid #dbeafe;
+  border-radius: 12px;
+  background: #fff;
+  text-align: left;
+}
+
+.pcw-alert-empty-actions button:hover {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+}
+
+.pcw-alert-empty-actions strong {
+  min-width: 0;
+  color: #10203d;
+  font-size: 14px;
+  line-height: 1.3;
+}
+
+.pcw-alert-empty-actions small {
+  min-width: 0;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .pcw-rule-card {
   display: grid;
   align-content: start;
@@ -32093,6 +32206,31 @@ th{height:36px;background:#f8fafc;color:#64748b;font-size:12px;font-weight:600}t
 
 .pcw-rule-card p {
   margin: 0 14px 10px;
+}
+
+.pcw-filter-loading {
+  padding: 4px 8px;
+  color: #2563eb;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.pcw-filter-menu.is-product-search-loading .pcw-filter-search {
+  padding-right: 32px;
+}
+
+.pcw-filter-menu.is-product-search-loading::after {
+  content: "";
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  width: 14px;
+  height: 14px;
+  border: 2px solid #dbeafe;
+  border-top-color: #2563eb;
+  border-radius: 999px;
+  animation: pcw-summary-spin .8s linear infinite;
+  pointer-events: none;
 }
 
 @media (max-width: 1180px) {
@@ -32108,7 +32246,8 @@ th{height:36px;background:#f8fafc;color:#64748b;font-size:12px;font-weight:600}t
   }
 
   .pcw-alert-side,
-  .pcw-alert-advice ul {
+  .pcw-alert-advice ul,
+  .pcw-alert-empty-actions {
     grid-template-columns: 1fr;
   }
 

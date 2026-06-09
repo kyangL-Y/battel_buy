@@ -137,7 +137,7 @@
               :loading="coverageLoading"
               @click="reloadSourceCoverage"
             >
-              刷新来源覆盖
+              刷新覆盖数据
             </el-button>
             <el-button
               v-if="activeSection === 'crawl'"
@@ -146,7 +146,7 @@
             >
               刷新状态
             </el-button>
-            <el-button v-else plain @click="activeSection = 'crawl'">切到数据抓取</el-button>
+            <el-button v-else plain @click="activeSection = 'crawl'">去抓取任务</el-button>
           </div>
         </section>
 
@@ -176,109 +176,120 @@
             </button>
           </div>
           <div class="platform-admin-workbench-meta">
-            <span>显示 {{ visibleSourceCoverageCards.length }} / {{ sourceCoverageCards.length }} 个来源</span>
+            <span>{{ sourceCoverageDisplayLabel }}</span>
             <el-button size="small" plain @click="clearSourceWorkbenchFilters">重置筛选</el-button>
           </div>
         </section>
 
-        <section v-if="activeSection === 'sources'" class="platform-admin-source-deck" data-testid="platform-source-coverage-list">
-          <article
-            v-for="item in visibleSourceCoverageCards"
-            :key="item.key"
-            class="platform-admin-source-card"
-            :class="{ active: selectedSourceKey === item.key }"
-            role="button"
-            tabindex="0"
-            @click="openSourceDetail(item.key)"
-            @keydown.enter="openSourceDetail(item.key)"
-            @keydown.space.prevent="openSourceDetail(item.key)"
+        <section v-if="activeSection === 'sources'" class="platform-admin-source-workspace">
+          <section class="platform-admin-source-deck" data-testid="platform-source-coverage-list">
+            <article
+              v-for="item in visibleSourceCoverageCards"
+              :key="item.key"
+              class="platform-admin-source-card"
+              :class="{ active: selectedSourceKey === item.key }"
+              role="button"
+              tabindex="0"
+              @click="openSourceDetail(item.key)"
+              @keydown.enter="openSourceDetail(item.key)"
+              @keydown.space.prevent="openSourceDetail(item.key)"
+            >
+              <div class="platform-admin-source-head">
+                <div>
+                  <strong>{{ item.title }}</strong>
+                  <span>{{ item.subtitle }}</span>
+                </div>
+                <em :class="item.tone">{{ item.status }}</em>
+              </div>
+              <div class="platform-admin-source-metrics">
+                <span><small>商品</small>{{ item.productCount }}</span>
+                <span><small>市场</small>{{ item.marketCount }}</span>
+                <span><small>最近</small>{{ item.latestCapture }}</span>
+              </div>
+              <p v-if="item.failure">{{ item.failure }}</p>
+              <button type="button" class="platform-admin-source-detail-link" @click.stop="openSourceDetail(item.key)">查看来源</button>
+            </article>
+            <article v-if="!sourceCoverageCards.length" class="platform-admin-empty">
+              <strong>{{ sourceCoverageRows.length ? '当前筛选下没有来源' : '暂无来源覆盖数据' }}</strong>
+              <span>{{ sourceCoverageRows.length ? '可以清空搜索词或切回全部状态。' : '刷新覆盖数据或先触发一次数据抓取后再查看。' }}</span>
+              <div class="platform-admin-empty-actions">
+                <el-button size="small" plain :loading="coverageLoading" @click="reloadSourceCoverage">刷新覆盖数据</el-button>
+                <el-button size="small" type="primary" @click="activeSection = 'crawl'">去抓取任务</el-button>
+              </div>
+            </article>
+            <div v-if="showSourceListToggle" class="platform-admin-source-list-toggle">
+              <button type="button" @click="mobileSourceListExpanded = !mobileSourceListExpanded">
+                {{ mobileSourceListExpanded ? '收起来源列表' : `显示全部 ${sourceCoverageCards.length} 个来源` }}
+              </button>
+            </div>
+          </section>
+
+          <aside
+            class="platform-admin-detail-drawer"
+            :class="{ 'mobile-open': Boolean(selectedSourceCoverageCard) }"
+            role="complementary"
+            aria-label="来源覆盖详情"
           >
-            <div class="platform-admin-source-head">
-              <div>
-                <strong>{{ item.title }}</strong>
-                <span>{{ item.subtitle }}</span>
+            <div v-if="sourceDetailCoverageCard" class="platform-admin-detail-panel">
+              <div class="platform-admin-detail-head">
+                <div>
+                  <span>来源详情</span>
+                  <strong>{{ sourceDetailCoverageCard.title }}</strong>
+                  <small>{{ sourceDetailCoverageCard.subtitle || '来源覆盖' }}</small>
+                </div>
+                <button type="button" @click="closeSourceDetail">清除选择</button>
               </div>
-              <em :class="item.tone">{{ item.status }}</em>
+              <div class="platform-admin-detail-metrics">
+                <article>
+                  <span>商品</span>
+                  <strong>{{ sourceDetailCoverageCard.productCount }}</strong>
+                </article>
+                <article>
+                  <span>市场/条目</span>
+                  <strong>{{ sourceDetailCoverageCard.marketCount }}</strong>
+                </article>
+                <article>
+                  <span>最近采集</span>
+                  <strong>{{ sourceDetailCoverageCard.latestCapture }}</strong>
+                </article>
+              </div>
+              <div class="platform-admin-detail-tags">
+                <span :class="sourceDetailCoverageCard.tone">{{ sourceDetailCoverageCard.status }}</span>
+                <span>{{ sourceDetailCoverageCard.source.source_tier || '未分级' }}</span>
+                <span>{{ sourceDetailCoverageCard.source.strategy || '默认策略' }}</span>
+                <span>{{ sourceDetailCoverageCard.source.enabled === false ? '已停用' : '已启用' }}</span>
+              </div>
+              <dl class="platform-admin-detail-list">
+                <div>
+                  <dt>来源地址</dt>
+                  <dd>{{ sourceDetailCoverageCard.source.source_url || '-' }}</dd>
+                </div>
+                <div>
+                  <dt>说明</dt>
+                  <dd>{{ sourceDetailCoverageCard.source.notes || '暂无说明' }}</dd>
+                </div>
+                <div>
+                  <dt>失败信息</dt>
+                  <dd>{{ sourceDetailCoverageCard.failure || '未返回失败信息' }}</dd>
+                </div>
+              </dl>
             </div>
-            <div class="platform-admin-source-metrics">
-              <span><small>商品</small>{{ item.productCount }}</span>
-              <span><small>市场</small>{{ item.marketCount }}</span>
-              <span><small>最近</small>{{ item.latestCapture }}</span>
+            <div v-else class="platform-admin-detail-panel platform-admin-detail-empty">
+              <div class="platform-admin-detail-head">
+                <div>
+                  <span>来源详情</span>
+                  <strong>等待来源数据</strong>
+                  <small>暂无可展示的来源覆盖</small>
+                </div>
+              </div>
+              <p>刷新覆盖数据，或前往抓取任务获取一次数据后再查看来源详情。</p>
+              <div class="platform-admin-empty-actions">
+                <el-button size="small" plain :loading="coverageLoading" @click="reloadSourceCoverage">刷新覆盖数据</el-button>
+                <el-button size="small" type="primary" @click="activeSection = 'crawl'">去抓取任务</el-button>
+              </div>
             </div>
-            <p v-if="item.failure">{{ item.failure }}</p>
-            <button type="button" class="platform-admin-source-detail-link" @click.stop="openSourceDetail(item.key)">查看详情</button>
-          </article>
-          <article v-if="!sourceCoverageCards.length" class="platform-admin-empty">
-            <strong>{{ sourceCoverageRows.length ? '当前筛选下没有来源' : '暂无来源覆盖数据' }}</strong>
-            <span>{{ sourceCoverageRows.length ? '可以清空搜索词或切回全部状态。' : '刷新状态或先触发一次数据获取后再查看。' }}</span>
-          </article>
-          <div v-if="showSourceListToggle" class="platform-admin-source-list-toggle">
-            <button type="button" @click="mobileSourceListExpanded = !mobileSourceListExpanded">
-              {{ mobileSourceListExpanded ? '收起来源列表' : `显示全部 ${sourceCoverageCards.length} 个来源` }}
-            </button>
-          </div>
+          </aside>
         </section>
-
-        <section v-if="activeSection === 'sources'" class="platform-admin-source-insight-grid">
-          <article v-for="item in sourceHealthCards" :key="item.label" class="platform-admin-source-insight-card">
-            <span>{{ item.label }}</span>
-            <strong>{{ item.value }}</strong>
-            <small>{{ item.detail }}</small>
-          </article>
-        </section>
-
-        <aside
-          v-if="activeSection === 'sources' && selectedSourceCoverageCard"
-          class="platform-admin-detail-drawer"
-          role="dialog"
-          aria-modal="false"
-          aria-label="来源覆盖详情"
-        >
-          <div class="platform-admin-detail-panel">
-            <div class="platform-admin-detail-head">
-              <div>
-                <span>来源详情</span>
-                <strong>{{ selectedSourceCoverageCard.title }}</strong>
-                <small>{{ selectedSourceCoverageCard.subtitle || '来源覆盖' }}</small>
-              </div>
-              <button type="button" @click="closeSourceDetail">关闭</button>
-            </div>
-            <div class="platform-admin-detail-metrics">
-              <article>
-                <span>商品</span>
-                <strong>{{ selectedSourceCoverageCard.productCount }}</strong>
-              </article>
-              <article>
-                <span>市场/条目</span>
-                <strong>{{ selectedSourceCoverageCard.marketCount }}</strong>
-              </article>
-              <article>
-                <span>最近采集</span>
-                <strong>{{ selectedSourceCoverageCard.latestCapture }}</strong>
-              </article>
-            </div>
-            <div class="platform-admin-detail-tags">
-              <span :class="selectedSourceCoverageCard.tone">{{ selectedSourceCoverageCard.status }}</span>
-              <span>{{ selectedSourceCoverageCard.source.source_tier || '未分级' }}</span>
-              <span>{{ selectedSourceCoverageCard.source.strategy || '默认策略' }}</span>
-              <span>{{ selectedSourceCoverageCard.source.enabled === false ? '已停用' : '已启用' }}</span>
-            </div>
-            <dl class="platform-admin-detail-list">
-              <div>
-                <dt>来源地址</dt>
-                <dd>{{ selectedSourceCoverageCard.source.source_url || '-' }}</dd>
-              </div>
-              <div>
-                <dt>说明</dt>
-                <dd>{{ selectedSourceCoverageCard.source.notes || '暂无说明' }}</dd>
-              </div>
-              <div>
-                <dt>失败信息</dt>
-                <dd>{{ selectedSourceCoverageCard.failure || '未返回失败信息' }}</dd>
-              </div>
-            </dl>
-          </div>
-        </aside>
 
         <section v-if="activeSection === 'crawl'" class="panel platform-admin-panel">
           <div class="platform-admin-panel-head">
@@ -329,8 +340,8 @@
           </div>
         </section>
 
-        <section class="platform-admin-support-grid">
-          <article v-for="item in platformOperationalNotes" :key="item.label" class="platform-admin-info-card">
+        <section class="platform-admin-support-grid" :class="{ compact: activeSection === 'sources' }">
+          <article v-for="item in activePlatformOperationalNotes" :key="item.label" class="platform-admin-info-card">
             <span>{{ item.label }}</span>
             <strong>{{ item.value }}</strong>
             <small>{{ item.detail }}</small>
@@ -543,6 +554,11 @@ const platformOperationalNotes = computed(() => [
     detail: adminDataLoadError.value || crawlStatus.value?.last_error || '最近状态未返回阻断性失败',
   },
 ])
+const activePlatformOperationalNotes = computed(() =>
+  activeSection.value === 'sources'
+    ? platformOperationalNotes.value.filter((item) => item.label === '异常处理')
+    : platformOperationalNotes.value,
+)
 
 const filteredSourceCoverageRows = computed(() => {
   const keyword = sourceKeyword.value.trim().toLowerCase()
@@ -603,6 +619,15 @@ const showSourceListToggle = computed(
 const selectedSourceCoverageCard = computed(() =>
   sourceCoverageCards.value.find((item) => item.key === selectedSourceKey.value) || null,
 )
+const sourceDetailCoverageCard = computed(() =>
+  selectedSourceCoverageCard.value || visibleSourceCoverageCards.value[0] || null,
+)
+const sourceCoverageDisplayLabel = computed(() => {
+  if (isMobileViewport.value && sourceCoverageCards.value.length > visibleSourceCoverageCards.value.length) {
+    return `已显示 ${visibleSourceCoverageCards.value.length} 个，全部 ${sourceCoverageCards.value.length} 个来源`
+  }
+  return `显示 ${visibleSourceCoverageCards.value.length} / ${sourceCoverageCards.value.length} 个来源`
+})
 
 watch([sourceKeyword, sourceHealthFilter], () => {
   mobileSourceListExpanded.value = false

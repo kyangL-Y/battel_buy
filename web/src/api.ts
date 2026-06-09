@@ -39,12 +39,19 @@ import type {
   ProductTrendRow,
   PricingPackagesResponse,
   ProcurementRecommendationResponse,
+  ProcurementPlanRecordListResponse,
+  ProcurementPlanRecordResponse,
+  ProcurementPlanSavePayload,
   SalesDemoContentResponse,
   SignalInsightItem,
   SignalOverviewResponse,
+  SettingsSnapshotDocument,
+  SettingsSnapshotSourceItem,
   SourceConfigUpdatePayload,
   SourceStrategyUpdatePayload,
   GlobalAlertRuleItem,
+  CrawlStatusItem,
+  SourceCoverageItem,
 } from './types'
 
 const PRODUCT_TREND_RESPONSE_CACHE_TTL_MS = 15_000
@@ -77,6 +84,88 @@ export {
   buildSnapshotProductSummary,
 }
 export type { AuthSessionState }
+
+function normalizeSettingsSnapshotSource(source: SourceCoverageItem): SettingsSnapshotSourceItem {
+  return {
+    source_url: String(source.source_url || ''),
+    source_name: source.source_name || null,
+    configured_name: source.configured_name || null,
+    enabled: source.enabled,
+    market_scope: source.market_scope || null,
+    market_category: source.market_category || null,
+    notes: source.notes || null,
+    preferred_fetch_mode: source.preferred_fetch_mode || null,
+    strategy: source.strategy || null,
+    timeout_seconds: source.timeout_seconds ?? null,
+    retry_count: source.retry_count ?? null,
+    request_delay_seconds: source.request_delay_seconds ?? null,
+    blocked_status_codes: source.blocked_status_codes || null,
+    verify_ssl: source.verify_ssl ?? null,
+    api_strategy: source.api_strategy || null,
+  }
+}
+
+export function buildSettingsSnapshotDocument(input: {
+  crawlStatus?: CrawlStatusItem | null
+  sourceCoverageRows?: SourceCoverageItem[]
+  globalAlertRules?: GlobalAlertRuleItem[]
+  selectedSourceUrl?: string | null
+}): SettingsSnapshotDocument {
+  const sourceCoverageRows = input.sourceCoverageRows || []
+  const selectedSourceUrl = String(input.selectedSourceUrl || '').trim()
+  const selectedSource = selectedSourceUrl
+    ? sourceCoverageRows.find((item) => String(item.source_url || '').trim() === selectedSourceUrl)
+    : null
+  const normalizedSourceCoverage = sourceCoverageRows.map((item) => normalizeSettingsSnapshotSource(item))
+  return {
+    schema: 'battel.settings.snapshot',
+    version: 1,
+    generated_at: new Date().toISOString(),
+    summary: {
+      source_count: normalizedSourceCoverage.length,
+      alert_rule_count: (input.globalAlertRules || []).length,
+      selected_source_name: selectedSource?.configured_name || selectedSource?.source_name || null,
+    },
+    schedule: {
+      enabled: Boolean(input.crawlStatus?.schedule_enabled),
+      mode: input.crawlStatus?.schedule_mode === 'interval' ? 'interval' : 'daily_time',
+      daily_run_time: input.crawlStatus?.schedule_daily_run_time || null,
+      interval_seconds: Number(input.crawlStatus?.schedule_interval_seconds || 86400),
+      fetch_mode: input.crawlStatus?.schedule_fetch_mode === 'playwright' ? 'playwright' : 'requests',
+      target_scope: input.crawlStatus?.target_scope === 'province' || input.crawlStatus?.target_scope === 'city'
+        ? input.crawlStatus.target_scope
+        : 'all_saved',
+      target_province: input.crawlStatus?.target_province || null,
+      target_city: input.crawlStatus?.target_city || null,
+    },
+    source_coverage: normalizedSourceCoverage,
+    selected_source_url: selectedSource?.source_url || selectedSourceUrl || null,
+    selected_source_name: selectedSource?.source_name || selectedSource?.configured_name || null,
+    selected_source_strategy: selectedSource ? normalizeSettingsSnapshotSource(selectedSource) : null,
+    alert_rules: (input.globalAlertRules || []).map((item) => ({
+      target_name: String(item.target_name || ''),
+      threshold: Number(item.threshold || 0),
+      note: item.note || null,
+      group_name: item.group_name || null,
+    })),
+  }
+}
+
+export function parseSettingsSnapshotDocument(text: string) {
+  const parsed = JSON.parse(text)
+  if (!parsed || typeof parsed !== 'object') throw new Error('快照文件格式无效')
+  if ((parsed as Record<string, unknown>).schema !== 'battel.settings.snapshot') throw new Error('快照文件标识不匹配')
+  if ((parsed as Record<string, unknown>).version !== 1) throw new Error('快照版本不受支持')
+  const snapshot = parsed as SettingsSnapshotDocument
+  if (!Array.isArray(snapshot.source_coverage) || !Array.isArray(snapshot.alert_rules)) {
+    throw new Error('快照内容不完整')
+  }
+  return snapshot
+}
+
+export function serializeSettingsSnapshotDocument(document: SettingsSnapshotDocument) {
+  return JSON.stringify(document, null, 2)
+}
 
 function shouldUseStaticSnapshot(error: unknown) {
   const status = getApiErrorStatus(error)
@@ -256,6 +345,9 @@ export async function updateCrawlSchedule(payload: {
   daily_run_time?: string | null
   interval_seconds: number
   fetch_mode?: 'requests' | 'playwright'
+  target_scope?: 'all_saved' | 'province' | 'city'
+  target_province?: string
+  target_city?: string
 }) {
   return requestWithState(async () => {
     const { data } = await api.post('/crawl/schedule', payload)
@@ -512,6 +604,30 @@ export async function fetchProcurementRecommendation(payload: {
       payload,
       { timeout: 30000 },
     )
+    return data
+  }, { affectGlobalState: false })
+}
+
+export async function saveProcurementPlanRecord(payload: ProcurementPlanSavePayload) {
+  assertProcurementApiAccess()
+  return requestWithState(async () => {
+    const { data } = await api.post<ProcurementPlanRecordResponse>('/procurement/plans', payload)
+    return data
+  }, { affectGlobalState: false })
+}
+
+export async function fetchProcurementPlanRecords(params: { limit?: number; offset?: number } = {}) {
+  assertProcurementApiAccess()
+  return requestWithState(async () => {
+    const { data } = await api.get<ProcurementPlanRecordListResponse>('/procurement/plans', { params, timeout: 30000 })
+    return data
+  }, { affectGlobalState: false })
+}
+
+export async function fetchProcurementPlanRecord(recordId: number) {
+  assertProcurementApiAccess()
+  return requestWithState(async () => {
+    const { data } = await api.get<ProcurementPlanRecordResponse>(`/procurement/plans/${recordId}`, { timeout: 30000 })
     return data
   }, { affectGlobalState: false })
 }

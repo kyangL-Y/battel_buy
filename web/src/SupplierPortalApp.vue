@@ -158,48 +158,26 @@
               <el-button plain @click="logoutAuthSession">退出登录</el-button>
             </div>
           </div>
-          <div class="supplier-portal-workbench-strip">
-            <article v-for="item in portalWorkbenchCards" :key="item.label" class="supplier-portal-workbench-card">
-              <span>{{ item.label }}</span>
-              <strong>{{ item.value }}</strong>
-              <small>{{ item.detail }}</small>
-            </article>
-          </div>
-          <section class="supplier-portal-scope-strip" aria-label="供应商范围">
-            <button
-              v-for="item in portalScopeCards"
-              :key="item.key"
-              type="button"
-              class="supplier-portal-scope-card"
-              :class="item.tone"
-              @click="runPortalScopeAction(item.key)"
-            >
-              <span>{{ item.label }}</span>
-              <strong>{{ item.value }}</strong>
-              <small>{{ item.detail }}</small>
-            </button>
-          </section>
-          <section class="supplier-portal-quote-queue" aria-label="报价状态队列">
-            <button
-              v-for="item in portalQuoteQueueCards"
-              :key="item.key"
-              type="button"
-              class="supplier-portal-quote-queue-card"
-              :class="item.tone"
-              @click="runPortalQuoteQueueAction(item.key)"
-            >
-              <span>{{ item.label }}</span>
-              <strong>{{ item.value }}</strong>
-              <small>{{ item.detail }}</small>
-            </button>
-          </section>
           <div class="supplier-portal-operations">
-            <section class="supplier-portal-todo-board" aria-label="供应商今日待办">
-              <article v-for="item in portalTodoCards" :key="item.label" class="supplier-portal-todo-card" :class="item.tone">
-                <span>{{ item.label }}</span>
-                <strong>{{ item.value }}</strong>
-                <small>{{ item.detail }}</small>
-              </article>
+            <section class="supplier-portal-command-center" aria-label="报价准备区">
+              <div class="supplier-portal-command-copy">
+                <p class="panel-kicker">今日待办</p>
+                <h3>{{ selectedProductLabel ? '继续录价' : '先选商品' }}</h3>
+                <small>{{ selectedProductLabel || '商品目录返回后，先选择一个商品再填写报价。' }}</small>
+              </div>
+              <div class="supplier-portal-command-actions">
+                <button type="button" class="primary" @click="runPortalAction('quote')">
+                  {{ portalMobileTask === 'history' ? '返回录价' : '继续录价' }}
+                </button>
+                <button type="button" @click="runPortalAction('history')">查看历史</button>
+              </div>
+              <div class="supplier-portal-readiness-grid">
+                <article v-for="item in portalReadinessCards" :key="item.label" :class="item.tone">
+                  <span>{{ item.label }}</span>
+                  <strong>{{ item.value }}</strong>
+                  <small>{{ item.detail }}</small>
+                </article>
+              </div>
             </section>
 
             <section class="supplier-portal-action-deck" aria-label="供应商快捷操作">
@@ -365,88 +343,15 @@ const portalLiveCards = computed(() => [
     detail: '提交后保存记录。',
   },
 ])
-const portalWorkbenchCards = computed(() => [
+const portalReadinessCards = computed(() => [
   {
-    label: '当前账号',
-    value: currentAuthRole.value === 'admin' ? '管理员账号' : (currentUser.value?.supplier_profile?.supplier_name || '待绑定'),
-    detail: currentAuthRole.value === 'admin' ? '管理员可帮供应商录价' : currentAuthScopeLabel.value,
-  },
-  {
-    label: '可选商品',
-    value: `${productOptions.value.length} 个`,
-    detail: selectedProductLabel.value
-      ? `当前录价商品：${selectedProductLabel.value}`
-      : (portalContextLoading.value ? '商品目录同步中' : '暂时没有可选商品'),
-  },
-  {
-    label: '保存状态',
-    value: '提交后保存',
-    detail: '提交后保存记录',
-  },
-])
-const portalScopeCards = computed(() => {
-  if (currentAuthRole.value === 'admin') {
-    return [
-      {
-        key: 'scope' as const,
-        label: '当前账号',
-        value: '管理员账号',
-        detail: '可帮供应商临时录价',
-        tone: 'primary',
-      },
-      {
-        key: 'history' as const,
-        label: '可看内容',
-        value: '全局可见',
-        detail: '历史记录按当前选中供应商显示',
-        tone: 'neutral',
-      },
-      {
-        key: 'scope' as const,
-        label: '下一步',
-        value: '继续录价',
-        detail: '确认商品和最新报价后继续录价',
-        tone: 'neutral',
-      },
-    ]
-  }
-
-  const supplierName = currentUser.value?.supplier_profile?.supplier_name || ''
-  return [
-    {
-      key: 'scope' as const,
-      label: '当前账号',
-      value: supplierName || '待绑定供应商',
-      detail: supplierName ? '仅维护当前供应商报价' : '管理员绑定档案后才能录价',
-      tone: supplierName ? 'primary' : 'warning',
-    },
-    {
-      key: 'history' as const,
-      label: '可看内容',
-      value: supplierName ? '本供应商' : '未开通',
-      detail: supplierName ? '只显示本供应商记录' : '暂无报价',
-      tone: 'neutral',
-    },
-    {
-      key: supplierName ? 'quote' as const : 'backend' as const,
-      label: '下一步',
-      value: supplierName ? '继续录价' : '等待绑定',
-      detail: supplierName ? '继续填写报价' : '请联系管理员',
-      tone: 'neutral',
-    },
-  ]
-})
-const portalQuoteQueueCards = computed(() => [
-  {
-    key: 'pending' as const,
-    label: '待处理',
+    label: '报价对象',
     value: selectedProductLabel.value ? '当前商品' : `${productOptions.value.length} 个商品`,
     detail: selectedProductLabel.value || (portalContextLoading.value ? '目录同步中' : '先从商品队列选择报价对象'),
     tone: 'primary',
   },
   {
-    key: 'drafts' as const,
-    label: '草稿',
+    label: '本机草稿',
     value: quoteDraftSummary.count ? `${quoteDraftSummary.count} 条` : '无草稿',
     detail: quoteDraftSummary.hasCurrent
       ? '当前商品有本机草稿'
@@ -454,39 +359,16 @@ const portalQuoteQueueCards = computed(() => [
     tone: quoteDraftSummary.count ? 'warning' : 'neutral',
   },
   {
-    key: 'history' as const,
-    label: '已提交',
-    value: '报价记录',
-    detail: currentAuthRole.value === 'admin' ? '先看最近记录' : '查看自己的历史报价',
+    label: '可见范围',
+    value: currentAuthRole.value === 'admin' ? '全局供应商' : (currentUser.value?.supplier_profile?.supplier_name || '待绑定供应商'),
+    detail: currentAuthRole.value === 'admin' ? '管理员可帮供应商录价' : currentAuthScopeLabel.value,
     tone: 'neutral',
   },
 ])
 const portalProductShortlist = computed(() => productOptions.value.slice(0, 8))
-const portalTodoCards = computed(() => [
-  {
-    label: '今日待办',
-    value: selectedProductLabel.value ? '补录当前商品' : '先选商品',
-    detail: selectedProductLabel.value || '商品目录返回后选择报价商品',
-    tone: 'primary',
-  },
-  {
-    label: '报价范围',
-    value: currentAuthRole.value === 'admin' ? '全局可见' : (currentUser.value?.supplier_profile?.supplier_name || '绑定供应商'),
-    detail: currentAuthScopeLabel.value,
-    tone: 'neutral',
-  },
-  {
-    label: '目录状态',
-    value: portalContextLoading.value ? '同步中' : `${productOptions.value.length} 个商品`,
-    detail: selectedIdentityKey.value ? '可直接进入录价区' : '等待商品目录',
-    tone: productOptions.value.length ? 'success' : 'warning',
-  },
-])
 const portalQuickActions = computed(() => [
-  { key: 'quote' as const, label: '快捷操作', value: portalMobileTask.value === 'history' ? '返回录价' : '继续录价', primary: true },
-  { key: 'products' as const, label: '商品', value: '切换商品' },
+  { key: 'products' as const, label: '商品目录', value: '切换商品', primary: true },
   { key: 'refresh' as const, label: '同步', value: portalContextLoading.value ? '同步中' : '刷新目录' },
-  { key: 'history' as const, label: '记录', value: '查看历史' },
 ])
 const portalStickyPrimaryLabel = computed(() => {
   if (portalMobileTask.value === 'history') return '返回录价'
@@ -599,29 +481,6 @@ function runPortalStickyPrimaryAction() {
 
 function runPortalStickySecondaryAction() {
   openSupplierBackend()
-}
-
-async function runPortalQuoteQueueAction(action: 'pending' | 'drafts' | 'history') {
-  if (action === 'history') {
-    portalMobileTask.value = 'history'
-    void scrollToQuoteDesk()
-    return
-  }
-  portalMobileTask.value = 'quote'
-  if (action === 'drafts' && !quoteDraftSummary.count) {
-    lazyElMessage.info('当前还没有本机草稿，填写报价后可先保存草稿')
-  }
-  void scrollToQuoteDesk()
-}
-
-function runPortalScopeAction(action: 'scope' | 'history' | 'backend' | 'quote') {
-  if (action === 'history') {
-    portalMobileTask.value = 'history'
-    void scrollToQuoteDesk()
-    return
-  }
-  portalMobileTask.value = 'quote'
-  void scrollToQuoteDesk()
 }
 
 function runPortalAction(action: 'quote' | 'products' | 'refresh' | 'history' | 'backend') {

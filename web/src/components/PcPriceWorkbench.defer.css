@@ -220,6 +220,64 @@
   grid-row: 3 !important;
 }
 
+.pcw-market-compare,
+.pcw-peer-products {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.pcw-market-compare table,
+.pcw-peer-products table {
+  width: 100%;
+  min-width: 0 !important;
+  table-layout: fixed;
+}
+
+.pcw-market-compare th,
+.pcw-market-compare td,
+.pcw-peer-products th,
+.pcw-peer-products td {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pcw-market-compare th:nth-child(1),
+.pcw-market-compare td:nth-child(1) { width: 22%; }
+.pcw-market-compare th:nth-child(2),
+.pcw-market-compare td:nth-child(2) { width: 14%; }
+.pcw-market-compare th:nth-child(3),
+.pcw-market-compare td:nth-child(3) { width: 18%; }
+.pcw-market-compare th:nth-child(4),
+.pcw-market-compare td:nth-child(4) { width: 14%; }
+.pcw-market-compare th:nth-child(5),
+.pcw-market-compare td:nth-child(5) { width: 18%; }
+.pcw-market-compare th:nth-child(6),
+.pcw-market-compare td:nth-child(6) { width: 14%; }
+
+.pcw-peer-products th:nth-child(1),
+.pcw-peer-products td:nth-child(1) { width: 40%; }
+.pcw-peer-products th:nth-child(2),
+.pcw-peer-products td:nth-child(2) { width: 18%; }
+.pcw-peer-products th:nth-child(3),
+.pcw-peer-products td:nth-child(3) { width: 28%; }
+.pcw-peer-products th:nth-child(4),
+.pcw-peer-products td:nth-child(4) { width: 14%; }
+
+.pcw-peer-products td:first-child {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pcw-peer-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 @media (max-width: 1180px) {
   .pcw-trend-chart-card,
   .pcw-market-compare,
@@ -931,4 +989,28 @@
 .pcw-big-chart {
   height: 236px;
   padding: 4px 14px 8px;
+}
+
+/* Trend page table guard: later generic table rules must not reintroduce 720px overflow. */
+.pcw-market-compare,
+.pcw-peer-products {
+  min-width: 0 !important;
+  overflow: hidden !important;
+}
+
+.pcw-market-compare table,
+.pcw-peer-products table {
+  width: 100% !important;
+  min-width: 0 !important;
+  table-layout: fixed !important;
+}
+
+.pcw-market-compare th,
+.pcw-market-compare td,
+.pcw-peer-products th,
+.pcw-peer-products td {
+  min-width: 0 !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

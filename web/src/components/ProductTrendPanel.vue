@@ -41,7 +41,10 @@
     </div>
     <div v-if="isMobileViewport && (currentProductLabel || selectedIdentityKey)" class="trend-mobile-current-product">
       <span>当前商品</span>
-      <strong>{{ currentProductLabel || selectedIdentityKey }}</strong>
+      <strong class="trend-mobile-product-title">
+        <span>{{ mobileProductTitleText }}</span>
+        <small v-if="mobileProductUnitLabel" class="trend-mobile-product-unit">{{ mobileProductUnitLabel }}</small>
+      </strong>
       <small>{{ currentProductCoverageLabel }}</small>
     </div>
     <div class="trend-toolbar content-toolbar">
@@ -56,6 +59,7 @@
           popper-class="trend-product-select-popper"
           :fit-input-width="false"
           filterable
+          :loading="Boolean(productSearchLoading)"
           :filter-method="handleProductFilter"
           @visible-change="handleProductSelectVisibleChange"
           @change="emit('select-product', $event)"
@@ -87,6 +91,8 @@
           class="trend-native-select trend-product-native-select"
           :value="selectedIdentityKey"
           aria-label="选择商品"
+          data-testid="trend-product-native-select"
+          @pointerdown="handleProductSelectVisibleChange(true)"
           @focus="handleProductSelectVisibleChange(true)"
           @change="handleNativeProductChange"
         >
@@ -160,7 +166,10 @@
         <div class="trend-mobile-detail-head">
           <div>
             <p class="panel-kicker">商品详情</p>
-            <h3>{{ currentProductLabel || '当前商品' }}</h3>
+            <h3 class="trend-mobile-product-title">
+              <span>{{ mobileProductTitleText }}</span>
+              <small v-if="mobileProductUnitLabel" class="trend-mobile-product-unit">{{ mobileProductUnitLabel }}</small>
+            </h3>
           </div>
           <span class="trend-mobile-hero-chip">{{ currentScopeLabel }}</span>
         </div>
@@ -648,16 +657,13 @@ const baseProductOptions = computed(() => (
 const visibleProductOptions = computed(() => {
   const query = normalizeProductSearchText(productSearchQuery.value)
   const selectedKey = String(props.selectedIdentityKey || '').trim()
+  const searchScopeOptions = query && props.searchProductOptions?.length
+    ? props.searchProductOptions
+    : baseProductOptions.value
   const selectedCandidate = selectedKey
-    ? ([...baseProductOptions.value, ...props.productOptions].find((item) => item.price_identity_key === selectedKey) || null)
+    ? ([...searchScopeOptions, ...baseProductOptions.value, ...props.productOptions].find((item) => item.price_identity_key === selectedKey) || null)
     : null
-  const selectedMatchesQuery = selectedCandidate && query
-    ? normalizeProductSearchText(
-        `${selectedCandidate.price_identity_label} ${selectedCandidate.price_identity_key} ${selectedCandidate.source_name || ''} ${selectedCandidate.source_category || ''} ${selectedCandidate.liancai_subcategory || ''}`,
-      ).includes(query)
-    : true
-  const selected = !query || selectedMatchesQuery ? selectedCandidate : null
-  const matched = baseProductOptions.value
+  const matched = searchScopeOptions
     .filter((item) => {
       if (isMobileViewport.value) return true
       if (!query) return true
@@ -667,7 +673,7 @@ const visibleProductOptions = computed(() => {
     })
     .sort((left, right) => Number(right.site_count || 0) - Number(left.site_count || 0))
     .slice(0, query ? PRODUCT_SELECT_SEARCH_LIMIT : PRODUCT_SELECT_DEFAULT_LIMIT)
-  const rows = selected ? [selected, ...matched.filter((item) => item.price_identity_key !== selected.price_identity_key)] : matched
+  const rows = selectedCandidate ? [selectedCandidate, ...matched.filter((item) => item.price_identity_key !== selectedCandidate.price_identity_key)] : matched
   return rows
 })
 const availableSites = computed(() => props.siteOptions || [])
@@ -677,6 +683,26 @@ const currentProductLabel = computed(() => currentProductOption.value?.price_ide
 const summaryIdentityKey = computed(() => String(props.productSummary?.price_identity_key || '').trim())
 const productMismatch = computed(() => Boolean(props.selectedIdentityKey && summaryIdentityKey.value && summaryIdentityKey.value !== props.selectedIdentityKey))
 const fallbackProductLabel = computed(() => currentProductLabel.value || String(props.selectedIdentityKey || '当前商品'))
+const mobileProductTitleParts = computed(() => {
+  const rawLabel = currentProductLabel.value || String(props.selectedIdentityKey || '当前商品')
+  const labelSegments = rawLabel.split('|').map((segment) => segment.trim()).filter(Boolean)
+  const unitCandidate = labelSegments.length > 1 ? labelSegments[labelSegments.length - 1] : ''
+  const hasCompactUnit = /^(斤|公斤|kg|g|克|袋|箱|件|份|个|只|瓶)$/i.test(unitCandidate)
+  const titleSegments = hasCompactUnit ? labelSegments.slice(0, -1) : labelSegments
+  const title = titleSegments.length > 1 && /^\d+(?:\.\d+)?$/.test(titleSegments[titleSegments.length - 1] || '')
+    ? titleSegments.slice(0, -1).join(' | ')
+    : titleSegments.join(' | ')
+  return {
+    title: (title || rawLabel)
+      .replace(/\s*\|\s*[^|]*\|\s*(斤|公斤|kg|g|克|袋|箱|件|份|个|只|瓶)\s*$/i, '')
+      .replace(/\s*\d+(?:\.\d+)?\s*(斤|公斤|kg|g|克|袋|箱|件|份|个|只|瓶)\s*$/i, '')
+      .replace(/\s+/g, ' ')
+      .trim(),
+    unit: hasCompactUnit ? unitCandidate : '',
+  }
+})
+const mobileProductTitleText = computed(() => mobileProductTitleParts.value.title || '当前商品')
+const mobileProductUnitLabel = computed(() => mobileProductTitleParts.value.unit)
 const currentProductCoverageLabel = computed(() => {
   const siteCount = Number(currentProductOption.value?.site_count || 0)
   return siteCount ? `已覆盖 ${siteCount} 个市场` : '市场覆盖待确认'
@@ -1009,9 +1035,7 @@ function normalizeProductSearchText(value: string) {
 
 function handleProductFilter(query: string) {
   productSearchQuery.value = query
-  if (isMobileViewport.value) {
-    emit('search-product-options', query)
-  }
+  emit('search-product-options', query)
 }
 
 function handleProductRemoteSearch(query: string) {
@@ -1941,7 +1965,34 @@ onBeforeUnmount(() => {
   color: #112033;
   font-size: 20px;
   line-height: 1.08;
-  letter-spacing: -0.04em;
+  letter-spacing: 0;
+}
+
+.trend-mobile-product-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.trend-mobile-product-title > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.trend-mobile-product-unit {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: rgba(37, 99, 235, 0.1);
+  color: #1d4ed8;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
 }
 
 .trend-mobile-hero-chip {

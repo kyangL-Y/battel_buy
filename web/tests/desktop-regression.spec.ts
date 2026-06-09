@@ -202,6 +202,7 @@ test('桌面端供应商门户独立承载供应商录价前端', async ({ page 
   await expect(page.getByTestId('supplier-admin-panel')).toBeVisible()
   await expect(page.getByTestId('quote-product-required-alert')).toContainText('请先选择商品')
   await expect(page.getByTestId('quote-import-template')).toBeVisible()
+  await expect(page.getByRole('button', { name: '提交报价' })).toHaveCount(0)
 })
 
 test('桌面端无登录态从首页供应商入口进入供应商门户', async ({ page }) => {
@@ -359,11 +360,126 @@ test('桌面端 PC 工作台模块切换展示真实数据字段', async ({ page
   await expect(page.getByRole('columnheader', { name: '食材 / 菜品' })).toBeVisible()
 
   await page.locator('[data-section-id="settings"]').click()
-  await expect(page.getByRole('heading', { name: '数据同步设置' })).toBeVisible()
-  await expect(page.getByText('最近同步').first()).toBeVisible()
+  await expect(page.getByRole('heading', { name: '同步、来源、策略、提醒统一管理' })).toBeVisible()
+  await expect(page.getByText('最近结果').first()).toBeVisible()
   await expect(page.getByText('自动同步').first()).toBeVisible()
-  await expect(page.getByText('数据同步设置')).toBeVisible()
+  await expect(page.getByText('权限账号')).toBeVisible()
   await expectNoHorizontalOverflow(page)
+})
+
+test('桌面端趋势商品统计显示后端总数且搜索覆盖当前条件全部商品', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1024 })
+  await seedMockProcurementSession(page)
+  const summaryRequests: string[] = []
+  const trendRequests: string[] = []
+  const productOptionRequests: string[] = []
+  const loadedProducts = Array.from({ length: 40 }, (_, index) => ({
+    price_identity_key: `loaded-${index}|kg`,
+    price_identity_label: `已加载商品 ${index} | 公斤`,
+    site_count: 2,
+    price_observation_count: 2,
+  }))
+  const remoteSaltProduct = {
+    price_identity_key: 'remote-salt|kg',
+    price_identity_label: '盐商品 | 123456 | 公斤',
+    site_count: 2,
+    price_observation_count: 2,
+  }
+
+  await page.route('**/api/market/summary**', async (route) => {
+    const url = new URL(route.request().url())
+    summaryRequests.push(url.search)
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [], total: 0, limit: 40, offset: 0, has_more: false }) })
+  })
+  await page.route('**/api/product/options**', async (route) => {
+    const url = new URL(route.request().url())
+    productOptionRequests.push(url.search)
+    const keyword = url.searchParams.get('keyword') || ''
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        items: keyword === '盐' ? [remoteSaltProduct] : loadedProducts,
+        total: keyword === '盐' ? 1 : 41,
+        limit: Number(url.searchParams.get('limit') || 300),
+        offset: Number(url.searchParams.get('offset') || 0),
+        has_more: keyword !== '盐',
+      }),
+    })
+  })
+  await page.route('**/api/product/*/summary**', async (route) => {
+    const url = new URL(route.request().url())
+    const parts = url.pathname.split('/')
+    const identityKey = decodeURIComponent(parts[parts.length - 2] || '')
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({ item: { price_identity_key: identityKey, product_name: identityKey, site_count: 2 } }),
+    })
+  })
+  await page.route('**/api/product/*/trend**', async (route) => {
+    const url = new URL(route.request().url())
+    const parts = url.pathname.split('/')
+    const identityKey = decodeURIComponent(parts[parts.length - 2] || '')
+    trendRequests.push(identityKey)
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        mode: 'cross_market',
+        items: [
+          {
+            price_identity_key: identityKey,
+            product_name: identityKey,
+            trend_series_key: 'market-a',
+            trend_series_name: '市场 A',
+            market_name: '市场 A',
+            current_price: 2.1,
+            captured_at: '2026-04-10T10:00:00',
+          },
+        ],
+      }),
+    })
+  })
+  await page.route('**/api/product/*/supplier-quotes**', async (route) => {
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [], summary: null }) })
+  })
+
+  await page.goto('/?mode=workspace&tab=summary', { waitUntil: 'domcontentloaded' })
+  await expect(page.getByTestId('pc-price-workbench')).toBeVisible({ timeout: 15_000 })
+  await expect(page.locator('.pcw-kpis article').filter({ hasText: '当前可选商品' })).toContainText('41')
+
+  const summaryProductFilter = page.getByTestId('pcw-summary-product-filter')
+  await summaryProductFilter.getByRole('button').first().click()
+  await summaryProductFilter.locator('.pcw-filter-search').fill('盐')
+  await expect.poll(() => productOptionRequests.some((requestSearch) => {
+    const params = new URLSearchParams(requestSearch)
+    return params.get('keyword') === '盐' && params.get('limit') === '40' && params.get('offset') === '0'
+  })).toBeTruthy()
+  await expect(summaryProductFilter.locator('.pcw-filter-loading')).toContainText('全量匹配 1 个')
+  await expect(summaryProductFilter.getByRole('menuitemradio')).toContainText('盐商品 | 公斤')
+  await expect(summaryProductFilter.getByRole('menuitemradio')).not.toContainText('123456')
+  await page.getByRole('menuitemradio', { name: '盐商品 | 公斤' }).click()
+  await expect.poll(() => summaryRequests.some((requestSearch) => {
+    const params = new URLSearchParams(requestSearch)
+    return params.get('keyword') === '盐商品'
+  })).toBeTruthy()
+
+  await page.locator('[data-section-id="trend"]').click()
+  const productFilter = page.getByTestId('pcw-trend-product-filter')
+  await expect(productFilter.getByRole('button').first()).toContainText('全部商品', { timeout: 30_000 })
+  await productFilter.getByRole('button').first().click()
+  await expect(page.getByRole('menuitemradio', { name: '全部商品（41）' })).toBeVisible()
+  await productFilter.locator('.pcw-filter-search').fill('盐')
+
+  await expect.poll(() => productOptionRequests.some((requestSearch) => {
+    const params = new URLSearchParams(requestSearch)
+    return params.get('keyword') === '盐' && params.get('limit') === '40' && params.get('offset') === '0'
+  })).toBeTruthy()
+  await expect(productFilter.locator('.pcw-filter-loading')).toContainText('全量匹配 1 个')
+  await expect(productFilter.getByRole('menuitemradio')).toContainText('盐商品 | 公斤')
+  await expect(productFilter.getByRole('menuitemradio')).not.toContainText('123456')
+  await page.getByRole('menuitemradio', { name: '盐商品 | 公斤' }).click()
+
+  await expect.poll(() => trendRequests).toContain(remoteSaltProduct.price_identity_key)
+  await expect(page.locator('.pcw-trend-chart-card')).toContainText(remoteSaltProduct.price_identity_key)
 })
 
 test('桌面端 PC 工作台供应商管理后台入口进入独立后台路径', async ({ page, request }) => {
@@ -564,11 +680,11 @@ test('桌面端 PC 工作台侧边栏模块可通过 URL section 刷新恢复', 
   expect(new URL(page.url()).searchParams.get('section')).toBe('market')
 
   await page.locator('[data-section-id="settings"]').click()
-  await expect(page.getByRole('heading', { name: '数据同步设置' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '同步、来源、策略、提醒统一管理' })).toBeVisible()
   expect(new URL(page.url()).searchParams.get('section')).toBe('settings')
 
   await page.reload({ waitUntil: 'domcontentloaded' })
-  await expect(page.getByRole('heading', { name: '数据同步设置' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '同步、来源、策略、提醒统一管理' })).toBeVisible()
   await expect(page.locator('[data-section-id="settings"]')).toHaveClass(/active/)
 })
 
@@ -1069,10 +1185,11 @@ test('桌面端管理员可登录并进入供应商管理台', async ({ page }) 
   await page.getByRole('button', { name: '进入录价区' }).click()
   await expect(page.getByTestId('quote-product-required-alert')).toContainText('请先选择商品')
   const submitQuoteButton = page.getByRole('button', { name: '提交报价' })
-  await expect(submitQuoteButton).toBeDisabled()
+  await expect(submitQuoteButton).toHaveCount(0)
   await page.getByRole('combobox', { name: /先选择本次报价商品/ }).click({ force: true })
   await page.locator('.el-select-dropdown:visible .el-select-dropdown__item').first().click()
   await expect(page.getByTestId('quote-product-required-alert')).toHaveCount(0)
+  await expect(submitQuoteButton).toBeVisible()
   await expect(submitQuoteButton).toBeEnabled()
 })
 

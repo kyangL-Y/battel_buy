@@ -51,7 +51,8 @@
           <footer>
             <button type="button" @click="emit('open-trend', item)">看趋势</button>
             <button type="button" @click="emit('open-supplier', item)">找报价</button>
-            <button type="button" class="primary" @click="emit('acknowledge', item)">标记处理</button>
+            <button v-if="item.state === '待处理'" type="button" class="primary" @click="emit('acknowledge', item)">标记处理</button>
+            <button v-else type="button" disabled>已观察</button>
             <time>{{ item.time }}</time>
           </footer>
         </article>

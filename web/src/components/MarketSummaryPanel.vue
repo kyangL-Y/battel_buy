@@ -139,20 +139,22 @@
         >
           <div class="market-mobile-feed-card-main">
             <div class="market-mobile-feed-thumb-shell">
+              <span :class="['market-mobile-food-thumb', resolveMobileFoodThumb(row)]"></span>
               <img
                 v-if="resolveMobileFoodImage(row) && !brokenMobileFoodImageUrls.has(resolveMobileFoodImage(row))"
                 :src="resolveMobileFoodImage(row)"
-                :alt="row.product_name"
+                :alt="formatMobileSummaryProductName(row.product_name)"
+                :class="{ 'is-loaded': loadedMobileFoodImageUrls.has(resolveMobileFoodImage(row)) }"
                 class="market-mobile-feed-thumb-image"
                 loading="lazy"
                 decoding="async"
+                @load="handleMobileFoodImageLoad(resolveMobileFoodImage(row))"
                 @error="handleMobileFoodImageError(resolveMobileFoodImage(row))"
-                @click.stop="openImagePreview(resolveMobileFoodImage(row), row.product_name)"
+                @click.stop="openImagePreview(resolveMobileFoodImage(row), formatMobileSummaryProductName(row.product_name))"
               />
-              <span v-else :class="['market-mobile-food-thumb', resolveMobileFoodThumb(row)]"></span>
             </div>
             <div>
-              <strong>{{ row.product_name }}</strong>
+              <strong>{{ formatMobileSummaryProductName(row.product_name) }}</strong>
               <small>{{ formatCategoryPath(row) }}</small>
             </div>
           </div>
@@ -453,6 +455,7 @@ const imagePreviewUrl = ref('')
 const imagePreviewTitle = ref('')
 const keywordDraft = ref(props.keyword)
 const brokenMobileFoodImageUrls = reactive(new Set<string>())
+const loadedMobileFoodImageUrls = reactive(new Set<string>())
 let keywordCommitTimer: number | undefined
 
 const { isMobileViewport, isNarrowViewport } = useViewport()
@@ -961,6 +964,16 @@ function buildActionLabel(row: MarketSummaryItem) {
   return '查看单市场行情'
 }
 
+function formatMobileSummaryProductName(value?: string | null) {
+  const rawValue = String(value || '').trim()
+  if (!rawValue) return '未命名商品'
+  return rawValue
+    .replace(/\s*\|\s*[^|]*\|\s*(斤|公斤|kg|g|克|袋|箱|件|份|个|只|瓶)\s*$/i, '')
+    .replace(/\s*\d+(?:\.\d+)?\s*(斤|公斤|kg|g|克|袋|箱|件|份|个|只|瓶)\s*$/i, '')
+    .replace(/\s+/g, ' ')
+    .trim() || rawValue
+}
+
 function resolveMobileFoodImage(row: MarketSummaryItem) {
   return String(row.image_url || '').trim()
 }
@@ -969,6 +982,13 @@ function handleMobileFoodImageError(url: string | null | undefined) {
   const normalizedUrl = String(url || '').trim()
   if (!normalizedUrl) return
   brokenMobileFoodImageUrls.add(normalizedUrl)
+  loadedMobileFoodImageUrls.delete(normalizedUrl)
+}
+
+function handleMobileFoodImageLoad(url: string | null | undefined) {
+  const normalizedUrl = String(url || '').trim()
+  if (!normalizedUrl) return
+  loadedMobileFoodImageUrls.add(normalizedUrl)
 }
 
 function resolveMobileFoodThumb(row: MarketSummaryItem) {
@@ -2032,6 +2052,7 @@ watch(sourceTierFilterOptions, (options) => {
 }
 
 .market-mobile-feed-thumb-shell {
+  position: relative;
   display: grid;
   place-items: center;
   width: 44px;
@@ -2043,11 +2064,19 @@ watch(sourceTierFilterOptions, (options) => {
 }
 
 .market-mobile-feed-thumb-image {
+  position: absolute;
+  inset: 0;
   display: block;
   width: 100%;
   height: 100%;
   object-fit: cover;
   cursor: zoom-in;
+  opacity: 0;
+  transition: opacity .16s ease;
+}
+
+.market-mobile-feed-thumb-image.is-loaded {
+  opacity: 1;
 }
 
 .market-image-preview-shell {
