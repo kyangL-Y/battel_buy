@@ -2974,11 +2974,28 @@ def create_app() -> FastAPI:
 
         supplier_scope_ids = _visible_supplier_ids_for_price_read(current_user)
         scoped_province, scoped_city = _resolve_procurement_location_scope(current_user, province, city)
+        normalized_keyword = str(keyword or "").strip()
+        if supplier_scope_ids is None and normalized_keyword:
+            try:
+                return _build_fast_market_summary_page(
+                    province=scoped_province,
+                    city=scoped_city,
+                    keyword=normalized_keyword,
+                    source_name=source_name,
+                    liancai_top_category=liancai_top_category,
+                    liancai_subcategory=liancai_subcategory,
+                    liancai_keyword=liancai_keyword,
+                    liancai_brand=liancai_brand,
+                    limit=limit,
+                    offset=offset,
+                )
+            except OperationalError:
+                logger.warning("商品关键词汇总快速查询失败，回退完整汇总", exc_info=True)
         market_summary_arguments = (
             _product_response_cache_bucket(),
             scoped_province,
             scoped_city,
-            str(keyword or "").strip(),
+            normalized_keyword,
             str(source_name or "").strip(),
             str(liancai_top_category or ""),
             str(liancai_subcategory or ""),
