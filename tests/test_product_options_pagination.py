@@ -67,6 +67,37 @@ def test_product_options_first_page_uses_fast_page_provider_without_market_summa
     assert [item["price_identity_key"] for item in payload["items"]] == ["item-0", "item-1"]
 
 
+def test_market_summary_keyword_uses_fast_page_provider_without_full_summary(monkeypatch):
+    called: list[str] = []
+
+    def fake_fast_page(**kwargs):
+        called.append("fast_page")
+        return {
+            "items": [{"product_name": "盐商品", "lowest_price": 1.2}],
+            "total": None,
+            "limit": kwargs["limit"],
+            "offset": kwargs["offset"],
+            "has_more": False,
+        }
+
+    def fake_market_summary(*args):
+        called.append("market_summary")
+        raise AssertionError("keyword summary must not wait for full market summary before returning data")
+
+    monkeypatch.setattr(api_app_module, "_build_fast_market_summary_page", fake_fast_page)
+    monkeypatch.setattr(api_app_module, "_cached_market_summary_payload", fake_market_summary)
+
+    client = _create_procurement_client(monkeypatch)
+    response = client.get("/api/market/summary?keyword=%E7%9B%90&limit=40&offset=0")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert called == ["fast_page"]
+    assert payload["items"] == [{"product_name": "盐商品", "lowest_price": 1.2}]
+    assert payload["limit"] == 40
+    assert payload["offset"] == 0
+
+
 def test_product_options_endpoint_forwards_source_name_to_fast_page(monkeypatch):
     captured: dict[str, object] = {}
 
