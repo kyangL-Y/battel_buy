@@ -136,12 +136,29 @@ export interface SettingsSnapshotDocument {
 }
 
 export interface SettingsChangeLogItem {
-  id: string
+  id: string | number
   changed_at: string
   actor_name: string
-  action_type: 'schedule' | 'source_config' | 'source_strategy' | 'global_alert'
+  actor_user_id?: number | null
+  action_type: 'schedule' | 'source_config' | 'source_strategy' | 'global_alert' | 'snapshot'
   target_name: string
   summary: string
+  change_payload?: Record<string, unknown>
+}
+
+export interface SettingsChangeLogCreatePayload {
+  action_type: SettingsChangeLogItem['action_type']
+  target_name: string
+  summary: string
+  change_payload?: Record<string, unknown>
+}
+
+export interface SettingsChangeLogResponse {
+  item: SettingsChangeLogItem
+}
+
+export interface SettingsChangeLogListResponse {
+  items: SettingsChangeLogItem[]
 }
 
 export interface ProductOptionItem {

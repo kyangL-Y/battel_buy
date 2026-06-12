@@ -32,6 +32,7 @@ TABLE_ORDER = [
     "supplier_settlement_records",
     "supplier_quote_actions",
     "procurement_plan_records",
+    "settings_change_records",
 ]
 
 PRODUCT_COLUMNS = {
@@ -189,6 +190,16 @@ PROCUREMENT_PLAN_COLUMNS = {
     "created_by_user_id": "INTEGER",
     "created_by": "TEXT",
     "updated_at": "TEXT",
+}
+
+SETTINGS_CHANGE_COLUMNS = {
+    "action_type": "TEXT",
+    "target_name": "TEXT",
+    "summary": "TEXT",
+    "actor_user_id": "INTEGER",
+    "actor_name": "TEXT",
+    "change_payload": "TEXT",
+    "created_at": "TEXT",
 }
 
 AUTH_USER_COLUMNS = {
@@ -476,6 +487,16 @@ class Database:
                     )
                     """
                 )
+                conn.exec_driver_sql(
+                    """
+                    CREATE TABLE IF NOT EXISTS settings_change_records (
+                        id BIGINT PRIMARY KEY AUTO_INCREMENT,
+                        action_type VARCHAR(64) NOT NULL,
+                        target_name VARCHAR(255) NOT NULL,
+                        created_at VARCHAR(64) NOT NULL
+                    )
+                    """
+                )
             else:
                 conn.exec_driver_sql(
                     """
@@ -613,6 +634,16 @@ class Database:
                     )
                     """
                 )
+                conn.exec_driver_sql(
+                    """
+                    CREATE TABLE IF NOT EXISTS settings_change_records (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        action_type TEXT NOT NULL,
+                        target_name TEXT NOT NULL,
+                        created_at TEXT NOT NULL
+                    )
+                    """
+                )
 
             self._ensure_columns(conn, "products", PRODUCT_COLUMNS)
             self._ensure_columns(conn, "price_records", PRICE_RECORD_COLUMNS)
@@ -631,6 +662,7 @@ class Database:
             self._ensure_columns(conn, "supplier_quote_actions", SUPPLIER_QUOTE_ACTION_COLUMNS)
             self._ensure_columns(conn, "supplier_settlement_records", SUPPLIER_SETTLEMENT_COLUMNS)
             self._ensure_columns(conn, "procurement_plan_records", PROCUREMENT_PLAN_COLUMNS)
+            self._ensure_columns(conn, "settings_change_records", SETTINGS_CHANGE_COLUMNS)
             self._ensure_indexes(conn)
             self._ensure_default_admin(conn)
 
@@ -658,6 +690,7 @@ class Database:
                 "supplier_quote_actions",
                 "supplier_settlement_records",
                 "procurement_plan_records",
+                "settings_change_records",
             ]
         }
         if "idx_price_records_product_captured_id" not in existing["price_records"]:
@@ -823,6 +856,13 @@ class Database:
                 """
                 CREATE INDEX idx_procurement_plan_records_user_created_id
                 ON procurement_plan_records (created_by_user_id, created_at, id)
+                """
+            )
+        if "idx_settings_change_records_created_id" not in existing["settings_change_records"]:
+            conn.exec_driver_sql(
+                """
+                CREATE INDEX idx_settings_change_records_created_id
+                ON settings_change_records (created_at, id)
                 """
             )
 
@@ -3538,6 +3578,63 @@ class Database:
             WHERE id = :record_id
             """,
             {"record_id": int(record_id)},
+        )
+
+    def insert_settings_change_record(
+        self,
+        *,
+        action_type: str,
+        target_name: str,
+        summary: str,
+        actor_user_id: int | None = None,
+        actor_name: str | None = None,
+        change_payload: dict[str, Any] | None = None,
+    ) -> int:
+        normalized_action = str(action_type or "").strip()
+        normalized_target = str(target_name or "").strip()
+        normalized_summary = str(summary or "").strip()
+        if not normalized_action:
+            raise ValueError("action_type is required")
+        if not normalized_target:
+            raise ValueError("target_name is required")
+        now = datetime.utcnow().isoformat()
+        with self.connect() as conn:
+            record_id = conn.execute(
+                text(
+                    """
+                    INSERT INTO settings_change_records (
+                        action_type, target_name, summary,
+                        actor_user_id, actor_name, change_payload, created_at
+                    ) VALUES (
+                        :action_type, :target_name, :summary,
+                        :actor_user_id, :actor_name, :change_payload, :created_at
+                    )
+                    """
+                ),
+                {
+                    "action_type": normalized_action,
+                    "target_name": normalized_target,
+                    "summary": normalized_summary,
+                    "actor_user_id": int(actor_user_id) if actor_user_id is not None else None,
+                    "actor_name": actor_name,
+                    "change_payload": json.dumps(change_payload or {}, ensure_ascii=False, default=str),
+                    "created_at": now,
+                },
+            ).lastrowid
+            return int(record_id)
+
+    def get_settings_change_records(self, limit: int = 12, offset: int = 0) -> pd.DataFrame:
+        return self._read_sql(
+            """
+            SELECT *
+            FROM settings_change_records
+            ORDER BY created_at DESC, id DESC
+            LIMIT :limit OFFSET :offset
+            """,
+            {
+                "limit": int(limit),
+                "offset": int(offset),
+            },
         )
 
     def invalidate_supplier_price_record(self, record_id: int, reason: str | None = None) -> int | None:

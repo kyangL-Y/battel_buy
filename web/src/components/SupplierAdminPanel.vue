@@ -21,6 +21,13 @@
       </div>
       <span class="supplier-session-banner-role">{{ sessionRoleLabel }}</span>
     </div>
+    <div
+      v-if="!isEmbeddedBackendMode || (mobile && isQuoteWorkspace)"
+      class="supplier-scope-summary"
+      aria-label="供应商范围"
+    >
+      <span v-for="item in supplierScopeSummaryItems" :key="item">{{ item }}</span>
+    </div>
 
     <div v-if="mobile && !resolvedBackendSection" class="supplier-mobile-focus-card">
       <div class="supplier-mobile-focus-copy">
@@ -694,6 +701,38 @@
             <strong>请先选择商品</strong>
             <span>未从 URL 或商品下拉明确选择商品前，不能提交报价，避免误录到错误商品。</span>
           </div>
+          <div v-if="shouldShowQuoteEntryFields && canSwitchQuoteSupplier && isQuoteWorkspace" class="supplier-quote-supplier-switcher">
+            <label class="supplier-form-field">
+              <span>切换供应商</span>
+              <el-select :model-value="selectedSupplierId" filterable placeholder="切换供应商" @change="selectSupplier">
+                <el-option
+                  v-for="item in filteredSuppliers"
+                  :key="item.id"
+                  :label="item.supplier_name"
+                  :value="item.id"
+                />
+              </el-select>
+            </label>
+            <div v-if="selectedSupplier" class="supplier-quote-supplier-meta">
+              <span class="supplier-workbench-chip">{{ selectedSupplier.market_category || '待分类' }}</span>
+              <span class="supplier-workbench-chip">{{ selectedSupplier.channel || '待标渠道' }}</span>
+              <span class="supplier-workbench-chip">{{ selectedSupplier.quote_count || 0 }} 条报价</span>
+              <span class="supplier-workbench-chip">{{ formatTime(selectedSupplier.latest_quoted_at) }}</span>
+            </div>
+          </div>
+          <div v-if="shouldShowQuoteEntryFields" class="supplier-form-grid supplier-quote-product-grid">
+            <label class="supplier-form-field supplier-form-field-full">
+              <span>先选择本次报价商品</span>
+              <el-select :model-value="selectedProductKey" filterable placeholder="先选择本次报价商品" @change="handleProductChange">
+                <el-option
+                  v-for="item in productOptions"
+                  :key="item.price_identity_key"
+                  :label="item.price_identity_label"
+                  :value="item.price_identity_key"
+                />
+              </el-select>
+            </label>
+          </div>
           <div v-if="showProcurementCarryTask" class="supplier-procurement-carry-task" data-testid="supplier-procurement-carry-task">
             <div>
               <span>{{ procurementCarryTaskKicker }}</span>
@@ -759,38 +798,6 @@
               <el-button size="small" plain @click="restoreQuoteDraft">恢复草稿</el-button>
               <el-button size="small" text @click="clearCurrentQuoteDraft()">删除</el-button>
             </div>
-          </div>
-          <div v-if="shouldShowQuoteEntryFields && canSwitchQuoteSupplier && isQuoteWorkspace" class="supplier-quote-supplier-switcher">
-            <label class="supplier-form-field">
-              <span>切换供应商</span>
-              <el-select :model-value="selectedSupplierId" filterable placeholder="切换供应商" @change="selectSupplier">
-                <el-option
-                  v-for="item in filteredSuppliers"
-                  :key="item.id"
-                  :label="item.supplier_name"
-                  :value="item.id"
-                />
-              </el-select>
-            </label>
-            <div v-if="selectedSupplier" class="supplier-quote-supplier-meta">
-              <span class="supplier-workbench-chip">{{ selectedSupplier.market_category || '待分类' }}</span>
-              <span class="supplier-workbench-chip">{{ selectedSupplier.channel || '待标渠道' }}</span>
-              <span class="supplier-workbench-chip">{{ selectedSupplier.quote_count || 0 }} 条报价</span>
-              <span class="supplier-workbench-chip">{{ formatTime(selectedSupplier.latest_quoted_at) }}</span>
-            </div>
-          </div>
-          <div v-if="shouldShowQuoteEntryFields" class="supplier-form-grid supplier-quote-product-grid">
-            <label class="supplier-form-field supplier-form-field-full">
-              <span>先选择本次报价商品</span>
-              <el-select :model-value="selectedProductKey" filterable placeholder="先选择本次报价商品" @change="handleProductChange">
-                <el-option
-                  v-for="item in productOptions"
-                  :key="item.price_identity_key"
-                  :label="item.price_identity_label"
-                  :value="item.price_identity_key"
-                />
-              </el-select>
-            </label>
           </div>
           <div v-if="shouldShowQuoteValueFields && productCompareSummary" class="supplier-compare-summary">
             <article class="supplier-compare-card">
@@ -2442,6 +2449,12 @@ const sessionScopeLabel = computed(() => {
   return selectedSupplier.value?.supplier_name
     ? `当前范围：${selectedSupplier.value.supplier_name}`
     : '当前范围：仅限已绑定供应商数据'
+})
+const supplierScopeSummaryItems = computed(() => {
+  if (isAdminSession.value) {
+    return ['当前账号', '管理员账号', '全局可见']
+  }
+  return ['当前账号', selectedSupplier.value?.supplier_name || '绑定供应商', '仅当前供应商可见']
 })
 const panelHeaderTitle = computed(() => (
   isProcurementSupplierManagement.value ? '供应商管理' : '供应商与录价管理'
@@ -9800,6 +9813,26 @@ void reloadAll()
   white-space: nowrap;
 }
 
+.supplier-scope-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: -6px 0 14px;
+}
+
+.supplier-scope-summary span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 0 9px;
+  border: 1px solid rgba(37, 99, 235, 0.14);
+  border-radius: 999px;
+  background: rgba(239, 246, 255, 0.78);
+  color: #1e3a8a;
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .supplier-session-empty-card {
   display: flex;
   align-items: center;
@@ -10649,6 +10682,19 @@ void reloadAll()
 .supplier-admin-panel.layout-quote-focus.embedded .supplier-quote-selection-alert {
   padding: 9px 10px;
   border-radius: 10px;
+}
+
+.supplier-admin-panel.layout-quote-focus.embedded .supplier-quote-supplier-switcher {
+  gap: 8px;
+  padding: 9px 10px;
+  border-radius: 10px;
+}
+
+.supplier-admin-panel.layout-quote-focus.embedded .supplier-quote-product-grid {
+  padding: 10px;
+  border: 1px solid #bfdbfe;
+  border-radius: 10px;
+  background: #f8fbff;
 }
 
 .supplier-admin-panel.layout-quote-focus.embedded .supplier-quote-readiness-card {

@@ -36,6 +36,24 @@
       <article><span>采购未分配</span><strong>{{ unassignedProcurementCount }}</strong></article>
     </div>
 
+    <div v-if="procurementAssignmentUsers.length" class="account-procurement-assignment">
+      <div>
+        <span>采购分配待办</span>
+        <strong>{{ procurementAssignmentTitle }}</strong>
+        <p>{{ procurementAssignmentDescription }}</p>
+      </div>
+      <div class="account-procurement-assignment-list">
+        <button
+          v-for="procurementUser in procurementAssignmentUsers"
+          :key="procurementUser.id"
+          type="button"
+          @click="selectUser(procurementUser)"
+        >
+          {{ procurementUser.display_name || procurementUser.username }}
+        </button>
+      </div>
+    </div>
+
     <div class="account-admin-layout">
       <section class="account-admin-list">
         <button
@@ -157,8 +175,8 @@
         </div>
 
         <div class="account-detail-note">
-          <strong>权限边界</strong>
-          <p>管理员账号可进入采购端和账号中心；采购账号可先只分配行情地区，未绑定供应商时供应商相关模块为空；供应商账号只能进入绑定供应商的数据范围。</p>
+          <strong>{{ accountDetailNoteTitle }}</strong>
+          <p>{{ accountDetailNoteDescription }}</p>
         </div>
 
         <div class="account-detail-actions">
@@ -253,6 +271,39 @@ const inactiveCount = computed(() => users.value.filter((item) => item.is_active
 const unassignedProcurementCount = computed(() =>
   users.value.filter((item) => item.role === 'procurement' && !(item.procurement_supplier_ids || []).length).length,
 )
+const unassignedProcurementUsers = computed(() =>
+  users.value.filter((item) => item.role === 'procurement' && item.is_active !== false && !(item.procurement_supplier_ids || []).length),
+)
+const procurementUsers = computed(() =>
+  users.value.filter((item) => item.role === 'procurement' && item.is_active !== false),
+)
+const procurementAssignmentUsers = computed(() =>
+  (unassignedProcurementUsers.value.length ? unassignedProcurementUsers.value : procurementUsers.value).slice(0, 4),
+)
+const procurementAssignmentTitle = computed(() => {
+  if (unassignedProcurementUsers.value.length) return `${unassignedProcurementUsers.value.length} 个采购账号还没有供应商范围`
+  return '采购账号已分配供应商范围'
+})
+const procurementAssignmentDescription = computed(() => {
+  if (unassignedProcurementUsers.value.length) {
+    return '先点账号，再在右侧“租户供应商”里勾选该采购账号能看的供应商。'
+  }
+  return '点击采购账号可复核或调整“租户供应商”，供应商相关页面只会显示分配给该采购账号的供应商。'
+})
+const accountDetailNoteTitle = computed(() => {
+  if (accountForm.role === 'procurement') return '采购账号分配'
+  if (accountForm.role === 'supplier') return '供应商账号边界'
+  return '管理员权限边界'
+})
+const accountDetailNoteDescription = computed(() => {
+  if (accountForm.role === 'procurement') {
+    return '采购账号可以先设置默认行情地区；必须在“租户供应商”里分配供应商后，供应商管理、报价记录和采购相关模块才会显示对应供应商数据。'
+  }
+  if (accountForm.role === 'supplier') {
+    return '供应商账号必须绑定一个启用供应商；登录后只能查看和维护该供应商自己的报价、结算和操作记录。'
+  }
+  return '管理员账号可进入采购端和账号中心，维护账号、供应商范围、启停状态和密码重置。'
+})
 const marketScopeOptions = computed(() => {
   const scopeOptions: MarketScopeOption[] = []
   const usedValues = new Set<string>()
@@ -558,6 +609,7 @@ onMounted(async () => {
 .account-admin-head,
 .account-admin-toolbar,
 .account-admin-stats,
+.account-procurement-assignment,
 .account-admin-layout,
 .account-card,
 .account-admin-detail,
@@ -570,7 +622,8 @@ onMounted(async () => {
 
 .account-admin-head,
 .account-admin-toolbar,
-.account-admin-stats {
+.account-admin-stats,
+.account-procurement-assignment {
   padding: 16px 18px;
 }
 
@@ -635,6 +688,47 @@ onMounted(async () => {
 .account-admin-stats strong {
   color: #020817;
   font-size: 24px;
+}
+
+.account-procurement-assignment {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 0.54fr);
+  align-items: center;
+  gap: 14px;
+  border-color: #bfdbfe;
+  background: linear-gradient(135deg, #f8fbff, #eff6ff);
+}
+
+.account-procurement-assignment span,
+.account-procurement-assignment p {
+  margin: 0;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.account-procurement-assignment strong {
+  display: block;
+  margin: 4px 0;
+  color: #0f172a;
+  font-size: 16px;
+}
+
+.account-procurement-assignment-list {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.account-procurement-assignment-list button {
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid #bfdbfe;
+  border-radius: 999px;
+  background: #fff;
+  color: #1d4ed8;
+  font-weight: 700;
+  cursor: pointer;
 }
 
 .account-admin-layout {
@@ -777,9 +871,14 @@ onMounted(async () => {
 
   .account-admin-toolbar,
   .account-admin-stats,
+  .account-procurement-assignment,
   .account-admin-layout,
   .account-form-grid {
     grid-template-columns: 1fr;
+  }
+
+  .account-procurement-assignment-list {
+    justify-content: flex-start;
   }
 
   .account-admin-list {

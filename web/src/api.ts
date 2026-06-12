@@ -46,6 +46,9 @@ import type {
   SignalInsightItem,
   SignalOverviewResponse,
   SettingsSnapshotDocument,
+  SettingsChangeLogCreatePayload,
+  SettingsChangeLogListResponse,
+  SettingsChangeLogResponse,
   SettingsSnapshotSourceItem,
   SourceConfigUpdatePayload,
   SourceStrategyUpdatePayload,
@@ -312,8 +315,25 @@ export async function fetchGlobalAlertRules() {
 }
 
 export async function updateGlobalAlertRules(items: GlobalAlertRuleItem[]) {
+  assertProcurementApiAccess()
   return requestWithState(async () => {
     const { data } = await api.put<{ items: GlobalAlertRuleItem[] }>('/settings/alerts', { items })
+    return data
+  }, { affectGlobalState: false })
+}
+
+export async function fetchSettingsChangeLogs(params: { limit?: number; offset?: number } = {}) {
+  assertProcurementApiAccess()
+  return requestWithState(async () => {
+    const { data } = await api.get<SettingsChangeLogListResponse>('/settings/change-logs', { params, timeout: 30000 })
+    return data
+  }, { affectGlobalState: false })
+}
+
+export async function createSettingsChangeLog(payload: SettingsChangeLogCreatePayload) {
+  assertProcurementApiAccess()
+  return requestWithState(async () => {
+    const { data } = await api.post<SettingsChangeLogResponse>('/settings/change-logs', payload, { timeout: 30000 })
     return data
   }, { affectGlobalState: false })
 }

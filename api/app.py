@@ -89,6 +89,10 @@ from api.schemas import (
     GlobalAlertRuleItem,
     SourceStrategyUpdateRequest,
     SettingsSnapshotApplyRequest,
+    SettingsChangeRecordCreateRequest,
+    SettingsChangeRecordItem,
+    SettingsChangeRecordListResponse,
+    SettingsChangeRecordResponse,
     SettingsSnapshotPreviewRequest,
     SettingsSnapshotPreviewResponse,
     SettingsSnapshotResponse,
@@ -1934,6 +1938,55 @@ def _build_procurement_plan_record_item(row: dict) -> dict:
     }
 
 
+def _build_settings_change_record_item(row: dict) -> dict:
+    payload = {}
+    try:
+        parsed_payload = json.loads(str(row.get("change_payload") or "{}"))
+        if isinstance(parsed_payload, dict):
+            payload = parsed_payload
+    except json.JSONDecodeError:
+        payload = {}
+    return {
+        "id": int(row.get("id") or 0),
+        "changed_at": str(row.get("created_at") or "").strip(),
+        "action_type": str(row.get("action_type") or "").strip(),
+        "target_name": str(row.get("target_name") or "").strip(),
+        "summary": str(row.get("summary") or "").strip(),
+        "actor_user_id": int(row.get("actor_user_id")) if row.get("actor_user_id") is not None else None,
+        "actor_name": row.get("actor_name"),
+        "change_payload": payload,
+    }
+
+
+def _record_settings_change(
+    *,
+    current_user: dict,
+    action_type: str,
+    target_name: str,
+    summary: str,
+    change_payload: dict | None = None,
+) -> SettingsChangeRecordItem:
+    try:
+        record_id = get_db().insert_settings_change_record(
+            action_type=action_type,
+            target_name=target_name,
+            summary=summary,
+            actor_user_id=int(current_user.get("id") or 0) or None,
+            actor_name=get_actor_display_name(current_user),
+            change_payload=change_payload or {},
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    rows = _sanitize_dataframe(get_db().get_settings_change_records(limit=1, offset=0))
+    record_row = next((row for row in rows if int(row.get("id") or 0) == record_id), None)
+    if not record_row:
+        record_rows = _sanitize_dataframe(get_db().get_settings_change_records(limit=20, offset=0))
+        record_row = next((row for row in record_rows if int(row.get("id") or 0) == record_id), None)
+    if not record_row:
+        raise HTTPException(status_code=500, detail="设置审计记录成功但返回数据缺失")
+    return SettingsChangeRecordItem(**_build_settings_change_record_item(record_row))
+
+
 def _extract_failure_reason(error: Exception) -> str:
     if isinstance(error, HTTPException):
         return str(error.detail)
@@ -2868,6 +2921,13 @@ def create_app() -> FastAPI:
             target_province=payload.target_province,
             target_city=payload.target_city,
         )
+        _record_settings_change(
+            current_user=current_user,
+            action_type="schedule",
+            target_name="系统同步设置",
+            summary=f"{'开启' if payload.enabled else '关闭'}自动同步，模式 {payload.mode}，间隔 {payload.interval_seconds} 秒",
+            change_payload=payload.model_dump(),
+        )
         return {"item": item}
 
     @app.get("/api/location/options")
@@ -2916,14 +2976,30 @@ def create_app() -> FastAPI:
         payload: SourceConfigUpdateRequest,
         current_user: dict = Depends(require_admin_user),
     ) -> dict:
-        return {"item": _update_source_config_item(payload)}
+        item = _update_source_config_item(payload)
+        _record_settings_change(
+            current_user=current_user,
+            action_type="source_config",
+            target_name=payload.configured_name or payload.source_url,
+            summary=f"{'启用' if payload.enabled else '停用'}来源，范围 {payload.market_scope or '未填写'}",
+            change_payload=payload.model_dump(),
+        )
+        return {"item": item}
 
     @app.put("/api/source/strategy")
     def update_source_strategy(
         payload: SourceStrategyUpdateRequest,
         current_user: dict = Depends(require_admin_user),
     ) -> dict:
-        return {"item": _update_source_strategy_item(payload)}
+        item = _update_source_strategy_item(payload)
+        _record_settings_change(
+            current_user=current_user,
+            action_type="source_strategy",
+            target_name=payload.source_name,
+            summary=f"采价方式 {payload.preferred_fetch_mode or '未填写'}，策略 {payload.strategy or '未填写'}",
+            change_payload=payload.model_dump(),
+        )
+        return {"item": item}
 
     @app.get("/api/settings/alerts")
     def get_global_alert_rules(current_user: dict = Depends(require_procurement_or_admin_user)) -> dict:
@@ -2934,7 +3010,40 @@ def create_app() -> FastAPI:
         payload: GlobalAlertRulesUpdateRequest,
         current_user: dict = Depends(require_admin_user),
     ) -> dict:
-        return {"items": _save_global_alert_rules(payload)}
+        items = _save_global_alert_rules(payload)
+        _record_settings_change(
+            current_user=current_user,
+            action_type="global_alert",
+            target_name="全局预警规则",
+            summary=f"保存 {len(items)} 条全局预警规则",
+            change_payload={"items": [item.model_dump() for item in payload.items]},
+        )
+        return {"items": items}
+
+    @app.get("/api/settings/change-logs", response_model=SettingsChangeRecordListResponse)
+    def list_settings_change_logs(
+        limit: int = Query(default=12, ge=1, le=50),
+        offset: int = Query(default=0, ge=0),
+        current_user: dict = Depends(require_admin_user),
+    ) -> SettingsChangeRecordListResponse:
+        rows = _sanitize_dataframe(get_db().get_settings_change_records(limit=limit, offset=offset))
+        return SettingsChangeRecordListResponse(
+            items=[SettingsChangeRecordItem(**_build_settings_change_record_item(row)) for row in rows]
+        )
+
+    @app.post("/api/settings/change-logs", response_model=SettingsChangeRecordResponse)
+    def create_settings_change_log(
+        payload: SettingsChangeRecordCreateRequest,
+        current_user: dict = Depends(require_admin_user),
+    ) -> SettingsChangeRecordResponse:
+        item = _record_settings_change(
+            current_user=current_user,
+            action_type=payload.action_type,
+            target_name=payload.target_name,
+            summary=payload.summary,
+            change_payload=payload.change_payload,
+        )
+        return SettingsChangeRecordResponse(item=item)
 
     @app.get("/api/settings/snapshot", response_model=SettingsSnapshotResponse)
     def get_settings_snapshot(
@@ -2954,7 +3063,15 @@ def create_app() -> FastAPI:
         payload: SettingsSnapshotApplyRequest,
         current_user: dict = Depends(require_admin_user),
     ) -> SettingsSnapshotResponse:
-        return _apply_settings_snapshot(payload)
+        snapshot = _apply_settings_snapshot(payload)
+        _record_settings_change(
+            current_user=current_user,
+            action_type="snapshot",
+            target_name="设置快照导入",
+            summary=f"应用快照：{snapshot.summary.source_count} 个来源，{snapshot.summary.alert_rule_count} 条预警",
+            change_payload={"summary": snapshot.summary.model_dump()},
+        )
+        return snapshot
 
     @app.get("/api/market/summary")
     def market_summary(

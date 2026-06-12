@@ -194,6 +194,20 @@
               </button>
             </section>
 
+            <section class="supplier-portal-quote-queue" aria-label="报价状态队列">
+              <button
+                v-for="item in portalQuoteQueueItems"
+                :key="item.key"
+                type="button"
+                class="supplier-portal-quote-queue-card"
+                :class="{ active: item.key === portalMobileTask }"
+                @click="runPortalAction(item.action)"
+              >
+                <span>{{ item.label }}</span>
+                <strong>{{ item.value }}</strong>
+              </button>
+            </section>
+
             <section ref="productStripRef" class="supplier-portal-product-strip" aria-label="商品快捷切换">
               <button
                 v-for="item in portalProductShortlist"
@@ -369,6 +383,26 @@ const portalProductShortlist = computed(() => productOptions.value.slice(0, 8))
 const portalQuickActions = computed(() => [
   { key: 'products' as const, label: '商品目录', value: '切换商品', primary: true },
   { key: 'refresh' as const, label: '同步', value: portalContextLoading.value ? '同步中' : '刷新目录' },
+])
+const portalQuoteQueueItems = computed(() => [
+  {
+    key: 'quote' as const,
+    action: 'quote' as const,
+    label: '待处理',
+    value: selectedProductLabel.value || '选择商品',
+  },
+  {
+    key: 'draft' as const,
+    action: 'quote' as const,
+    label: '草稿',
+    value: quoteDraftSummary.count ? `${quoteDraftSummary.count} 条` : '无草稿',
+  },
+  {
+    key: 'history' as const,
+    action: 'history' as const,
+    label: '已提交',
+    value: '查看记录',
+  },
 ])
 const portalStickyPrimaryLabel = computed(() => {
   if (portalMobileTask.value === 'history') return '返回录价'

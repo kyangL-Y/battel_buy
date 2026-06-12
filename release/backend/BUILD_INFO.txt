@@ -1,4 +1,5 @@
-Build time: 2026-06-09 17:53:40
-Frontend: release/dist
-Backend: release/backend
-Notes: procurement plan persistence and latest UI audit build
+BUILD_TIME=2026-06-10 00:48:12 +08:00
+GIT_HEAD=d30bac6
+FRONTEND_DIST_FILES=51
+BACKEND_SYNC=api/app.py,api/schemas.py,storage/database.py
+RELEASE_DIST_SYNC=web/dist

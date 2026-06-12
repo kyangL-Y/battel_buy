@@ -6,7 +6,7 @@
         <h2>需要看一下的价格</h2>
         <span>{{ alertHeroText }}</span>
       </div>
-      <strong>{{ alertBadge }}</strong>
+      <strong>{{ alertDisplayBadge }}</strong>
     </header>
 
     <div class="market-mobile-alert-pills" aria-label="价格提醒概览">
@@ -19,10 +19,10 @@
     <section class="market-mobile-alert-card market-mobile-alert-feed-card">
       <div class="market-mobile-section-head">
         <div>
-          <p class="market-mobile-kicker">待办</p>
-          <h2>今天要看的商品</h2>
+          <p class="market-mobile-kicker">{{ alertFeedKicker }}</p>
+          <h2>{{ alertFeedTitle }}</h2>
         </div>
-        <span>{{ alertRows.length }} 条</span>
+        <span>{{ alertFeedCountLabel }}</span>
       </div>
 
       <div class="market-mobile-alert-list">
@@ -165,8 +165,25 @@ const brokenAlertImageUrls = reactive(new Set<string>())
 const alertHeroText = computed(() => {
   const pending = props.alertRows.filter((item) => item.state === '待处理').length
   if (pending > 0) return `当前有 ${pending} 个商品需要查看。`
-  if (props.alertRows.length > 0) return '当前没有急需处理的商品。'
+  if (props.alertRows.length > 0) return `当前有 ${props.alertRows.length} 个商品正在观察。`
   return '暂无价格提醒。'
+})
+
+const alertDisplayBadge = computed(() => props.alertRows.filter((item) => item.state === '待处理').length)
+
+const alertFeedKicker = computed(() => {
+  const pending = props.alertRows.filter((item) => item.state === '待处理').length
+  return pending > 0 ? '待办' : '关注'
+})
+
+const alertFeedTitle = computed(() => {
+  const pending = props.alertRows.filter((item) => item.state === '待处理').length
+  return pending > 0 ? '今天要处理的商品' : '今天观察的商品'
+})
+
+const alertFeedCountLabel = computed(() => {
+  const pending = props.alertRows.filter((item) => item.state === '待处理').length
+  return pending > 0 ? `${pending} 条待处理` : `${props.alertRows.length} 条观察`
 })
 
 const alertSummaryPills = computed(() => {
@@ -174,7 +191,7 @@ const alertSummaryPills = computed(() => {
   const up = props.alertRows.filter((item) => item.tone === 'up').length
   const down = props.alertRows.filter((item) => item.tone === 'down').length
   return [
-    { label: '待处理', value: String(pending || props.alertBadge), tone: 'pending' },
+    { label: '待处理', value: String(pending), tone: 'pending' },
     { label: '上涨', value: String(up), tone: 'up' },
     { label: '下跌', value: String(down), tone: 'down' },
   ]

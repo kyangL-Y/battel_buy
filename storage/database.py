@@ -3580,6 +3580,63 @@ class Database:
             {"record_id": int(record_id)},
         )
 
+    def insert_settings_change_record(
+        self,
+        *,
+        action_type: str,
+        target_name: str,
+        summary: str,
+        actor_user_id: int | None = None,
+        actor_name: str | None = None,
+        change_payload: dict[str, Any] | None = None,
+    ) -> int:
+        normalized_action = str(action_type or "").strip()
+        normalized_target = str(target_name or "").strip()
+        normalized_summary = str(summary or "").strip()
+        if not normalized_action:
+            raise ValueError("action_type is required")
+        if not normalized_target:
+            raise ValueError("target_name is required")
+        now = datetime.utcnow().isoformat()
+        with self.connect() as conn:
+            record_id = conn.execute(
+                text(
+                    """
+                    INSERT INTO settings_change_records (
+                        action_type, target_name, summary,
+                        actor_user_id, actor_name, change_payload, created_at
+                    ) VALUES (
+                        :action_type, :target_name, :summary,
+                        :actor_user_id, :actor_name, :change_payload, :created_at
+                    )
+                    """
+                ),
+                {
+                    "action_type": normalized_action,
+                    "target_name": normalized_target,
+                    "summary": normalized_summary,
+                    "actor_user_id": int(actor_user_id) if actor_user_id is not None else None,
+                    "actor_name": actor_name,
+                    "change_payload": json.dumps(change_payload or {}, ensure_ascii=False, default=str),
+                    "created_at": now,
+                },
+            ).lastrowid
+            return int(record_id)
+
+    def get_settings_change_records(self, limit: int = 12, offset: int = 0) -> pd.DataFrame:
+        return self._read_sql(
+            """
+            SELECT *
+            FROM settings_change_records
+            ORDER BY created_at DESC, id DESC
+            LIMIT :limit OFFSET :offset
+            """,
+            {
+                "limit": int(limit),
+                "offset": int(offset),
+            },
+        )
+
     def invalidate_supplier_price_record(self, record_id: int, reason: str | None = None) -> int | None:
         now = datetime.utcnow().isoformat()
         with self.connect() as conn:

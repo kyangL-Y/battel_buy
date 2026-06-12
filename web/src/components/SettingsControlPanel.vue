@@ -1405,6 +1405,11 @@ function applySettingsSnapshotDocument() {
   background: #fff;
 }
 
+.pcw-settings-rail-card {
+  gap: 8px;
+  padding: 10px;
+}
+
 .pcw-settings-overview-grid span,
 .pcw-settings-overview-grid small,
 .pcw-settings-rail-head small,
@@ -1506,15 +1511,15 @@ function applySettingsSnapshotDocument() {
 
 .pcw-settings-body-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 300px;
-  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) 288px;
+  gap: 10px;
   min-width: 0;
 }
 
 .pcw-settings-main-column,
 .pcw-settings-side-column {
   display: grid;
-  gap: 12px;
+  gap: 10px;
   min-width: 0;
 }
 
@@ -1524,16 +1529,17 @@ function applySettingsSnapshotDocument() {
 
 .pcw-settings-readiness-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
   min-width: 0;
 }
 
 .pcw-settings-readiness-grid article {
   display: grid;
-  gap: 5px;
+  gap: 3px;
   min-width: 0;
-  padding: 12px;
+  min-height: 76px;
+  padding: 9px 10px;
   border: 1px solid #e2e8f0;
   border-radius: 8px;
   background: #fff;
@@ -1570,7 +1576,7 @@ function applySettingsSnapshotDocument() {
   min-width: 0;
   overflow: hidden;
   color: #10203d;
-  font-size: 15px;
+  font-size: 14px;
   line-height: 1.3;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1581,8 +1587,15 @@ function applySettingsSnapshotDocument() {
 .pcw-settings-permission-matrix small {
   min-width: 0;
   color: #52647f;
-  font-size: 12px;
-  line-height: 1.45;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.pcw-settings-readiness-grid small {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .pcw-settings-panel-tabs {
@@ -1598,9 +1611,10 @@ function applySettingsSnapshotDocument() {
 
 .pcw-settings-panel-tabs button {
   display: grid;
-  gap: 4px;
+  gap: 3px;
   min-width: 0;
-  padding: 10px 12px;
+  min-height: 54px;
+  padding: 8px 10px;
   border: 0;
   border-radius: 8px;
   background: transparent;
@@ -1634,7 +1648,7 @@ function applySettingsSnapshotDocument() {
   grid-column: 1 / -1;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
-  gap: 10px;
+  gap: 9px;
   align-items: end;
 }
 
@@ -1692,8 +1706,8 @@ function applySettingsSnapshotDocument() {
 .pcw-settings-source-form {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-  padding-top: 10px;
+  gap: 9px;
+  padding-top: 8px;
   border-top: 1px solid #dbe5f1;
 }
 
@@ -1821,13 +1835,13 @@ function applySettingsSnapshotDocument() {
 
 .pcw-settings-log-list {
   display: grid;
-  gap: 10px;
+  gap: 8px;
 }
 
 .pcw-settings-log-list article {
   display: grid;
-  gap: 4px;
-  padding-top: 10px;
+  gap: 3px;
+  padding-top: 8px;
   border-top: 1px solid #edf1f6;
 }
 
@@ -1847,7 +1861,7 @@ function applySettingsSnapshotDocument() {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 10px;
+  gap: 8px;
 }
 
 .pcw-settings-rail-head span {
@@ -1864,13 +1878,13 @@ function applySettingsSnapshotDocument() {
 .pcw-settings-rail-stat-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  gap: 6px;
 }
 
 .pcw-settings-rail-stat-grid article {
   display: grid;
   gap: 3px;
-  padding: 10px;
+  padding: 8px;
   border: 1px solid #e2e8f0;
   border-radius: 6px;
   background: #f8fbff;
@@ -1884,7 +1898,7 @@ function applySettingsSnapshotDocument() {
 
 .pcw-settings-rail-list {
   display: grid;
-  gap: 8px;
+  gap: 6px;
   padding-left: 16px;
 }
 
@@ -1894,13 +1908,13 @@ function applySettingsSnapshotDocument() {
 
 .pcw-settings-scope-list {
   display: grid;
-  gap: 8px;
+  gap: 6px;
 }
 
 .pcw-settings-scope-list article {
   display: grid;
-  gap: 4px;
-  padding: 10px;
+  gap: 3px;
+  padding: 8px;
   border: 1px solid #e2e8f0;
   border-radius: 6px;
   background: #f8fbff;

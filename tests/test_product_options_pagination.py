@@ -10,18 +10,18 @@ import api.app as api_app_module
 from api.app import create_app
 
 
-def _create_procurement_client(monkeypatch):
+def _create_procurement_client(monkeypatch, *, role: str = "procurement", procurement_supplier_ids: list[int] | None = None):
     monkeypatch.setattr(
         api_app_module,
         "require_procurement_or_admin_user",
         lambda: {
             "id": 1,
             "username": "pagination-buyer",
-            "role": "procurement",
+            "role": role,
             "display_name": "分页采购",
             "is_active": True,
             "supplier_id": None,
-            "procurement_supplier_ids": [],
+            "procurement_supplier_ids": list(procurement_supplier_ids or []),
             "supplier_profile": None,
         },
     )
@@ -56,7 +56,7 @@ def test_product_options_first_page_uses_fast_page_provider_without_market_summa
     monkeypatch.setattr(api_app_module, "_build_fast_product_options_page", fake_fast_page)
     monkeypatch.setattr(api_app_module, "_cached_market_summary_payload", fake_market_summary)
 
-    client = _create_procurement_client(monkeypatch)
+    client = _create_procurement_client(monkeypatch, role="admin")
     response = client.get("/api/product/options?limit=2")
 
     assert response.status_code == 200
@@ -87,7 +87,7 @@ def test_market_summary_keyword_uses_fast_page_provider_without_full_summary(mon
     monkeypatch.setattr(api_app_module, "_build_fast_market_summary_page", fake_fast_page)
     monkeypatch.setattr(api_app_module, "_cached_market_summary_payload", fake_market_summary)
 
-    client = _create_procurement_client(monkeypatch)
+    client = _create_procurement_client(monkeypatch, role="admin")
     response = client.get("/api/market/summary?keyword=%E7%9B%90&limit=40&offset=0")
 
     assert response.status_code == 200

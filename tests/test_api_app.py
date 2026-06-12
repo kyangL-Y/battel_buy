@@ -1448,8 +1448,22 @@ def test_settings_snapshot_endpoints_cover_export_preview_and_apply(tmp_path, mo
                 ]
             )
 
-    monkeypatch.setattr(api_app_module, "get_db", lambda: _SnapshotDb())
-    monkeypatch.setattr(api_deps_module, "get_db", lambda: _SnapshotDb())
+        def insert_settings_change_record(self, **kwargs):
+            self.settings_change_record = {
+                "id": 1,
+                "created_at": "2026-06-08T10:00:00+08:00",
+                **kwargs,
+            }
+            return 1
+
+        def get_settings_change_records(self, limit=12, offset=0):
+            if not hasattr(self, "settings_change_record"):
+                return pd.DataFrame()
+            return pd.DataFrame([self.settings_change_record])
+
+    snapshot_db = _SnapshotDb()
+    monkeypatch.setattr(api_app_module, "get_db", lambda: snapshot_db)
+    monkeypatch.setattr(api_deps_module, "get_db", lambda: snapshot_db)
     client = _create_authenticated_client(monkeypatch)
 
     export_response = client.get("/api/settings/snapshot")
@@ -1625,6 +1639,45 @@ def test_settings_snapshot_preview_and_apply_reject_missing_keys(tmp_path, monke
 
 
 
+
+
+def test_settings_change_log_endpoints_persist_admin_audit(tmp_path, monkeypatch):
+    db = Database(tmp_path / "settings_change_logs.db")
+    db.init_db()
+    client = _create_authenticated_client(monkeypatch, db=db)
+
+    create_response = client.post(
+        "/api/settings/change-logs",
+        json={
+            "action_type": "schedule",
+            "target_name": "系统同步设置",
+            "summary": "开启自动同步",
+            "change_payload": {"enabled": True},
+        },
+    )
+    list_response = client.get("/api/settings/change-logs")
+
+    assert create_response.status_code == 200
+    assert create_response.json()["item"]["actor_name"] == "测试账号"
+    assert create_response.json()["item"]["change_payload"]["enabled"] is True
+    assert list_response.status_code == 200
+    assert list_response.json()["items"][0]["target_name"] == "系统同步设置"
+
+
+def test_settings_change_log_endpoint_requires_admin(tmp_path, monkeypatch):
+    db = Database(tmp_path / "settings_change_logs_requires_admin.db")
+    db.init_db()
+    client = _create_authenticated_client(
+        monkeypatch,
+        db=db,
+        role="procurement",
+        supplier_id=None,
+        procurement_supplier_ids=[],
+    )
+
+    response = client.get("/api/settings/change-logs")
+
+    assert response.status_code == 403
 
 
 def test_menu_plan_endpoint_accepts_preferred_location(monkeypatch):

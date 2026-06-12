@@ -1,7 +1,31 @@
 import { expect, test } from '@playwright/test'
+import { PROCUREMENT_AUTH_STORAGE_KEY } from './helpers/authSessionStorage'
 
 test('单品趋势切换商品会重新请求走势且过滤非商品选项', async ({ page }) => {
   const trendRequests: string[] = []
+  const procurementUser = {
+    id: 1,
+    username: 'admin',
+    display_name: '管理员',
+    role: 'admin',
+    supplier_id: null,
+    is_active: true,
+  }
+
+  await page.addInitScript(([storageKey, sessionUser]) => {
+    window.localStorage.setItem(storageKey, JSON.stringify({
+      access_token: 'trend-switch-token',
+      token_type: 'Bearer',
+      expires_in: 3600,
+      user: sessionUser,
+    }))
+  }, [PROCUREMENT_AUTH_STORAGE_KEY, procurementUser] as const)
+  await page.route('**/api/auth/me', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({ user: procurementUser }),
+    })
+  })
 
   await page.route('**/api/product/options**', async (route) => {
     await route.fulfill({
@@ -55,7 +79,7 @@ test('单品趋势切换商品会重新请求走势且过滤非商品选项', as
   await expect(page.getByTestId('pc-price-workbench')).toBeVisible({ timeout: 30_000 })
   await expect(page.locator('[data-section-id="trend"]')).toHaveClass(/active/)
   const productFilter = page.getByTestId('pcw-trend-product-filter')
-  await expect(productFilter).toContainText('土豆 | 公斤', { timeout: 30_000 })
+  await expect(productFilter).toContainText('全部商品', { timeout: 30_000 })
   await productFilter.getByRole('button').first().click()
   await expect(page.getByRole('menuitemradio', { name: '/copy' })).toHaveCount(0)
   await expect(page.getByRole('menuitemradio', { name: '产区调整影响' })).toHaveCount(0)

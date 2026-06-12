@@ -543,6 +543,35 @@ class ProcurementPlanRecordListResponse(BaseModel):
     items: list[ProcurementPlanRecordItem]
 
 
+SettingsChangeActionType = Literal["schedule", "source_config", "source_strategy", "global_alert", "snapshot"]
+
+
+class SettingsChangeRecordCreateRequest(BaseModel):
+    action_type: SettingsChangeActionType
+    target_name: str = Field(..., min_length=1)
+    summary: str = ""
+    change_payload: dict = Field(default_factory=dict)
+
+
+class SettingsChangeRecordItem(BaseModel):
+    id: int
+    changed_at: str
+    action_type: SettingsChangeActionType
+    target_name: str
+    summary: str
+    actor_user_id: int | None = None
+    actor_name: str | None = None
+    change_payload: dict = Field(default_factory=dict)
+
+
+class SettingsChangeRecordListResponse(BaseModel):
+    items: list[SettingsChangeRecordItem]
+
+
+class SettingsChangeRecordResponse(BaseModel):
+    item: SettingsChangeRecordItem
+
+
 class AISearchRequest(BaseModel):
     query: str = Field(..., min_length=1)
 

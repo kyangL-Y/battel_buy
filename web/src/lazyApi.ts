@@ -31,6 +31,9 @@ import type {
   SalesDemoContentResponse,
   SignalInsightItem,
   SignalOverviewResponse,
+  SettingsChangeLogCreatePayload,
+  SettingsChangeLogListResponse,
+  SettingsChangeLogResponse,
   SourceConfigUpdatePayload,
   SourceStrategyUpdatePayload,
   GlobalAlertRuleItem,
@@ -140,6 +143,14 @@ export async function fetchGlobalAlertRules(): Promise<{ items: GlobalAlertRuleI
 
 export async function updateGlobalAlertRules(items: GlobalAlertRuleItem[]): Promise<{ items: GlobalAlertRuleItem[] }> {
   return (await loadApiModule()).updateGlobalAlertRules(items)
+}
+
+export async function fetchSettingsChangeLogs(params: { limit?: number; offset?: number } = {}): Promise<SettingsChangeLogListResponse> {
+  return (await loadApiModule()).fetchSettingsChangeLogs(params)
+}
+
+export async function createSettingsChangeLog(payload: SettingsChangeLogCreatePayload): Promise<SettingsChangeLogResponse> {
+  return (await loadApiModule()).createSettingsChangeLog(payload)
 }
 
 export async function fetchCrawlStatus() {

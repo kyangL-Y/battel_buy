@@ -137,7 +137,7 @@
               :loading="coverageLoading"
               @click="reloadSourceCoverage"
             >
-              刷新覆盖数据
+              刷新来源覆盖
             </el-button>
             <el-button
               v-if="activeSection === 'crawl'"
@@ -146,7 +146,7 @@
             >
               刷新状态
             </el-button>
-            <el-button v-else plain @click="activeSection = 'crawl'">去抓取任务</el-button>
+            <el-button v-else plain @click="activeSection = 'crawl'">切到数据抓取</el-button>
           </div>
         </section>
 

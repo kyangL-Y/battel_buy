@@ -33,6 +33,7 @@
             <template v-else>登录</template>
           </button>
           <button type="button" class="mobile-redesign-alert-dot" aria-label="查看价格提醒" @click="openProcurementEntry('alerts')">
+            <span class="mobile-redesign-alert-icon" aria-hidden="true"></span>
             <b v-if="mobileAlertBadge">{{ mobileAlertBadge }}</b>
           </button>
         </div>
@@ -44,13 +45,14 @@
 
       <div v-if="showMobileLocationPanel" class="mobile-redesign-location-panel">
         <div class="mobile-redesign-location-panel-head">
-          <strong>{{ isAuthScopedLocationLocked ? '默认行情地区' : '选择市场' }}</strong>
-          <span>{{ isAuthScopedLocationLocked ? '进入页面时按账号默认地区展示，也可切换其他已抓取地区' : '先看这个市场的菜价' }}</span>
+          <strong>{{ isAuthScopedLocationLocked ? '账号绑定地区' : hasAuthScopedLocation ? '默认行情地区' : '选择市场' }}</strong>
+          <span>{{ hasAuthScopedLocation ? '进入页面时按账号默认地区展示，也可切换其他已抓取地区' : '先看这个市场的菜价' }}</span>
         </div>
-        <small v-if="isAuthScopedLocationLocked" class="mobile-redesign-location-loading">{{ authScopedLocationHint }}</small>
+        <small v-if="hasAuthScopedLocation" class="mobile-redesign-location-loading">{{ authScopedLocationHint }}</small>
         <small v-if="locationLoading" class="mobile-redesign-location-loading">正在加载市场</small>
         <small v-if="locationSuggestionHint" class="mobile-redesign-location-loading">{{ locationSuggestionHint }}</small>
         <button
+          v-if="!isAuthScopedLocationLocked"
           type="button"
           class="mobile-redesign-location-hint-button"
           :disabled="locationSuggestionLoading"
@@ -62,6 +64,7 @@
           v-for="item in mobileLocationOptions"
           :key="item"
           type="button"
+          :disabled="isAuthScopedLocationLocked"
           :class="{ active: item === selectedLocationSelectionLabel }"
           @click="selectMobileLocation(item)"
         >
@@ -70,6 +73,7 @@
       </div>
 
       <div class="mobile-redesign-hero-copy">
+        <p v-if="isAuthScopedLocationLocked" class="mobile-redesign-account-location-note">当前账号已绑定地区</p>
         <p>今日采购</p>
         <h1>{{ mobileLandingHeroTitle }}</h1>
         <small>{{ mobileLandingHeroSubtitle }}</small>
@@ -134,7 +138,7 @@
             <h2>今天常买的菜</h2>
           </div>
           <div class="mobile-redesign-head-actions">
-            <button type="button" class="mobile-trend-shortcut market-mobile-bottom-item" @click="openProcurementEntry('trend')">明细</button>
+            <button type="button" class="mobile-trend-shortcut" @click="openProcurementEntry('trend')">明细</button>
             <button type="button" @click="openProcurementEntry('summary')">全部</button>
           </div>
         </div>
@@ -273,6 +277,10 @@
       <button type="button" class="market-mobile-bottom-item" aria-label="菜价" @click="openProcurementEntry('summary')">
         <span class="market-mobile-nav-icon market"></span>
         <strong>菜价</strong>
+      </button>
+      <button type="button" class="market-mobile-bottom-item" aria-label="价格明细" @click="openProcurementEntry('trend')">
+        <span class="market-mobile-nav-icon trend"></span>
+        <strong>明细</strong>
       </button>
       <button type="button" class="market-mobile-bottom-item" aria-label="价格提醒" @click="openProcurementEntry('alerts')">
         <span class="market-mobile-nav-icon alert"></span>
@@ -614,6 +622,28 @@
 
         class="market-mobile-bottom-item"
 
+        :class="{ active: mobileActiveTab === 'trend' }"
+
+        aria-label="价格明细"
+
+        :disabled="mobileNavigationLocked || mobileActiveTab === 'trend'"
+
+        @click="enterWorkspace('trend')"
+
+      >
+
+        <span class="market-mobile-nav-icon trend"></span>
+
+        <strong>明细</strong>
+
+      </button>
+
+      <button
+
+        type="button"
+
+        class="market-mobile-bottom-item"
+
         :class="{ active: mobileActiveTab === 'alerts' }"
 
         aria-label="价格提醒"
@@ -743,6 +773,7 @@
     :product-search-loading="mobileTrendSearchLoading"
 
     :selected-identity-key="selectedIdentityKey"
+    :selected-product-explicit="isSelectedProductExplicit"
 
     :product-summary="productSummary"
 
@@ -973,6 +1004,7 @@ import {
   fetchProcurementRecommendation,
   fetchProcurementPlanRecord,
   fetchProcurementPlanRecords,
+  fetchSettingsChangeLogs,
 
   fetchGlobalAlertRules,
   fetchProductOptions,
@@ -1148,6 +1180,7 @@ const activeTab = ref<(typeof tabs)[number]['key']>(defaultTab)
 const activeWorkbenchSection = ref<SectionId>(initialWorkbenchSection)
 const trendDeepLinkTarget = initialTab === 'trend' ? searchParams.get('product') || searchParams.get('identity_key') || searchParams.get('identityKey') || '' : ''
 const trendDeepLinkLabel = initialTab === 'trend' ? searchParams.get('product_label') || searchParams.get('label') || '' : ''
+const hasInitialTrendDeepLinkTarget = Boolean(trendDeepLinkTarget || trendDeepLinkLabel)
 const trendTestTargetLabels = ['三黄鸡 | 公斤', '一级豆油 | 公斤']
 const provinces = ref<string[]>([])
 const cities = ref<string[]>([])
@@ -1250,6 +1283,7 @@ const mobileAccountPanelVisible = ref(false)
 const mobileLocationPreset = ref<'henan' | 'all' | ''>('')
 
 const selectedProductTouched = ref(false)
+const isSelectedProductExplicit = computed(() => selectedProductTouched.value || hasInitialTrendDeepLinkTarget)
 
 let crawlStatusTimer: number | undefined
 let productOptionsPromise: Promise<void> | null = null
@@ -1285,12 +1319,15 @@ function resolveAuthScopedLocation(user?: AuthLoginResponse['user'] | null) {
 function hasLockedAuthScopedLocation() {
   const user = authSession.value?.user
   if (!user) return false
-  const defaultProvince = String(user.default_province || '').trim()
-  const defaultCity = String(user.default_city || '').trim()
   const marketScope = String(user.market_scope || '').trim()
-  return Boolean(defaultProvince || defaultCity || marketScope)
+  if (!marketScope) return false
+  return !['上海市场', '河南市场', '河南本地市场', '本地市场', '全国'].includes(marketScope)
 }
 
+const hasAuthScopedLocation = computed(() => {
+  const scopedLocation = resolveAuthScopedLocation(authSession.value?.user ?? null)
+  return Boolean(scopedLocation.province || scopedLocation.city || scopedLocation.scope)
+})
 const isAuthScopedLocationLocked = computed(() => hasLockedAuthScopedLocation())
 
 const filters = reactive({
@@ -2686,7 +2723,7 @@ const mobileAlertKpis = computed(() => {
 const mobileAlertHeroText = computed(() => {
   const pending = mobileAlertRows.value.filter((item) => item.state === '待处理').length
   if (pending > 0) return `当前有 ${pending} 个商品需要查看。`
-  if (mobileAlertRows.value.length > 0) return '当前没有急需处理的商品。'
+  if (mobileAlertRows.value.length > 0) return `当前有 ${mobileAlertRows.value.length} 个商品正在观察。`
   return '暂无价格提醒。'
 })
 
@@ -4062,7 +4099,7 @@ function applyAuthSession(session: AuthLoginResponse | null) {
     menuForm.preferredLocation = scopedLocation.city || scopedLocation.province
   }
 
-  locationSuggestionHint.value = hasLockedAuthScopedLocation()
+  locationSuggestionHint.value = hasAuthScopedLocation.value
     ? authScopedLocationHint.value
     : ''
 
@@ -4514,6 +4551,7 @@ function resolveMobileLocationSelection(value: string) {
 }
 
 function selectMobileLocation(value: string) {
+  if (isAuthScopedLocationLocked.value) return
   const selection = resolveMobileLocationSelection(value)
   if (!selection) return
   mobileLocationPreset.value = selection.preset
@@ -5001,19 +5039,20 @@ function readSettingsChangeLogs(): SettingsChangeLogItem[] {
   }
 }
 
-function appendSettingsChangeLog(action_type: SettingsChangeLogItem['action_type'], target_name: string, summary: string) {
-  const actor_name = authSession.value?.user?.display_name || authSession.value?.user?.username || '当前用户'
-  const nextItem: SettingsChangeLogItem = {
-    id: `${action_type}-${Date.now()}`,
-    changed_at: new Date().toISOString(),
-    actor_name,
-    action_type,
-    target_name,
-    summary,
-  }
-  settingsChangeLogs.value = [nextItem, ...settingsChangeLogs.value].slice(0, 12)
+function writeSettingsChangeLogsFallback(items: SettingsChangeLogItem[]) {
   if (typeof window !== 'undefined') {
-    window.localStorage.setItem(SETTINGS_CHANGE_LOG_STORAGE_KEY, JSON.stringify(settingsChangeLogs.value))
+    window.localStorage.setItem(SETTINGS_CHANGE_LOG_STORAGE_KEY, JSON.stringify(items))
+  }
+}
+
+async function loadSettingsChangeLogs() {
+  if (!authSession.value?.user || authSession.value.user.role !== 'admin') return
+  try {
+    const response = await fetchSettingsChangeLogs({ limit: 12 })
+    settingsChangeLogs.value = response.items || []
+    writeSettingsChangeLogsFallback(settingsChangeLogs.value)
+  } catch {
+    settingsChangeLogs.value = readSettingsChangeLogs()
   }
 }
 
@@ -5061,7 +5100,7 @@ async function handleWorkbenchUpdateCrawlSchedule(payload: {
         : payload.target_scope === 'city'
           ? `市级默认 ${payload.target_city || '未填'}`
           : '全部已保存地区'
-    appendSettingsChangeLog('schedule', '系统同步设置', `${payload.enabled ? '开启' : '关闭'}自动同步，${scheduleText}，模式 ${payload.fetch_mode || 'requests'}，范围 ${scopeText}`)
+    await loadSettingsChangeLogs()
     ElMessage.success(payload.enabled ? '已更新自动同步设置' : '已关闭自动同步')
   } catch {
     ElMessage.error('更新系统同步设置失败')
@@ -5092,7 +5131,7 @@ async function handleWorkbenchUpdateSourceConfig(payload: {
     } else {
       await reloadSourceCoverage()
     }
-    appendSettingsChangeLog('source_config', payload.configured_name || payload.source_url || '来源配置', `${payload.enabled ? '启用' : '停用'}，范围 ${payload.market_scope || '未填写'}，分类 ${payload.market_category || '未填写'}`)
+    await loadSettingsChangeLogs()
     ElMessage.success(payload.enabled ? '来源配置已启用' : '来源配置已停用')
   } catch {
     ElMessage.error('保存来源配置失败')
@@ -5113,7 +5152,7 @@ async function handleWorkbenchUpdateSourceStrategy(payload: {
   try {
     await updateSourceStrategy(payload)
     await reloadSourceCoverage()
-    appendSettingsChangeLog('source_strategy', payload.source_name, `采价方式 ${payload.preferred_fetch_mode || 'requests'}，采价方案 ${payload.strategy || '未填写'}，超时 ${payload.timeout_seconds || 0} 秒`)
+    await loadSettingsChangeLogs()
     ElMessage.success('采价方案已保存')
   } catch {
     ElMessage.error('保存采价方案失败')
@@ -5124,7 +5163,7 @@ async function handleWorkbenchUpdateGlobalAlertRules(items: GlobalAlertRuleItem[
   try {
     const data = await updateGlobalAlertRules(items)
     globalAlertRules.value = data.items ?? items
-    appendSettingsChangeLog('global_alert', '全局预警规则', `已保存 ${items.length} 条规则`)
+    await loadSettingsChangeLogs()
     ElMessage.success('全局预警规则已保存')
   } catch {
     ElMessage.error('保存全局预警规则失败')
@@ -5693,6 +5732,9 @@ function handleWorkbenchSectionChange(sectionId: SectionId) {
   activeWorkbenchSection.value = sectionId
   if (sectionId === 'plan' && !procurementPlanHistory.value.length && !procurementPlanHistoryLoading.value) {
     void loadProcurementPlanHistory()
+  }
+  if (sectionId === 'settings') {
+    void loadSettingsChangeLogs()
   }
   schedulePostRenderRequest(() => {
     void loadWorkbenchSectionAssets(sectionId)
@@ -6395,6 +6437,7 @@ onMounted(async () => {
   if (crawlStatus.value?.is_running) {
     startCrawlPolling()
   }
+  void loadSettingsChangeLogs()
   syncMobileAlertDraftFromSelection()
 })
 
@@ -7110,15 +7153,28 @@ onBeforeUnmount(() => {
 
 
 .market-mobile-message-button span {
+  position: relative;
+  display: block;
 
   width: 15px;
 
-  height: 13px;
+  height: 16px;
 
-  border: 1.8px solid #1f2d44;
+  border: 1.8px solid currentColor;
 
-  border-radius: 6px;
+  border-radius: 8px 8px 5px 5px;
 
+}
+
+.market-mobile-message-button span::after {
+  position: absolute;
+  left: 4px;
+  bottom: -5px;
+  width: 5px;
+  height: 2px;
+  border-radius: 999px;
+  background: currentColor;
+  content: "";
 }
 
 
@@ -9052,7 +9108,7 @@ onBeforeUnmount(() => {
 
   display: grid;
 
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
 
   gap: 6px;
 
@@ -11612,9 +11668,34 @@ onBeforeUnmount(() => {
   grid-row: 1;
   display: grid;
   place-items: center;
+  position: relative;
+}
+
+.mobile-redesign-alert-icon {
+  position: relative;
+  display: block;
+  width: 16px;
+  height: 18px;
+  color: currentColor;
+  border: 2px solid currentColor;
+  border-radius: 9px 9px 6px 6px;
+}
+
+.mobile-redesign-alert-icon::after {
+  position: absolute;
+  left: 4px;
+  bottom: -6px;
+  width: 5px;
+  height: 2px;
+  border-radius: 999px;
+  background: currentColor;
+  content: "";
 }
 
 .mobile-redesign-alert-dot b {
+  position: absolute;
+  top: 7px;
+  right: 6px;
   display: grid;
   place-items: center;
   min-width: 24px;
@@ -11900,7 +11981,7 @@ onBeforeUnmount(() => {
   left: 14px;
   right: 14px;
   bottom: max(12px, env(safe-area-inset-bottom, 0px));
-  padding: 10px;
+  padding: 8px;
 }
 
 .mobile-redesign-nav .market-mobile-bottom-item,
@@ -11914,7 +11995,7 @@ onBeforeUnmount(() => {
 
 .market-mobile-home.mobile-redesign-home .mobile-redesign-nav .market-mobile-bottom-item {
   min-height: 52px;
-  padding: 8px 4px;
+  padding: 7px 3px;
 }
 
 .mobile-redesign-nav .market-mobile-bottom-item.active,

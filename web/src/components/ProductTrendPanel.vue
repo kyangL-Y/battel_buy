@@ -41,6 +41,7 @@
     </div>
     <div v-if="isMobileViewport && (currentProductLabel || selectedIdentityKey)" class="trend-mobile-current-product">
       <span>当前商品</span>
+      <span class="trend-mobile-product-label">{{ currentProductLabel || fallbackProductLabel }}</span>
       <strong class="trend-mobile-product-title">
         <span>{{ mobileProductTitleText }}</span>
         <small v-if="mobileProductUnitLabel" class="trend-mobile-product-unit">{{ mobileProductUnitLabel }}</small>
@@ -2262,6 +2263,14 @@ onBeforeUnmount(() => {
   .trend-mobile-current-product small {
     color: #64748b;
     font-size: 11px;
+  }
+
+  .trend-mobile-current-product .trend-mobile-product-label {
+    color: #0f172a;
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
   }
 
   .trend-mobile-current-product strong {

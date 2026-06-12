@@ -79,6 +79,9 @@ class _FakeDb:
         self.price_record_count_calls += 1
         return 2
 
+    def get_product_keys_for_identity(self, identity_key: str) -> list[str]:
+        return []
+
 
 def test_history_df_uses_cache(monkeypatch):
     fake_db = _FakeDb()

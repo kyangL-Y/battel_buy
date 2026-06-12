@@ -7289,6 +7289,7 @@ const props = defineProps<{
 
 
   selectedIdentityKey?: string
+  selectedProductExplicit?: boolean
 
 
 
@@ -9117,6 +9118,9 @@ function hasFilterSearchInput(index: number) {
 }
 
 function getFilterButtonLabel(index: number, value: string) {
+  if (currentSection.value === 'trend' && index === 0 && props.selectedProductExplicit && props.selectedIdentityKey && selectedProductName.value) {
+    return formatProductFilterLabel(selectedProductName.value)
+  }
   const label = isProductOptionSearchFilter(index)
     ? formatProductFilterLabel(value)
     : formatFilterLabel(value)
@@ -22247,6 +22251,9 @@ function requestNextSummaryPageFromScroll() {
 function formatFilterDisplayLabel(index: number, value: string) {
   const label = formatFilterLabel(value)
   if (currentSection.value === 'trend' && index === 0 && label === '全部商品') {
+    if (props.selectedProductExplicit && props.selectedIdentityKey && selectedProductName.value) {
+      return formatProductFilterLabel(selectedProductName.value)
+    }
     const productOptionTotal = Number(props.productOptionsTotal || 0)
     const loadedCount = props.productOptions?.length || 0
     if (productOptionTotal) return `全部商品（${productOptionTotal}）`
